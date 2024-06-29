@@ -287,6 +287,8 @@ if __name__ == '__main__':
     chart = Chart( toolbox = False )
     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' )
     chart.precision(4)
+    #chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
+    chart.layout( font_size=14 )
 
     #pprint( ohlcvs )
 
