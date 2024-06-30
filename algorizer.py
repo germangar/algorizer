@@ -255,11 +255,25 @@ async def fetchCandleUpdates(df, chart):
 
         parseCandleUpdate(df, response, chart)
         
+        await asyncio.sleep(0.001)
 
     await exchange.close()
 
 
+async def otherstuff():
+    while True:
+        # doing nothing yet
+        await asyncio.sleep(1)
 
+async def runTasks( df, chart ):
+    # Start the fetchCandleUpdates function
+    task1 = asyncio.create_task( fetchCandleUpdates(df, chart) )
+    
+    # Start the monitorOtherUpdates function
+    task2 = asyncio.create_task( otherstuff() )
+
+    # Run both functions concurrently
+    await asyncio.gather( task1, task2 )
 
 
 if __name__ == '__main__':
@@ -287,7 +301,9 @@ if __name__ == '__main__':
     chart = Chart( toolbox = False )
     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' )
     chart.precision(4)
-    #chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
+    #chart.watermark("Hello World")
+    # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
+    # chart.grid(vert_enabled: bool, horz_enabled: bool, color: COLOR, style: LINE_STYLE)
     chart.layout( font_size=14 )
 
     #pprint( ohlcvs )
@@ -314,18 +330,13 @@ if __name__ == '__main__':
         # delete the last row in the dataframe and extract the last row in ohlcvs.
         df.drop( df.tail(1).index, inplace=True )
         last_ohlcv = [ohlcvs[-1]]
-        #print( last_ohlcv )
+        #print( last_ohlcv, 'time:', last_ohlcv[0][0], 'todatetime:', df.iloc[-1]['time']  )
+
         chart.set(df)
         parseCandleUpdate( df, last_ohlcv, chart ) # jump-start the series and plots calculation
         
     #########################################################
     # print( df )
-
-
-    #chart.watermark("Hello World")
-
-    # testLine = chart.create_line( 'testline', price_label=False )
-    # testLine.set( pd.DataFrame({'time': df['time'].shift(1), 'testline': df['high'].shift(1) + 0.01}).dropna() )
 
 
     chart.show( block=False )
@@ -340,33 +351,9 @@ if __name__ == '__main__':
     #     runCloseCandle( chart, subset_df )
 
     # get updates from the exchange
-    asyncio.run( fetchCandleUpdates(df, chart) )
+    #asyncio.run( fetchCandleUpdates(df, chart) )
 
+    asyncio.run( runTasks(df, chart) )
 
-
-
-'''import pandas as pd
-from time import sleep
-from lightweight_charts import Chart
-
-if __name__ == '__main__':
-
-    chart = Chart()
-
-    df1 = pd.read_csv('ohlcv.csv')
-    df2 = pd.read_csv('next_ohlcv.csv')
-
-    chart.set(df1)
-
-    chart.show()
-
-    last_close = df1.iloc[-1]
     
-    for i, series in df2.iterrows():
-        chart.update(series)
 
-        if series['close'] > 20 and last_close < 20:
-            chart.marker(text='The price crossed $20!')
-            
-        last_close = series['close']
-        sleep(0.1)'''
