@@ -255,7 +255,7 @@ async def fetchCandleUpdates(df, chart):
 
         parseCandleUpdate(df, response, chart)
         
-        await asyncio.sleep(0.001)
+        await asyncio.sleep(0.003)
 
     await exchange.close()
 
@@ -265,6 +265,12 @@ async def otherstuff():
         # doing nothing yet
         await asyncio.sleep(1)
 
+from datetime import datetime
+async def update_clock(chart):
+    while chart.is_alive:
+        await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+
 async def runTasks( df, chart ):
     # Start the fetchCandleUpdates function
     task1 = asyncio.create_task( fetchCandleUpdates(df, chart) )
@@ -272,8 +278,11 @@ async def runTasks( df, chart ):
     # Start the monitorOtherUpdates function
     task2 = asyncio.create_task( otherstuff() )
 
-    # Run both functions concurrently
-    await asyncio.gather( task1, task2 )
+    # clock
+    task3 = asyncio.create_task( update_clock(chart) )
+
+    # Run functions concurrently
+    await asyncio.gather( task1, task2, task3 )
 
 
 if __name__ == '__main__':
@@ -338,20 +347,7 @@ if __name__ == '__main__':
     #########################################################
     # print( df )
 
-
     chart.show( block=False )
-    #print( df )
-
-    # for row_index in range(len(df)):
-    #     # Create the subset DataFrame from the beginning to the current row
-    #     print( row_index )
-    #     subset_df = df.iloc[:row_index + 1]
-        
-    #     # Process the current row with its subset
-    #     runCloseCandle( chart, subset_df )
-
-    # get updates from the exchange
-    #asyncio.run( fetchCandleUpdates(df, chart) )
 
     asyncio.run( runTasks(df, chart) )
 
