@@ -40,7 +40,7 @@ class context_c:
         last_ohlcv = [ohlcvs[-1]]
 
         # jump-start the series and plots calculation by running the last row as if it was a update
-        parseCandleUpdate( df, last_ohlcv, chart )
+        parseCandleUpdate( last_ohlcv, chart )
 
 
     # update dataframe from 
@@ -52,38 +52,39 @@ class context_c:
     
 
 
+df:pd.DataFrame = []
+
+import math
+
 class sma_c:
-    def __init__( self, source:str, period, df ):
+    def __init__( self, source:str, period ):
         self.period = period
         self.source = source
         self.name = f'{source} {period}'
         self.initialized = False
-        self.dataFrame = None
+
+        if( not self.source in df.columns ):
+            SystemError( f"SMA with unknown source [{source}]")
 
         if( self.period < 1 ):
             SystemError( f"SMA with invalid period [{period}]")
 
-        if( len(df) < period ):
-            return
-        
-        # self.dataFrame = pd.DataFrame({ 'timestamp': df['timestamp'], self.name : df[source].rolling(window=period).mean() }).dropna()
-        # self.initialized = True
-
-    def update( self, df ):
+    def update( self ):
 
         #if non existant try to create new
         if( not self.initialized ):
-            if( len(df) >= self.period ):
-                self.dataFrame = pd.DataFrame({ 'timestamp': df['timestamp'], self.name : df[self.source].rolling(window=self.period).mean() }).dropna()
+            if( len(df) >= self.period and not self.name in df.columns ):
+                df[self.name] = df[self.source].rolling(window=self.period).mean()
                 self.initialized = True
                 return True
             return False
         
+        # check if this row has already been updated
+        if( not math.isnan(df[self.name].iloc[-1]) ):
+            return True
+        
         # Extract the last 'num_rows' rows of the specified column into a new DataFrame
         sdf = df[self.source].tail(self.period).to_frame()
-        
-        #update from the existing one
-        # sdf = df.tail(self.period)
         if( len(sdf) < 1 ):
             return False 
         
@@ -92,15 +93,17 @@ class sma_c:
         if( len(newval) < 1 ):
             return False
         newval = newval.iloc[-1]
-        timestamp = int( df.iloc[-1]['timestamp'] )
-        self.dataFrame = df_append( self.dataFrame, {'timestamp': timestamp, self.name : newval} )
-        
 
+        # the new row is already created
+        df.loc[df.index[-1], self.name] = newval
         return True
+    
+    def plotData( self ):
+        return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
     
 registeredSMAs = []
         
-def calcSMA( df, source:str, period ):
+def calcSMA( source:str, period ):
     name = f'{source} {period}'
     sma = None
     # find if there's a SMA already created for this series
@@ -110,10 +113,10 @@ def calcSMA( df, source:str, period ):
             #print( 'found SMA')
             break
     if sma == None:
-        sma = sma_c( source, period, df )
+        sma = sma_c( source, period )
         registeredSMAs.append(sma)
 
-    sma.update( df )
+    sma.update()
     return sma
 
 
@@ -178,24 +181,24 @@ def replaceValueByTimestamp( df, timestamp, key:str, value ):
 
 
 
-def runOpenCandle( chart, df ):
+def runOpenCandle( chart ):
 
     return
 
 
-def runCloseCandle( chart, df ):
+def runCloseCandle( chart ):
 
     ###########################
     # strategy code goes here #
     ###########################
 
-    sma = calcSMA( df, 'close', 30 )
+    sma = calcSMA( 'close', 30 )
     if( sma != None ):
-        plot( sma.name, sma.dataFrame, chart )
+        plot( sma.name, sma.plotData(), chart )
 
-    sma = calcSMA( df, 'close', 90 )
+    sma = calcSMA( 'close', 90 )
     if( sma != None ):
-        plot( sma.name, sma.dataFrame, chart )
+        plot( sma.name, sma.plotData(), chart )
 
     plotData = pd.DataFrame({'timestamp': df['timestamp'], 'low': df['low'] - 0.01}).dropna()
     plot( "low", plotData, chart )
@@ -203,7 +206,7 @@ def runCloseCandle( chart, df ):
     return
 
 
-def parseCandleUpdate(df, rows, chart = None):
+def parseCandleUpdate( rows, chart = None ):
     for newrow in rows:
             newTimestamp = int(newrow[0])
             if( newTimestamp == None ):
@@ -234,7 +237,7 @@ def parseCandleUpdate(df, rows, chart = None):
                 print( 'NEW CANDLE', newrow )
 
                 # the realtime candle is now closed
-                runCloseCandle( chart, df )
+                runCloseCandle( chart )
 
                 # OPEN A NEW CANDLE
                 new_row_index = len(df)
@@ -258,10 +261,10 @@ def parseCandleUpdate(df, rows, chart = None):
                 #print("\nDataFrame after filling the new row:")
                 #print(df.tail())
 
-                runOpenCandle( chart, df )
+                runOpenCandle( chart )
 
 # get new bars
-async def fetchCandleUpdates(df, chart):
+async def fetchCandleUpdates(chart):
     # exchange = ccxt.bitget({
     exchange = getattr(ccxt, exchangeName)({
                 "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
@@ -279,7 +282,7 @@ async def fetchCandleUpdates(df, chart):
         if( len(response) > maxRows ):
             response = response[len(response)-maxRows:]
 
-        parseCandleUpdate(df, response, chart)
+        parseCandleUpdate( response, chart )
         
         await asyncio.sleep(0.003)
 
@@ -297,9 +300,9 @@ async def update_clock(chart):
         await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
         chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
 
-async def runTasks( df, chart ):
+async def runTasks( chart ):
     # Start the fetchCandleUpdates function
-    task1 = asyncio.create_task( fetchCandleUpdates(df, chart) )
+    task1 = asyncio.create_task( fetchCandleUpdates(chart) )
     
     # Start the monitorOtherUpdates function
     task2 = asyncio.create_task( otherstuff() )
@@ -375,14 +378,14 @@ if __name__ == '__main__':
     chart.set(tmpdf)
 
     # jump-start the series and plots calculation by running the last row as if it was a update
-    parseCandleUpdate( df, last_ohlcv, chart ) 
+    parseCandleUpdate( last_ohlcv, chart ) 
         
     #########################################################
     # print( df )
 
     chart.show( block=False )
 
-    asyncio.run( runTasks(df, chart) )
+    asyncio.run( runTasks(chart) )
 
     
 
