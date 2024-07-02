@@ -7,8 +7,30 @@ import ccxt.pro as ccxt
 import time
 from pprint import pprint
 
+import tools
 from fetcher import candles_c
 
+
+
+class context_c:
+    def __init__( self, symbol, exchangeID:str, timeframe, dataFrame ):
+        self.symbol = symbol # FIXME: add verification
+        self.exchangeID = exchangeID
+        #self.exchange = LOAD THE EXCHANGE
+        self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
+        self.timeframeName = tools.timeframeString( self.timeframe )
+        self.candles = dataFrame
+        self.timestamp = 0
+
+    # load dataframe from cache
+
+    # update dataframe from 
+    
+    def newCandle():
+        return
+    def updateRealtimeCandle():
+        return
+    
 
 
 class sma_c:
@@ -25,15 +47,15 @@ class sma_c:
         if( len(df) < period ):
             return
         
-        self.dataFrame = pd.DataFrame({ 'time': df['time'], f'{self.name}': df[source].rolling(window=period).mean() }).dropna()
-        self.initialized = True
+        # self.dataFrame = pd.DataFrame({ 'timestamp': df['timestamp'], self.name : df[source].rolling(window=period).mean() }).dropna()
+        # self.initialized = True
 
     def update( self, df ):
 
         #if non existant try to create new
         if( not self.initialized ):
             if( len(df) >= self.period ):
-                self.dataFrame = pd.DataFrame({ 'time': df['time'], f'{self.name}': df[self.source].rolling(window=self.period).mean() }).dropna()
+                self.dataFrame = pd.DataFrame({ 'timestamp': df['timestamp'], self.name : df[self.source].rolling(window=self.period).mean() }).dropna()
                 self.initialized = True
                 return True
             return False
@@ -43,16 +65,14 @@ class sma_c:
         if( len(sdf) < 1 ):
             return False 
         
+        # isolate only the required block of candles to calculate the current value of the SMA
         newval = sdf[self.source].rolling(window=self.period).mean().dropna()
         if( len(newval) < 1 ):
             return False
         newval = newval.iloc[-1]
-        timestamp = df.iloc[-1]['timestamp']
-
-        # Assign values to the new row one by one
-        new_row_index = len(self.dataFrame)
-        self.dataFrame.loc[new_row_index, 'time'] = pd.to_datetime( timestamp, unit='ms' )
-        self.dataFrame.loc[new_row_index, 'value'] = newval
+        timestamp = int( df.iloc[-1]['timestamp'] )
+        new_row = { 'timestamp': timestamp, self.name : newval }
+        self.dataFrame = pd.concat( [self.dataFrame, pd.DataFrame(new_row, index=[0])], ignore_index=False )
 
         return True
     
@@ -65,9 +85,13 @@ def calcSMA( df, source:str, period ):
     for thisSMA in registeredSMAs:
         if thisSMA.name == name:
             sma = thisSMA
+            #print( 'found SMA')
             break
     if sma == None:
-        sma = sma = sma_c( source, period, df )
+        sma = sma_c( source, period, df )
+        registeredSMAs.append(sma)
+
+    sma.update( df )
     return sma
 
 
@@ -88,22 +112,18 @@ class plot_c:
         
         if( not self.initialized ):
             self.line = chart.create_line( self.name, price_label=False )
-            self.line.set( source )
+            #source['time'] = pd.to_datetime( source['timestamp'], unit='ms' )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( source['timestamp'], unit='ms' ), self.name: source[self.name]}).dropna() )
+            #source.drop('time', axis=1, inplace=True)
             self.initialized = True
             return
 
         # it's initalized so only update the new line
-        if( len(self.line.data) < len(source) ):
+        # if( 1 or len(self.line.data) < len(source) ):
+        newval = source.iloc[-1][self.name]
+        timestamp = int(source.iloc[-1]['timestamp'])
+        self.line.update( pd.Series( {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval } ) )
 
-            # FIXME: I don't think this is solid. It probably can leak.
-
-            # I need to figure out FOR REAL how the series name thing works because it's driving me nuts...
-
-            # newval = source.iloc[-1]['low'] # FIXME AND THIS CAN'T USE 'LOW' it needs to be adaptable
-            # self.line.update( pd.Series( {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval } ) )
-            newval = source.iloc[-1][self.name] # FIXME AND THIS CAN'T USE 'LOW' it needs to be adaptable
-            newtime = source.iloc[-1]['time']
-            self.line.update( pd.Series( {'time': pd.to_datetime( newtime, unit='ms' ), 'value': newval } ) )
 
 
 registeredPlots = []
@@ -112,6 +132,7 @@ def plot( name, source:pd.DataFrame, chart ):
     for thisPlot in registeredPlots:
         if( name == thisPlot.name ):
             plot = thisPlot
+            #print( 'found Plot' )
             break
 
     if( plot == None ):
@@ -127,27 +148,6 @@ exchangeName = 'bitget'
 
 symbol = f'{coin}/USDT:USDT'
 candles = candles_c( exchangeName, symbol )
-
-# def calculate_sma( df, period: int = 50):
-#     return pd.DataFrame({
-#         'time': df['time'],
-#         f'SMA {period}': df['close'].rolling(window=period).mean()
-#     }).dropna()
-
-
-# def update_sma(sma_line, df, period=50):
-#     if len(sma_line.data) < period:
-#         # Not enough data points yet to calculate SMA
-#         return
-    
-#     # extract only the candles we need for the SMA update
-#     sdf = df.tail(period)
-#     timestamp = df.iloc[-1]['timestamp']
-    
-#     newval = sdf['close'].rolling(window=period).mean().dropna()
-#     newval = newval.iloc[-1]
-#     data_dict = {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval }
-#     sma_line.update( pd.Series(data_dict) )
 
 
 def replaceValueByTimestamp( df, timestamp, key:str, value ):
@@ -171,11 +171,11 @@ def runCloseCandle( chart, df ):
     if( sma != None ):
         plot( sma.name, sma.dataFrame, chart )
 
-    sma = calcSMA( df, 'close', 90 )
-    if( sma != None ):
-        plot( sma.name, sma.dataFrame, chart )
+    # sma = calcSMA( df, 'close', 90 )
+    # if( sma != None ):
+    #     plot( sma.name, sma.dataFrame, chart )
 
-    plotData = pd.DataFrame({'time': df['time'], 'low': df['low'] - 0.01}).dropna()
+    plotData = pd.DataFrame({'timestamp': df['timestamp'], 'low': df['low'] - 0.01}).dropna()
     plot( "low", plotData, chart )
 
     return
@@ -284,6 +284,16 @@ async def runTasks( df, chart ):
     # Run functions concurrently
     await asyncio.gather( task1, task2, task3 )
 
+async def on_timeframe_selection(chart):
+    print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
+
+async def on_button_press(chart):
+    new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
+    chart.topbar['my_button'].set(new_button_value)
+    print(f'Turned something {new_button_value.lower()}.')
+
+def on_horizontal_line_move(chart, line):
+    print(f'Horizontal line moved to: {line.price}')
 
 if __name__ == '__main__':
     # filename = f'stuff/{exchangeName}-{coin}-USDT-{timeframe}.csv'
@@ -314,6 +324,16 @@ if __name__ == '__main__':
     # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
     # chart.grid(vert_enabled: bool, horz_enabled: bool, color: COLOR, style: LINE_STYLE)
     chart.layout( font_size=14 )
+
+    # chart.topbar.switcher(
+    #     name='my_switcher',
+    #     options=('1min', '5min', '30min'),
+    #     default='5min',
+    #     func=on_timeframe_selection)
+    
+    # chart.topbar.button('my_button', 'Off', func=on_button_press)
+
+    # chart.horizontal_line(2.080, func=on_horizontal_line_move)
 
     #pprint( ohlcvs )
 
