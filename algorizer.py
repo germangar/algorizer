@@ -11,6 +11,9 @@ import tools
 from fetcher import candles_c
 
 
+SHOW_VOLUME = False
+
+
 
 class context_c:
     def __init__( self, symbol, exchangeID:str, timeframe, dataFrame ):
@@ -71,8 +74,9 @@ class sma_c:
             return False
         newval = newval.iloc[-1]
         timestamp = int( df.iloc[-1]['timestamp'] )
-        new_row = { 'timestamp': timestamp, self.name : newval }
-        self.dataFrame = pd.concat( [self.dataFrame, pd.DataFrame(new_row, index=[0])], ignore_index=False )
+        self.dataFrame = tools.df_append( self.dataFrame, {'timestamp': timestamp, self.name : newval} )
+        # new_row = { 'timestamp': timestamp, self.name : newval }
+        # self.dataFrame = pd.concat( [self.dataFrame, pd.DataFrame(new_row, index=[0])], ignore_index=False )
 
         return True
     
@@ -203,7 +207,9 @@ def parseCandleUpdate(df, rows, chart = None):
 
                 #update the chart
                 if( chart != None ):
-                    data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4], 'volume': newrow[5]}
+                    data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4]}
+                    if SHOW_VOLUME:
+                        data_dict['volume'] = newrow[5]
                     chart.update( pd.Series(data_dict) )
 
             else:
@@ -224,7 +230,9 @@ def parseCandleUpdate(df, rows, chart = None):
 
                 # update the chart
                 if( chart != None ):
-                    data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4], 'volume': newrow[5]}
+                    data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4]}
+                    if SHOW_VOLUME:
+                        data_dict['volume'] = newrow[5]
                     chart.update( pd.Series(data_dict) )
 
                     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(df)}' )
@@ -335,34 +343,21 @@ if __name__ == '__main__':
 
     # chart.horizontal_line(2.080, func=on_horizontal_line_move)
 
-    #pprint( ohlcvs )
 
-    if 0:
-        initialohlcvs = ohlcvs[0:1]
-        df = pd.DataFrame( initialohlcvs, columns=['time', 'open', 'high', 'low', 'close', 'volume'] )
-        df['timestamp'] = df['time'] # create a new timestamp column and copy the timestamps
-        df['time'] = pd.to_datetime( df['time'], unit='ms' ) # convert the original timestamps into 'datetime' format
-        chunk_size = 10
-        for i in range(0, len(ohlcvs), chunk_size):
-            chunk = ohlcvs[i:i + chunk_size]
-            print('chunk')
-            print(chunk)
-            parseCandleUpdate(df, chunk, chart = None)
+    df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-        print(df)
-        chart.set(df)
-    else:
-        df = pd.DataFrame( ohlcvs, columns=['time', 'open', 'high', 'low', 'close', 'volume'] )
-        df['timestamp'] = df['time'] # create a new timestamp column and copy the timestamps
-        df['time'] = pd.to_datetime( df['time'], unit='ms' ) # convert the original timestamps into 'datetime' format
+    # delete the last row in the dataframe and extract the last row in ohlcvs.
+    df.drop( df.tail(1).index, inplace=True )
+    last_ohlcv = [ohlcvs[-1]]
+    
+    tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
+    if( SHOW_VOLUME ):
+        tmpdf['volume'] = df['volume']
+    
+    chart.set(tmpdf)
 
-        # delete the last row in the dataframe and extract the last row in ohlcvs.
-        df.drop( df.tail(1).index, inplace=True )
-        last_ohlcv = [ohlcvs[-1]]
-        #print( last_ohlcv, 'time:', last_ohlcv[0][0], 'todatetime:', df.iloc[-1]['time']  )
-
-        chart.set(df)
-        parseCandleUpdate( df, last_ohlcv, chart ) # jump-start the series and plots calculation
+    # jump-start the series and plots calculation by running the last row as if it was a update
+    parseCandleUpdate( df, last_ohlcv, chart ) 
         
     #########################################################
     # print( df )

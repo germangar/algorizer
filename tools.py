@@ -1,5 +1,22 @@
 
+import pandas as pd
 
+def df_append( df, row ):
+    if isinstance( row, pd.Series ):
+        newrow = row
+    elif isinstance( row, dict ):
+        newrow = pd.Series(row)
+    elif isinstance( row, pd.DataFrame ):
+        if len( row ) != 1:
+            raise ValueError( "DataFrame for new row should have only one row" )
+        newrow = row.iloc[0]
+    else:
+        raise ValueError( type(row), "Unsupported data type for new row" )
+    
+    if not all(col in df.columns for col in newrow.index):
+        raise ValueError( "Column names in new row do not match DataFrame columns" )
+    
+    return pd.concat( [df, newrow.to_frame().T], ignore_index=True )
 
 
 
@@ -50,3 +67,6 @@ def timeframeString( timeframe )->str:
     
     # fall through if unsucessful
     SystemError( "timeframeNameToMinutes: Unsupported timeframe:", timeframe )
+
+
+
