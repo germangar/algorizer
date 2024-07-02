@@ -171,9 +171,9 @@ def runCloseCandle( chart, df ):
     if( sma != None ):
         plot( sma.name, sma.dataFrame, chart )
 
-    # sma = calcSMA( df, 'close', 90 )
-    # if( sma != None ):
-    #     plot( sma.name, sma.dataFrame, chart )
+    sma = calcSMA( df, 'close', 90 )
+    if( sma != None ):
+        plot( sma.name, sma.dataFrame, chart )
 
     plotData = pd.DataFrame({'timestamp': df['timestamp'], 'low': df['low'] - 0.01}).dropna()
     plot( "low", plotData, chart )
