@@ -8,6 +8,7 @@ import time
 from pprint import pprint
 
 import tools
+from tools import df_append
 from fetcher import candles_c
 
 
@@ -16,16 +17,31 @@ SHOW_VOLUME = False
 
 
 class context_c:
-    def __init__( self, symbol, exchangeID:str, timeframe, dataFrame ):
+    def __init__( self, symbol, exchangeID:str, timeframe ):
         self.symbol = symbol # FIXME: add verification
-        self.exchangeID = exchangeID
-        #self.exchange = LOAD THE EXCHANGE
         self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
         self.timeframeName = tools.timeframeString( self.timeframe )
-        self.candles = dataFrame
         self.timestamp = 0
 
-    # load dataframe from cache
+        self.exchange = getattr(ccxt, exchangeID)({
+                "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
+                "enableRateLimit": False
+                }) 
+
+        ###################################
+        #### Initialize the dataframe #####
+        ###################################
+        # load dataframe from cache (to do)
+        ohlcvs = candles.fetchAmount( symbol, timeframe=timeframe, amount=1000 )
+        self.df  = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+
+        # delete the last row in the dataframe and extract the last row in ohlcvs.
+        self.df .drop( self.df .tail(1).index, inplace=True )
+        last_ohlcv = [ohlcvs[-1]]
+
+        # jump-start the series and plots calculation by running the last row as if it was a update
+        parseCandleUpdate( df, last_ohlcv, chart )
+
 
     # update dataframe from 
     
@@ -63,20 +79,22 @@ class sma_c:
                 return True
             return False
         
+        # Extract the last 'num_rows' rows of the specified column into a new DataFrame
+        sdf = df[self.source].tail(self.period).to_frame()
+        
         #update from the existing one
-        sdf = df.tail(self.period)
+        # sdf = df.tail(self.period)
         if( len(sdf) < 1 ):
             return False 
         
-        # isolate only the required block of candles to calculate the current value of the SMA
+        # # isolate only the required block of candles to calculate the current value of the SMA
         newval = sdf[self.source].rolling(window=self.period).mean().dropna()
         if( len(newval) < 1 ):
             return False
         newval = newval.iloc[-1]
         timestamp = int( df.iloc[-1]['timestamp'] )
-        self.dataFrame = tools.df_append( self.dataFrame, {'timestamp': timestamp, self.name : newval} )
-        # new_row = { 'timestamp': timestamp, self.name : newval }
-        # self.dataFrame = pd.concat( [self.dataFrame, pd.DataFrame(new_row, index=[0])], ignore_index=False )
+        self.dataFrame = df_append( self.dataFrame, {'timestamp': timestamp, self.name : newval} )
+        
 
         return True
     

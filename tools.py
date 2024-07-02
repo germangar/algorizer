@@ -1,6 +1,11 @@
 
 import pandas as pd
 
+# concat a dictionary to a dataframe
+# new_row = { 'timestamp': timestamp, self.name : newval }
+# self.dataFrame = pd.concat( [self.dataFrame, pd.DataFrame(new_row, index=[0])], ignore_index=False )
+
+# append a row series/dictionary/dataframe to a dataframe
 def df_append( df, row ):
     if isinstance( row, pd.Series ):
         newrow = row
