@@ -69,10 +69,17 @@ def customseries_calculate_sma(series: pd.Series, period: int) -> float:
         return pd.NA  # Not enough data to calculate the SMA
     return series.mean()
 
+def customseries_calculate_ema(series: pd.Series, period: int) -> float:
+    if len(series) < period:
+        return pd.NA  # Not enough data to calculate the EMA
+    alpha = 2 / (period + 1)
+    ema = series.ewm(alpha=alpha, adjust=False).mean().iloc[-1]
+    return ema
+
 
 class customSeries_c:
-    def __init__( self, source:str, period:int, func = None ):
-        self.name = f'{source} {period}'
+    def __init__( self, type:str, source:str, period:int, func = None ):
+        self.name = f'{type} {source} {period}'
         self.source = source
         self.period = period
         self.func = func
@@ -107,12 +114,6 @@ class customSeries_c:
             return False 
         
         newval = self.func( sdf[self.source], self.period )
-        #newval = sdf[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period)).dropna()
-        # if( len(newval) < 1 ):
-        #     return False
-        # newval = newval.iloc[-1]
-        
-        # the new row is already created
         df.loc[df.index[-1], self.name] = newval
         return True
     
@@ -124,7 +125,7 @@ class sma_c:
     def __init__( self, source:str, period ):
         self.period = period
         self.source = source
-        self.name = f'{source} {period}'
+        self.name = f'sma {source} {period}'
         self.initialized = False
 
         if( not self.source in df.columns ):
@@ -161,22 +162,28 @@ class sma_c:
         return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
     
 registeredSMAs = []
+registeredCustomSeries = []
 
-# def calcSMA( source:str, period ):
-#     name = f'{source} {period}'
-#     sma = None
-#     # find if there's a SMA already created for this series
-#     for thisSMA in registeredSMAs:
-#         if thisSMA.name == name:
-#             sma = thisSMA
-#             #print( 'found SMA')
-#             break
-#     if sma == None:
-#         sma = customSeries_c( source, period, customseries_calculate_sma )
-#         registeredSMAs.append(sma)
+def calcCustomSeries( type:str, source:str, period:int, func ):
+    name = f'{type} {source} {period}'
+    cseries = None
+    # find if there's a SMA already created for this series
+    for thisCS in registeredCustomSeries:
+        if thisCS.name == name:
+            cseries = thisCS
+            break
+    if cseries == None:
+        cseries = customSeries_c( type, source, period, func )
+        registeredCustomSeries.append(cseries)
 
-#     sma.update()
-#     return sma
+    cseries.update()
+    return cseries
+
+def calcEMA( source:str, period:int ):
+    return calcCustomSeries( "ema", source, period, customseries_calculate_ema )
+
+def calcRSI( source:str, period:int ):
+    return calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
 
 def calcSMA( source:str, period ):
     name = f'{source} {period}'
@@ -211,15 +218,12 @@ class plot_c:
                 return
         
         if( not self.initialized ):
-            self.line = chart.create_line( self.name, price_label=False )
-            #source['time'] = pd.to_datetime( source['timestamp'], unit='ms' )
+            self.line = chart.create_line( self.name, price_line=False, price_label=False )
             self.line.set( pd.DataFrame({'time': pd.to_datetime( source['timestamp'], unit='ms' ), self.name: source[self.name]}).dropna() )
-            #source.drop('time', axis=1, inplace=True)
             self.initialized = True
             return
 
         # it's initalized so only update the new line
-        # if( 1 or len(self.line.data) < len(source) ):
         newval = source.iloc[-1][self.name]
         timestamp = int(source.iloc[-1]['timestamp'])
         self.line.update( pd.Series( {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval } ) )
@@ -267,16 +271,20 @@ def runCloseCandle( chart ):
     # strategy code goes here #
     ###########################
 
-    sma = calcSMA( 'close', 30 )
-    if( sma != None ):
-        plot( sma.name, sma.plotData(), chart )
-
     sma = calcSMA( 'close', 90 )
     if( sma != None ):
         plot( sma.name, sma.plotData(), chart )
 
-    plotData = pd.DataFrame({'timestamp': df['timestamp'], 'low': df['low'] - 0.01}).dropna()
-    plot( "low", plotData, chart )
+    ema = calcEMA( 'close', 4 )
+    if( ema != None ):
+        plot( ema.name, ema.plotData(), chart )
+
+    # rsi = calcRSI( 'close', 14 )
+    # if( rsi != None ):
+    #     plot( rsi.name, rsi.plotData(), chart )
+
+    # plotData = pd.DataFrame({'timestamp': df['timestamp'], 'low': df['low'] - 0.01}).dropna()
+    # plot( "low", plotData, chart )
 
     return
 
