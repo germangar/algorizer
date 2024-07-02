@@ -80,4 +80,63 @@ def timeframeString( timeframe )->str:
     SystemError( "timeframeNameToMinutes: Unsupported timeframe:", timeframe )
 
 
+'''
+class sma_c:
+    def __init__( self, source:str, period ):
+        self.period = period
+        self.source = source
+        self.name = f'sma {source} {period}'
+        self.initialized = False
+
+        if( not self.source in df.columns ):
+            raise SystemError( f"SMA with unknown source [{source}]")
+
+        if( self.period < 1 ):
+            raise SystemError( f"SMA with invalid period [{period}]")
+
+    def update( self ):
+
+        #if non existant try to create new
+        if( not self.initialized ):
+            if( len(df) >= self.period and not self.name in df.columns ):
+                df[self.name] = df[self.source].rolling(window=self.period).mean()
+                self.initialized = True
+            return self.initialized
+        
+        # check if this row has already been updated
+        if( not pd.isna(df[self.name].iloc[-1]) ):
+            return True
+        
+        # isolate only the required block of candles to calculate the current value of the SMA
+        # Extract the last 'num_rows' rows of the specified column into a new DataFrame
+        sdf = df[self.source].tail(self.period).to_frame(name=self.source)
+        if( len(sdf) < self.period ):
+            return False 
+        
+        newval = sdf[self.source].rolling(window=self.period).mean().dropna().iloc[-1]
+        df.loc[df.index[-1], self.name] = newval # the new row is already created
+
+        return True
+    
+    def plotData( self ):
+        return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
+
+registeredSMAs = []
+
+def calcSMA( source:str, period ):
+    name = f'sma {source} {period}'
+    sma = None
+    # find if there's a SMA already created for this series
+    for thisSMA in registeredSMAs:
+        if thisSMA.name == name:
+            sma = thisSMA
+            #print( 'found', name )
+            break
+    if sma == None:
+        sma = sma_c( source, period )
+        registeredSMAs.append(sma)
+
+    sma.update()
+    return sma
+'''
 

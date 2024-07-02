@@ -119,58 +119,29 @@ class customSeries_c:
     
     def plotData( self ):
         return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
-
-
-class sma_c:
-    def __init__( self, source:str, period ):
-        self.period = period
-        self.source = source
-        self.name = f'sma {source} {period}'
-        self.initialized = False
-
-        if( not self.source in df.columns ):
-            raise SystemError( f"SMA with unknown source [{source}]")
-
-        if( self.period < 1 ):
-            raise SystemError( f"SMA with invalid period [{period}]")
-
-    def update( self ):
-
-        #if non existant try to create new
-        if( not self.initialized ):
-            if( len(df) >= self.period and not self.name in df.columns ):
-                df[self.name] = df[self.source].rolling(window=self.period).mean()
-                self.initialized = True
-            return self.initialized
-        
-        # check if this row has already been updated
-        if( not pd.isna(df[self.name].iloc[-1]) ):
-            return True
-        
-        # isolate only the required block of candles to calculate the current value of the SMA
-        # Extract the last 'num_rows' rows of the specified column into a new DataFrame
-        sdf = df[self.source].tail(self.period).to_frame(name=self.source)
-        if( len(sdf) < self.period ):
-            return False 
-        
-        newval = sdf[self.source].rolling(window=self.period).mean().dropna().iloc[-1]
-        df.loc[df.index[-1], self.name] = newval # the new row is already created
-
-        return True
     
-    def plotData( self ):
-        return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
-    
-registeredSMAs = []
+    def value( self, backindex = None, index = None ):
+        if( backindex != None ):
+            if( backindex < 0 ):
+                raise KeyError( 'Invalid backindex. It must be 0 or more')
+            return df[self.name].iloc[-(backindex + 1)]
+        if( index != None ):
+            if( index < 0 or index > len(df) ):
+                raise KeyError( 'Invalid index. It must be 0 or more')
+            return df[self.name].loc[index]
+        return df[self.name].iloc[-1]
+
+
 registeredCustomSeries = []
 
 def calcCustomSeries( type:str, source:str, period:int, func ):
     name = f'{type} {source} {period}'
     cseries = None
-    # find if there's a SMA already created for this series
+    # find if there's a item already created for this series
     for thisCS in registeredCustomSeries:
         if thisCS.name == name:
             cseries = thisCS
+            # print( 'found', name )
             break
     if cseries == None:
         cseries = customSeries_c( type, source, period, func )
@@ -179,27 +150,16 @@ def calcCustomSeries( type:str, source:str, period:int, func ):
     cseries.update()
     return cseries
 
+def calcSMA( source:str, period:int ):
+    return calcCustomSeries( 'sma', source, period, customseries_calculate_sma )
+
 def calcEMA( source:str, period:int ):
     return calcCustomSeries( "ema", source, period, customseries_calculate_ema )
 
 def calcRSI( source:str, period:int ):
     return calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
 
-def calcSMA( source:str, period ):
-    name = f'{source} {period}'
-    sma = None
-    # find if there's a SMA already created for this series
-    for thisSMA in registeredSMAs:
-        if thisSMA.name == name:
-            sma = thisSMA
-            #print( 'found SMA')
-            break
-    if sma == None:
-        sma = sma_c( source, period )
-        registeredSMAs.append(sma)
 
-    sma.update()
-    return sma
 
 
 class plot_c:
