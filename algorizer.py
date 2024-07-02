@@ -1,6 +1,7 @@
 #lightweight-charts simple test
 
 import pandas as pd
+# import math
 from lightweight_charts import Chart
 import asyncio
 import ccxt.pro as ccxt
@@ -54,7 +55,70 @@ class context_c:
 
 df:pd.DataFrame = []
 
-import math
+# Define the function for RSI calculation using apply
+def customseries_calculate_rsi(series, period):
+    deltas = series.diff()
+    gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
+    loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.iloc[-1]  # Returning the last value of RSI
+
+def customseries_calculate_sma(series: pd.Series, period: int) -> float:
+    if len(series) < period:
+        return pd.NA  # Not enough data to calculate the SMA
+    return series.mean()
+
+
+class customSeries_c:
+    def __init__( self, source:str, period:int, func = None ):
+        self.name = f'{source} {period}'
+        self.source = source
+        self.period = period
+        self.func = func
+        self.initialized = False
+
+        if( self.func == None ):
+            raise SystemError( f"Custom Series without a func [{self.name}]")
+
+        if( not self.source in df.columns ):
+            raise SystemError( f"SMA with unknown source [{source}]")
+
+        if( self.period < 1 ):
+            raise SystemError( f"SMA with invalid period [{period}]")
+
+    def update( self ):
+
+        #if non existant try to create new
+        if( not self.initialized ):
+            if( len(df) >= self.period and not self.name in df.columns ):
+                df[self.name] = df[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period))
+                self.initialized = True
+            return self.initialized
+        
+        # check if this row has already been updated
+        if( not pd.isna(df[self.name].iloc[-1]) ):
+            return True
+        
+        # isolate only the required block of candles to calculate the current value of the custom series
+        # Extract the last 'num_rows' rows of the specified column into a new DataFrame
+        sdf = df[self.source].tail(self.period).to_frame(name=self.source)
+        if( len(sdf) < self.period ):
+            return False 
+        
+        newval = self.func( sdf[self.source], self.period )
+        #newval = sdf[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period)).dropna()
+        # if( len(newval) < 1 ):
+        #     return False
+        # newval = newval.iloc[-1]
+        
+        # the new row is already created
+        df.loc[df.index[-1], self.name] = newval
+        return True
+    
+    def plotData( self ):
+        return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
+
 
 class sma_c:
     def __init__( self, source:str, period ):
@@ -64,10 +128,10 @@ class sma_c:
         self.initialized = False
 
         if( not self.source in df.columns ):
-            SystemError( f"SMA with unknown source [{source}]")
+            raise SystemError( f"SMA with unknown source [{source}]")
 
         if( self.period < 1 ):
-            SystemError( f"SMA with invalid period [{period}]")
+            raise SystemError( f"SMA with invalid period [{period}]")
 
     def update( self ):
 
@@ -76,33 +140,44 @@ class sma_c:
             if( len(df) >= self.period and not self.name in df.columns ):
                 df[self.name] = df[self.source].rolling(window=self.period).mean()
                 self.initialized = True
-                return True
-            return False
+            return self.initialized
         
         # check if this row has already been updated
-        if( not math.isnan(df[self.name].iloc[-1]) ):
+        if( not pd.isna(df[self.name].iloc[-1]) ):
             return True
         
+        # isolate only the required block of candles to calculate the current value of the SMA
         # Extract the last 'num_rows' rows of the specified column into a new DataFrame
-        sdf = df[self.source].tail(self.period).to_frame()
-        if( len(sdf) < 1 ):
+        sdf = df[self.source].tail(self.period).to_frame(name=self.source)
+        if( len(sdf) < self.period ):
             return False 
         
-        # # isolate only the required block of candles to calculate the current value of the SMA
-        newval = sdf[self.source].rolling(window=self.period).mean().dropna()
-        if( len(newval) < 1 ):
-            return False
-        newval = newval.iloc[-1]
+        newval = sdf[self.source].rolling(window=self.period).mean().dropna().iloc[-1]
+        df.loc[df.index[-1], self.name] = newval # the new row is already created
 
-        # the new row is already created
-        df.loc[df.index[-1], self.name] = newval
         return True
     
     def plotData( self ):
         return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
     
 registeredSMAs = []
-        
+
+# def calcSMA( source:str, period ):
+#     name = f'{source} {period}'
+#     sma = None
+#     # find if there's a SMA already created for this series
+#     for thisSMA in registeredSMAs:
+#         if thisSMA.name == name:
+#             sma = thisSMA
+#             #print( 'found SMA')
+#             break
+#     if sma == None:
+#         sma = customSeries_c( source, period, customseries_calculate_sma )
+#         registeredSMAs.append(sma)
+
+#     sma.update()
+#     return sma
+
 def calcSMA( source:str, period ):
     name = f'{source} {period}'
     sma = None
@@ -257,9 +332,6 @@ def parseCandleUpdate( rows, chart = None ):
                     chart.update( pd.Series(data_dict) )
 
                     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(df)}' )
-
-                #print("\nDataFrame after filling the new row:")
-                #print(df.tail())
 
                 runOpenCandle( chart )
 
