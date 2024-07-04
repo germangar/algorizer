@@ -1,7 +1,7 @@
 #lightweight-charts simple test
 
 import pandas as pd
-# import math
+import math
 from lightweight_charts import Chart
 import asyncio
 import ccxt.pro as ccxt
@@ -14,7 +14,19 @@ from fetcher import candles_c
 
 
 SHOW_VOLUME = False
+chart_opened = False
 
+context_initializing = False
+context_barindex = -1
+context_timestamp = 0
+df:pd.DataFrame = []
+
+def setContextBarindex( index:int ):
+    global context_barindex
+    context_barindex = index
+def setContextTimestamp( timestamp:int ):
+    global context_timestamp
+    context_timestamp = timestamp
 
 
 class context_c:
@@ -50,10 +62,83 @@ class context_c:
         return
     def updateRealtimeCandle():
         return
-    
 
 
-df:pd.DataFrame = []
+class plot_c:
+    def __init__( self, name:str, source:pd.DataFrame, chart = None ):
+        self.name = name
+        self.chart = chart
+        self.line = None
+        self.initialized = False
+
+    def update( self, source:pd.DataFrame, chart = None ):
+        if( not chart_opened ):
+            return
+
+        if( self.chart == None ):
+            if( chart != None ):
+                self.chart = chart
+                print( "Plot assigned a chart")
+            else:
+                print( "Can't initialize a plot not associated with a chart")
+                return
+        
+        if( not self.initialized ):
+            if( len(source)<1 ): # pd.isna(source)
+                return
+            self.line = chart.create_line( self.name, price_line=False, price_label=False )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( source['timestamp'], unit='ms' ), self.name: source[self.name]}).dropna() )
+            self.initialized = True
+            return
+
+        # it's initalized so only update the new line
+        newval = source.iloc[-1][self.name]
+        timestamp = int(source.iloc[-1]['timestamp'])
+        self.line.update( pd.Series( {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval } ) )
+
+
+
+registeredPlots:plot_c = []
+def plot( name, source:pd.DataFrame, chart ):
+    if( chart == None ):
+        return
+    plot = None
+    for thisPlot in registeredPlots:
+        if( name == thisPlot.name ):
+            plot = thisPlot
+            #print( 'found Plot' )
+            break
+
+    if( plot == None ):
+        plot = plot_c( name, source, chart )
+        registeredPlots.append( plot )
+
+    plot.update( source, chart )
+
+class markers_c:
+    def __init__( self, text:str, chart = None ):
+        self.index = context_barindex
+        self.timestamp = context_timestamp
+        self.text = text
+        self.chart = chart
+        self.marker = None
+
+    def remove( self ):
+        if( self.marker != None ):
+            if( self.chart ):
+                self.chart.remove_marker( self.marker )
+            self.marker = None
+
+    def refreshInChart( self, chart ):
+        self.remove()
+        if( self.chart == None ):
+            self.chart = chart
+        self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
+
+registeredMarkers = []
+def createMarker( chart, text:str ):
+    registeredMarkers.append( markers_c( text, chart ) )
+
 
 # Define the function for RSI calculation using apply
 def customseries_calculate_rsi(series, period):
@@ -76,6 +161,53 @@ def customseries_calculate_ema(series: pd.Series, period: int) -> float:
     ema = series.ewm(alpha=alpha, adjust=False).mean().iloc[-1]
     return ema
 
+def customseries_calculate_stdev(series: pd.Series, length: int) -> float:
+    if len(series) < length:
+        return pd.NA  # Not enough data to calculate the standard deviation
+
+    avg = series.rolling(window=length).mean().iloc[-1]  # Calculate the SMA
+    sum_of_square_deviations = 0.0
+
+    for i in range(len(series) - length, len(series)):
+        deviation = series.iloc[i] - avg
+        sum_of_square_deviations += deviation ** 2
+
+    stdev = math.sqrt(sum_of_square_deviations / length)
+    return stdev
+
+def customseries_calculate_rma(series: pd.Series, length: int) -> float:
+    if len(series) < length:
+        return pd.NA  # Not enough data to calculate the RMA
+
+    alpha = 1 / length
+
+    # Initialize sum with SMA if previous sum is NaN, otherwise calculate RMA recursively
+    sum_value = series.rolling(window=length).mean().iloc[length - 1]
+
+    for i in range(length, len(series)):
+        if pd.isna(sum_value):
+            sum_value = series.iloc[:length].mean()
+
+        sum_value = alpha * series.iloc[i] + (1 - alpha) * sum_value
+
+    return sum_value
+
+def customseries_calculate_dev(series: pd.Series, length: int) -> float:
+    """
+    Calculate the average deviation over a given rolling window in a pandas Series.
+    """
+    if len(series) < length:
+        return pd.NA  # Not enough data to calculate the deviation
+
+    mean = series.rolling(window=length).mean().iloc[-1]  # Calculate the SMA
+    deviation_sum = 0.0
+
+    for i in range(len(series) - length, len(series)):
+        val = series.iloc[i]
+        deviation_sum += abs(val - mean)
+
+    average_deviation = deviation_sum / length
+    return average_deviation
 
 class customSeries_c:
     def __init__( self, type:str, source:str, period:int, func = None ):
@@ -83,7 +215,7 @@ class customSeries_c:
         self.source = source
         self.period = period
         self.func = func
-        self.initialized = False
+        self.timestamp = 0
 
         if( self.func == None ):
             raise SystemError( f"Custom Series without a func [{self.name}]")
@@ -93,46 +225,77 @@ class customSeries_c:
 
         if( self.period < 1 ):
             raise SystemError( f"SMA with invalid period [{period}]")
+        
+    def initialize( self ):
+        if( len(df) >= self.period and not self.name in df.columns ):
+            df[self.name] = df[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period))
+            self.timestamp = df['timestamp'].iloc[-1]
 
     def update( self ):
 
         #if non existant try to create new
-        if( not self.initialized ):
-            if( len(df) >= self.period and not self.name in df.columns ):
-                df[self.name] = df[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period))
-                self.initialized = True
-            return self.initialized
+        if( self.timestamp == 0 ):
+            self.initialize()
+            return
         
-        # check if this row has already been updated
+        # has this row already been updated?
+        if( self.timestamp >= df['timestamp'].iloc[-1] ):
+            return
+        
+        # this should never happen
         if( not pd.isna(df[self.name].iloc[-1]) ):
-            return True
+            raise ValueError( f"customSeries {self.name} had a value with a outdated timestamp" )
         
         # isolate only the required block of candles to calculate the current value of the custom series
         # Extract the last 'num_rows' rows of the specified column into a new DataFrame
         sdf = df[self.source].tail(self.period).to_frame(name=self.source)
         if( len(sdf) < self.period ):
-            return False 
+            return
         
         newval = self.func( sdf[self.source], self.period )
         df.loc[df.index[-1], self.name] = newval
-        return True
+        self.timestamp = df['timestamp'].iloc[-1]
+        
+    def plot( self, chart ):
+        if( self.timestamp > 0 or chart != None ):
+            plot( self.name, self.plotData(), chart )
     
     def plotData( self ):
+        if( self.timestamp == 0 ):
+            return pd.DataFrame( columns = ['timestamp', self.name] )
         return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
     
-    def value( self, backindex = None, index = None ):
-        if( backindex != None ):
-            if( backindex < 0 ):
-                raise KeyError( 'Invalid backindex. It must be 0 or more')
-            return df[self.name].iloc[-(backindex + 1)]
-        if( index != None ):
-            if( index < 0 or index > len(df) ):
-                raise KeyError( 'Invalid index. It must be 0 or more')
-            return df[self.name].loc[index]
-        return df[self.name].iloc[-1]
+    def value( self, backindex = 0 ):
+        if( self.timestamp == 0 ):
+            print( f"Warning: {self.name} has not yet produced any value")
+            return 0 # let's do this just to avoid crashes
+        
+        if( backindex < 0 ):
+            raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
+        return df[self.name].iloc[-(backindex + 1)]
+        
+    def loc( self, index = 0 ):
+        if( self.timestamp == 0 ):
+            print( f"Warning: {self.name} has not yet produced any value")
+            return 0 # let's do this just to avoid crashes
+        
+        if( index < 0 or index > len(df) ):
+            raise KeyError( 'Invalid index. It must be 0 or more')
+        return df[self.name].loc[index]
+    
+    def iloc( self, index = -1 ):
+        if( self.timestamp == 0 ):
+            print( f"Warning: {self.name} has not yet produced any value")
+            return 0 # let's do this just to avoid crashes
+        
+        return df[self.name].iloc[index]
 
 
-registeredCustomSeries = []
+registeredCustomSeries:customSeries_c = []
+
+def updateAllCustomSeries():
+    for cseries in registeredCustomSeries:
+        cseries.update()
 
 def calcCustomSeries( type:str, source:str, period:int, func ):
     name = f'{type} {source} {period}'
@@ -162,48 +325,7 @@ def calcRSI( source:str, period:int ):
 
 
 
-class plot_c:
-    def __init__( self, name:str, source:pd.DataFrame, chart = None ):
-        self.name = name
-        self.chart = chart
-        self.line = None
-        self.initialized = False
 
-    def update( self, source:pd.DataFrame, chart = None ):
-        if( self.chart == None ):
-            if( chart != None ):
-                self.chart = chart
-            else:
-                print( "Can't initialize a plot not associated with a chart")
-                return
-        
-        if( not self.initialized ):
-            self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( source['timestamp'], unit='ms' ), self.name: source[self.name]}).dropna() )
-            self.initialized = True
-            return
-
-        # it's initalized so only update the new line
-        newval = source.iloc[-1][self.name]
-        timestamp = int(source.iloc[-1]['timestamp'])
-        self.line.update( pd.Series( {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval } ) )
-
-
-
-registeredPlots = []
-def plot( name, source:pd.DataFrame, chart ):
-    plot = None
-    for thisPlot in registeredPlots:
-        if( name == thisPlot.name ):
-            plot = thisPlot
-            #print( 'found Plot' )
-            break
-
-    if( plot == None ):
-        plot = plot_c( name, source, chart )
-        registeredPlots.append( plot )
-
-    plot.update( source, chart )
 
 
 coin = 'LDO'
@@ -226,25 +348,24 @@ def runOpenCandle( chart ):
 
 
 def runCloseCandle( chart ):
+    barindex = context_barindex
 
     ###########################
     # strategy code goes here #
     ###########################
 
     sma = calcSMA( 'close', 90 )
-    if( sma != None ):
-        plot( sma.name, sma.plotData(), chart )
+    sma.plot( chart )
 
     ema = calcEMA( 'close', 4 )
-    if( ema != None ):
-        plot( ema.name, ema.plotData(), chart )
+    plot( ema.name, ema.plotData(), chart )
 
-    # rsi = calcRSI( 'close', 14 )
-    # if( rsi != None ):
-    #     plot( rsi.name, rsi.plotData(), chart )
+    rsi = calcRSI( 'close', 14 )
 
-    # plotData = pd.DataFrame({'timestamp': df['timestamp'], 'low': df['low'] - 0.01}).dropna()
-    # plot( "low", plotData, chart )
+    # if( sma.timestamp > 0 ):
+    if( barindex > sma.period ):
+        if sma.value() > ema.value(1) and sma.value(1) < ema.value():
+            createMarker( text='🔺', chart = chart )
 
     return
 
@@ -255,12 +376,12 @@ def parseCandleUpdate( rows, chart = None ):
             if( newTimestamp == None ):
                 break
             
-            oldTimestamp = int(df.iloc[-1]['timestamp'])
+            oldTimestamp = df.iloc[-1]['timestamp'] if len(df) > 1 else 0
             if( oldTimestamp > newTimestamp ):
                 continue
 
             if( oldTimestamp == newTimestamp ):
-                #print( 'same timestamp', int(oldTimestamp), '=', newrow[0] )
+                # print( 'same timestamp', int(oldTimestamp), '=', newrow[0] )
 
                 # update the realtime candle
                 df.loc[df.index[-1], 'open'] = newrow[1]
@@ -270,21 +391,25 @@ def parseCandleUpdate( rows, chart = None ):
                 df.loc[df.index[-1], 'volume'] = newrow[5]
 
                 #update the chart
-                if( chart != None ):
+                if( chart != None and not context_initializing ):
                     data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4]}
                     if SHOW_VOLUME:
                         data_dict['volume'] = newrow[5]
                     chart.update( pd.Series(data_dict) )
 
             else:
-                print( 'NEW CANDLE', newrow )
+                if( not context_initializing ):
+                    print( 'NEW CANDLE', newrow )
+
+                setContextBarindex( df.iloc[-1].name )
+                setContextTimestamp( df['timestamp'].iloc[-1] )
 
                 # the realtime candle is now closed
+                updateAllCustomSeries() # update all calculated series regardless if they are called or not
                 runCloseCandle( chart )
 
                 # OPEN A NEW CANDLE
                 new_row_index = len(df)
-                df.loc[new_row_index, 'time'] = pd.to_datetime( newrow[0], unit='ms' )
                 df.loc[new_row_index, 'timestamp'] = newTimestamp
                 df.loc[new_row_index, 'open'] = newrow[1]
                 df.loc[new_row_index, 'high'] = newrow[2]
@@ -293,7 +418,7 @@ def parseCandleUpdate( rows, chart = None ):
                 df.loc[new_row_index, 'volume'] = newrow[5]
 
                 # update the chart
-                if( chart != None ):
+                if( chart != None and not context_initializing ):
                     data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4]}
                     if SHOW_VOLUME:
                         data_dict['volume'] = newrow[5]
@@ -384,7 +509,7 @@ if __name__ == '__main__':
     ########################################################
     # Columns: time | open | high | high | close | volume
     
-    ohlcvs = candles.fetchAmount( symbol, timeframe=timeframe, amount=1000 )
+    ohlcvs = candles.fetchAmount( symbol, timeframe=timeframe, amount=5000 )
 
     chart = Chart( toolbox = False )
     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' )
@@ -404,26 +529,65 @@ if __name__ == '__main__':
 
     # chart.horizontal_line(2.080, func=on_horizontal_line_move)
 
+    if 0:
+        df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-    df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+        # delete the last row in the dataframe and extract the last row in ohlcvs.
+        df.drop( df.tail(1).index, inplace=True )
+        last_ohlcv = [ohlcvs[-1]]
+        
+        tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
+        if( SHOW_VOLUME ):
+            tmpdf['volume'] = df['volume']
+            
+        chart.set(tmpdf)
 
-    # delete the last row in the dataframe and extract the last row in ohlcvs.
-    df.drop( df.tail(1).index, inplace=True )
-    last_ohlcv = [ohlcvs[-1]]
-    
-    tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
-    if( SHOW_VOLUME ):
-        tmpdf['volume'] = df['volume']
-    
-    chart.set(tmpdf)
+        # jump-start the series and plots calculation by running the last row as if it was a update
+        chart_opened = True
+        chart.show( block=False )
+        parseCandleUpdate( last_ohlcv, chart )
+    else:
+        context_initializing = True
+        # context_initializing_dataframe = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-    # jump-start the series and plots calculation by running the last row as if it was a update
-    parseCandleUpdate( last_ohlcv, chart ) 
+        #   extract the last ohlcv on the list
+        last_ohlcv = ohlcvs[-1]
+        ohlcvs = ohlcvs[:-1]
+        df = pd.DataFrame( [ohlcvs[0]], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+
+        print('---------------------------------------------------')
+        print('  Processing. This may take a while. Please wait')
+
+        parseCandleUpdate( ohlcvs, chart )
+
+        # this is not really needed, but... restore the ohlcvs list to its original form
+        ohlcvs.append( last_ohlcv )
+
+        context_initializing = False
+        # context_initializing_dataframe = None
+
+        print('                   Done.')
+        print('---------------------------------------------------')
+
+        tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
+        if( SHOW_VOLUME ):
+            tmpdf['volume'] = df['volume']
+        
+        chart.set(tmpdf)
+        chart.show( block=False )
+        chart_opened = True
+
+        # dump all the collected markers
+        for marker in registeredMarkers:
+            marker.refreshInChart( chart )
+
+        #jump start it with the last candle
+        parseCandleUpdate( [last_ohlcv], chart )
+
         
     #########################################################
     # print( df )
-
-    chart.show( block=False )
+    
 
     asyncio.run( runTasks(chart) )
 
