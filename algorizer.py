@@ -32,28 +32,23 @@ def setContextTimestamp( timestamp:int ):
 class context_c:
     def __init__( self, symbol, exchangeID:str, timeframe ):
         self.symbol = symbol # FIXME: add verification
+        self.market = None
         self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
         self.timeframeName = tools.timeframeString( self.timeframe )
+        self.barindex = -1
         self.timestamp = 0
 
-        self.exchange = getattr(ccxt, exchangeID)({
-                "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
-                "enableRateLimit": False
-                }) 
+        self.df:pd.DataFrame = []
+        self.initdata:pd.DataFrame = []
 
-        ###################################
-        #### Initialize the dataframe #####
-        ###################################
-        # load dataframe from cache (to do)
-        ohlcvs = candles.fetchAmount( symbol, timeframe=timeframe, amount=1000 )
-        self.df  = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+        try:
+            self.exchange = getattr(ccxt, exchangeID)({
+                    "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
+                    "enableRateLimit": False
+                    }) 
+        except Exception as e:
+            raise SystemExit( "Couldn't initialize exchange:", exchangeID )
 
-        # delete the last row in the dataframe and extract the last row in ohlcvs.
-        self.df .drop( self.df .tail(1).index, inplace=True )
-        last_ohlcv = [ohlcvs[-1]]
-
-        # jump-start the series and plots calculation by running the last row as if it was a update
-        parseCandleUpdate( last_ohlcv, chart )
 
 
     # update dataframe from 
@@ -364,7 +359,7 @@ def runCloseCandle( chart ):
 
     # if( sma.timestamp > 0 ):
     if( barindex > sma.period ):
-        if sma.value() > ema.value(1) and sma.value(1) < ema.value():
+        if( ema.value(1) <= sma.value(1) and ema.value() >= sma.value() and ema.value() != ema.value(1) ):    
             createMarker( text='🔺', chart = chart )
 
     return
@@ -509,25 +504,9 @@ if __name__ == '__main__':
     ########################################################
     # Columns: time | open | high | high | close | volume
     
-    ohlcvs = candles.fetchAmount( symbol, timeframe=timeframe, amount=5000 )
+    ohlcvs = candles.fetchAmount( symbol, timeframe=timeframe, amount=2000 )
 
-    chart = Chart( toolbox = False )
-    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' )
-    chart.precision(4)
-    #chart.watermark("Hello World")
-    # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
-    # chart.grid(vert_enabled: bool, horz_enabled: bool, color: COLOR, style: LINE_STYLE)
-    chart.layout( font_size=14 )
-
-    # chart.topbar.switcher(
-    #     name='my_switcher',
-    #     options=('1min', '5min', '30min'),
-    #     default='5min',
-    #     func=on_timeframe_selection)
     
-    # chart.topbar.button('my_button', 'Off', func=on_button_press)
-
-    # chart.horizontal_line(2.080, func=on_horizontal_line_move)
 
     if 0:
         df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
@@ -536,19 +515,44 @@ if __name__ == '__main__':
         df.drop( df.tail(1).index, inplace=True )
         last_ohlcv = [ohlcvs[-1]]
         
+
+        ##########################
+        #### Set up the chart ####
+        ##########################
         tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
         if( SHOW_VOLUME ):
             tmpdf['volume'] = df['volume']
+
+        chart = Chart( toolbox = False )
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' )
+        chart.precision(4)
+        #chart.watermark("Hello World")
+        # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
+        # chart.grid(vert_enabled: bool, horz_enabled: bool, color: COLOR, style: LINE_STYLE)
+        chart.layout( font_size=14 )
+
+        # chart.topbar.switcher(
+        #     name='my_switcher',
+        #     options=('1min', '5min', '30min'),
+        #     default='5min',
+        #     func=on_timeframe_selection)
+        
+        # chart.topbar.button('my_button', 'Off', func=on_button_press)
+
+        # chart.horizontal_line(2.080, func=on_horizontal_line_move)
             
         chart.set(tmpdf)
-
-        # jump-start the series and plots calculation by running the last row as if it was a update
         chart_opened = True
         chart.show( block=False )
+
+        # jump-start the series and plots calculation by running the last row as if it was a update
         parseCandleUpdate( last_ohlcv, chart )
     else:
+
+        ##########################
+        #### Set up the data and perform the backtest ####
+        ##########################
         context_initializing = True
-        # context_initializing_dataframe = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
         #   extract the last ohlcv on the list
         last_ohlcv = ohlcvs[-1]
@@ -558,7 +562,7 @@ if __name__ == '__main__':
         print('---------------------------------------------------')
         print('  Processing. This may take a while. Please wait')
 
-        parseCandleUpdate( ohlcvs, chart )
+        parseCandleUpdate( ohlcvs, None )
 
         # this is not really needed, but... restore the ohlcvs list to its original form
         ohlcvs.append( last_ohlcv )
@@ -569,9 +573,31 @@ if __name__ == '__main__':
         print('                   Done.')
         print('---------------------------------------------------')
 
+        ##########################
+        #### Set up the chart ####
+        ##########################
+
         tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
         if( SHOW_VOLUME ):
             tmpdf['volume'] = df['volume']
+
+        chart = Chart( toolbox = False )
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' )
+        chart.precision(4)
+        #chart.watermark("Hello World")
+        # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
+        # chart.grid(vert_enabled: bool, horz_enabled: bool, color: COLOR, style: LINE_STYLE)
+        chart.layout( font_size=14 )
+
+        # chart.topbar.switcher(
+        #     name='my_switcher',
+        #     options=('1min', '5min', '30min'),
+        #     default='5min',
+        #     func=on_timeframe_selection)
+        
+        # chart.topbar.button('my_button', 'Off', func=on_button_press)
+
+        # chart.horizontal_line(2.080, func=on_horizontal_line_move)
         
         chart.set(tmpdf)
         chart.show( block=False )
