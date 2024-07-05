@@ -16,6 +16,100 @@ from fetcher import candles_c
 SHOW_VOLUME = False
 chart_opened = False
 
+# coin = 'LDO'
+# timeframe = '1m'
+# exchangeName = 'bitget'
+# symbol = f'{coin}/USDT:USDT'
+
+
+def crossingUp( self, other ):
+    if isinstance( self, customSeries_c ):
+        return self.crossingUp( other )
+    
+    self_old = 0
+    self_new = 0
+    other_old = 0
+    other_new = 0
+    if isinstance( self, pd.Series ):
+        if( len(self) < 2 ):
+            return False
+        self_old = self.iloc[-2]
+        self_new = self.iloc[-1]
+        if isinstance( other, pd.Series ):
+            if( len(other) < 2 ):
+                return False
+            other_old = other.iloc[-2]
+            self_new = other.iloc[-1]
+        elif isinstance( other, customSeries_c ):
+            if( other.timestamp == 0 or len(df) < 2 ):
+                return False
+            other_old = other.value(1)
+            other_new = other.value()
+        else:
+            try:
+                float(other)
+            except ValueError:
+                return False
+            else:
+                other_old = float(other)
+                other_new = float(other)
+    else:
+        try:
+            float(self)
+        except ValueError:
+            return False
+        else:
+            return crossingDown( other, self )
+
+    return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
+
+def crossingDown( self, other ):
+    if isinstance( self, customSeries_c ):
+        return self.crossingDown( other )
+    
+    self_old = 0
+    self_new = 0
+    other_old = 0
+    other_new = 0
+    if isinstance( self, pd.Series ):
+        if( len(self) < 2 ):
+            return False
+        self_old = self.iloc[-2]
+        self_new = self.iloc[-1]
+        if isinstance( other, pd.Series ):
+            if( len(other) < 2 ):
+                return False
+            other_old = other.iloc[-2]
+            self_new = other.iloc[-1]
+        elif isinstance( other, customSeries_c ):
+            if( other.timestamp == 0 or len(df) < 2 ):
+                return False
+            other_old = other.value(1)
+            other_new = other.value()
+        else:
+            try:
+                float(other)
+            except ValueError:
+                return False
+            else:
+                other_old = float(other)
+                other_new = float(other)
+    else:
+        try:
+            float(self)
+        except ValueError:
+            return False
+        else:
+            return crossingUp( other, self )
+
+    return ( self_old >= other_old and self_new <= other_new and self_old != self_new )
+
+def crossing( self, other ):
+    return crossingUp( other, self ) or crossingDown( other, self )
+
+
+
+
 context_initializing = False
 context_barindex = -1
 context_timestamp = 0
@@ -49,14 +143,14 @@ class context_c:
         except Exception as e:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
 
-
-
     # update dataframe from 
     
     def newCandle():
         return
     def updateRealtimeCandle():
         return
+    
+registeredContexts:context_c = []
 
 
 class plot_c:
@@ -216,10 +310,10 @@ class customSeries_c:
             raise SystemError( f"Custom Series without a func [{self.name}]")
 
         if( not self.source in df.columns ):
-            raise SystemError( f"SMA with unknown source [{source}]")
+            raise SystemError( f"Custom Series  with unknown source [{source}]")
 
         if( self.period < 1 ):
-            raise SystemError( f"SMA with invalid period [{period}]")
+            raise SystemError( f"Custom Series  with invalid period [{period}]")
         
     def initialize( self ):
         if( len(df) >= self.period and not self.name in df.columns ):
@@ -260,9 +354,48 @@ class customSeries_c:
             return pd.DataFrame( columns = ['timestamp', self.name] )
         return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
     
+    def crossingUp( self, other ):
+        if( self.timestamp == 0 or len(df)<1 ):
+            return False
+        if isinstance( other, customSeries_c ):
+            if( other.timestamp == 0 ):
+                return False
+            return ( self.value(1) <= other.value(1) and self.value() >= other.value() and self.value() != self.value(1) )
+        if isinstance( other, pd.Series ):
+            if( len(other) < 2 ):
+                return False
+            return ( self.value(1) <= other.iloc[-2] and self.value() >= other.iloc[-1] and self.value() != self.value(1) )
+        try:
+            float(other)
+        except ValueError:
+            return False
+        else:
+            return ( self.value(1) <= float(other) and self.value() >= float(other) and self.value() != self.value(1) )
+    
+    def crossingDown( self, other ):
+        if( self.timestamp == 0 or len(df)<1 ):
+            return False
+        if isinstance( other, customSeries_c ):
+            if( other.timestamp == 0 ):
+                return False
+            return ( self.value(1) >= other.value(1) and self.value() <= other.value() and self.value() != self.value(1) )
+        if isinstance( other, pd.Series ):
+            if( len(other) < 2 ):
+                return False
+            return ( self.value(1) >= other.iloc[-2] and self.value() <= other.iloc[-1] and self.value() != self.value(1) )
+        try:
+            float(other)
+        except ValueError:
+            return False
+        else:
+            return ( self.value(1) >= float(other) and self.value() <= float(other) and self.value() != self.value(1) )
+    
+    def crossing( self, other ):
+        return self.crossingUp(other) or self.crossingDown(other)
+    
     def value( self, backindex = 0 ):
         if( self.timestamp == 0 ):
-            print( f"Warning: {self.name} has not yet produced any value")
+            #print( f"Warning: {self.name} has not yet produced any value")
             return 0 # let's do this just to avoid crashes
         
         if( backindex < 0 ):
@@ -323,12 +456,7 @@ def calcRSI( source:str, period:int ):
 
 
 
-coin = 'LDO'
-timeframe = '1m'
-exchangeName = 'bitget'
 
-symbol = f'{coin}/USDT:USDT'
-candles = candles_c( exchangeName, symbol )
 
 
 def replaceValueByTimestamp( df, timestamp, key:str, value ):
@@ -342,7 +470,7 @@ def runOpenCandle( chart ):
     return
 
 
-def runCloseCandle( chart ):
+def runCloseCandle( chart, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     barindex = context_barindex
 
     ###########################
@@ -357,10 +485,14 @@ def runCloseCandle( chart ):
 
     rsi = calcRSI( 'close', 14 )
 
-    # if( sma.timestamp > 0 ):
-    if( barindex > sma.period ):
-        if( ema.value(1) <= sma.value(1) and ema.value() >= sma.value() and ema.value() != ema.value(1) ):    
-            createMarker( text='🔺', chart = chart )
+    # if( barindex > sma.period ):
+    if( sma.crossingUp(close) ):
+        createMarker( text='🔷', chart = chart )
+
+    if( crossingDown( sma, close ) ):
+        createMarker( text='🔺', chart = chart )
+
+    
 
     return
 
@@ -401,7 +533,7 @@ def parseCandleUpdate( rows, chart = None ):
 
                 # the realtime candle is now closed
                 updateAllCustomSeries() # update all calculated series regardless if they are called or not
-                runCloseCandle( chart )
+                runCloseCandle( chart, df['open'], df['high'], df['low'], df['close'] )
 
                 # OPEN A NEW CANDLE
                 new_row_index = len(df)
@@ -485,6 +617,18 @@ def on_horizontal_line_move(chart, line):
     print(f'Horizontal line moved to: {line.price}')
 
 if __name__ == '__main__':
+    coin = 'LDO'
+    timeframe = '1m'
+    exchangeName = 'bitget'
+    symbol = f'{coin}/USDT:USDT'
+
+    # the fetcher will be inside the context
+    fetcher = candles_c( exchangeName, symbol )
+
+    # WIP context
+    context = context_c( symbol, exchangeName, timeframe )
+    registeredContexts.append( context )
+
     # filename = f'stuff/{exchangeName}-{coin}-USDT-{timeframe}.csv'
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
@@ -504,7 +648,7 @@ if __name__ == '__main__':
     ########################################################
     # Columns: time | open | high | high | close | volume
     
-    ohlcvs = candles.fetchAmount( symbol, timeframe=timeframe, amount=2000 )
+    ohlcvs = fetcher.fetchAmount( symbol, timeframe=timeframe, amount=2000 )
 
     
 
@@ -519,6 +663,7 @@ if __name__ == '__main__':
         ##########################
         #### Set up the chart ####
         ##########################
+
         tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
         if( SHOW_VOLUME ):
             tmpdf['volume'] = df['volume']
@@ -542,8 +687,8 @@ if __name__ == '__main__':
         # chart.horizontal_line(2.080, func=on_horizontal_line_move)
             
         chart.set(tmpdf)
-        chart_opened = True
         chart.show( block=False )
+        chart_opened = True
 
         # jump-start the series and plots calculation by running the last row as if it was a update
         parseCandleUpdate( last_ohlcv, chart )
@@ -576,7 +721,7 @@ if __name__ == '__main__':
         ##########################
         #### Set up the chart ####
         ##########################
-
+        
         tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
         if( SHOW_VOLUME ):
             tmpdf['volume'] = df['volume']
@@ -598,7 +743,7 @@ if __name__ == '__main__':
         # chart.topbar.button('my_button', 'Off', func=on_button_press)
 
         # chart.horizontal_line(2.080, func=on_horizontal_line_move)
-        
+            
         chart.set(tmpdf)
         chart.show( block=False )
         chart_opened = True

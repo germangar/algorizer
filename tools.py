@@ -10,7 +10,6 @@ import pandas as pd
 # sdf = df[self.source].tail(self.period).to_frame()
 
 
-
 # append a row series/dictionary/dataframe to a dataframe
 def df_append( df, row ):
     if isinstance( row, pd.Series ):
@@ -78,6 +77,7 @@ def timeframeString( timeframe )->str:
     
     # fall through if unsucessful
     SystemError( "timeframeNameToMinutes: Unsupported timeframe:", timeframe )
+
 
 
 '''
