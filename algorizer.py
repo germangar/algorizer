@@ -57,6 +57,7 @@ def crossingUp( self, other ):
         try:
             float(self)
         except ValueError:
+            print( "crossinUp: Unsupported type", type(self) )
             return False
         else:
             return crossingDown( other, self )
@@ -98,6 +99,7 @@ def crossingDown( self, other ):
         try:
             float(self)
         except ValueError:
+            print( "crossinDown: Unsupported type", type(self) )
             return False
         else:
             return crossingUp( other, self )
