@@ -190,6 +190,7 @@ class context_c:
         self.barindex = -1
         self.timestamp = 0
         self.initializing = True
+        self.shadowcopy = False
         self.chart = None
 
         self.markers:markers_c = []
@@ -209,64 +210,75 @@ class context_c:
     def parseCandleUpdate( self, rows ):
         global activeConext
         activeConext = self
-        df = self.df
         chart = self.chart
         for newrow in rows:
-                newTimestamp = int(newrow[0])
-                if( newTimestamp == None ):
-                    break
-                
-                oldTimestamp = df.iloc[-1]['timestamp'] if len(df) > 1 else 0
-                if( oldTimestamp > newTimestamp ):
-                    continue
+            newTimestamp = int(newrow[0])
+            if( newTimestamp == None ):
+                break
+            
+            oldTimestamp = int(self.df.iloc[-1]['timestamp']) if len(self.df) > 1 else 0
+            if( oldTimestamp > newTimestamp ): # the server has sent a bunch of older candles
+                continue
 
-                if( oldTimestamp == newTimestamp ):
-                    # print( 'same timestamp', int(oldTimestamp), '=', newrow[0] )
+            if( oldTimestamp == newTimestamp ):
 
-                    # update the realtime candle
-                    df.loc[df.index[-1], 'open'] = newrow[1]
-                    df.loc[df.index[-1], 'high'] = newrow[2]
-                    df.loc[df.index[-1], 'low'] = newrow[3]
-                    df.loc[df.index[-1], 'close'] = newrow[4]
-                    df.loc[df.index[-1], 'volume'] = newrow[5]
+                # update the realtime candle
+                self.df.loc[self.df.index[-1], 'open'] = newrow[1]
+                self.df.loc[self.df.index[-1], 'high'] = newrow[2]
+                self.df.loc[self.df.index[-1], 'low'] = newrow[3]
+                self.df.loc[self.df.index[-1], 'close'] = newrow[4]
+                self.df.loc[self.df.index[-1], 'volume'] = newrow[5]
 
-                    #update the chart
-                    if( chart != None and not self.initializing ):
-                        data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4]}
-                        if SHOW_VOLUME:
-                            data_dict['volume'] = newrow[5]
-                        chart.update( pd.Series(data_dict) )
+                #update the chart
+                if( chart != None and not self.initializing ):
+                    data_dict = {'time': pd.to_datetime( self.df['timestamp'].iloc[-1], unit='ms' ), 'open': self.df['open'].iloc[-1], 'high': self.df['high'].iloc[-1], 'low': self.df['low'].iloc[-1], 'close': self.df['close'].iloc[-1] }
+                    if SHOW_VOLUME:
+                        data_dict['volume'] = self.df['volume'].iloc[-1]
+                    chart.update( pd.Series(data_dict) )
 
-                else:
-                    if( not self.initializing ):
-                        print( 'NEW CANDLE', newrow )
+            else:
+                if( not self.initializing ):
+                    print( 'NEW CANDLE', newrow )
 
-                    self.barindex = df.iloc[-1].name
-                    self.timestamp = df['timestamp'].iloc[-1]
+                # CLOSE REALTIME CANDLE
 
-                    # the realtime candle is now closed
+                self.barindex = self.df.iloc[-1].name
+                self.timestamp = self.df['timestamp'].iloc[-1]
+                new_row_index = self.barindex + 1
+
+                # if( self.shadowcopy and self.barindex + 1 != len(self.df) ):
+                #     raise SystemError( f"self.barindex [{self.barindex}] != len(self.df [{len(self.df)}])" )
+
+                if( not self.shadowcopy ):
                     self.updateAllCustomSeries() # update all calculated series regardless if they are called or not
-                    runCloseCandle( self, df['open'], df['high'], df['low'], df['close'] )
 
-                    # OPEN A NEW CANDLE
-                    new_row_index = len(df)
-                    df.loc[new_row_index, 'timestamp'] = newTimestamp
-                    df.loc[new_row_index, 'open'] = newrow[1]
-                    df.loc[new_row_index, 'high'] = newrow[2]
-                    df.loc[new_row_index, 'low'] = newrow[3]
-                    df.loc[new_row_index, 'close'] = newrow[4]
-                    df.loc[new_row_index, 'volume'] = newrow[5]
+                runCloseCandle( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
 
-                    # update the chart
-                    if( chart != None and not self.initializing ):
-                        data_dict = {'time': pd.to_datetime( newrow[0], unit='ms' ), 'open': newrow[1], 'high': newrow[2], 'low': newrow[3], 'close': newrow[4]}
-                        if SHOW_VOLUME:
-                            data_dict['volume'] = newrow[5]
-                        chart.update( pd.Series(data_dict) )
+                # OPEN A NEW CANDLE
 
-                        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=self.symbol + ' - ' + self.timeframeStr + ' - ' + self.exchange.id + ' - ' + f'candles:{len(df)}' )
+                if( self.shadowcopy ):
+                    row_to_append = self.initdata.iloc[new_row_index].to_frame().T
+                    self.df = pd.concat( [self.df, row_to_append], ignore_index=True )
+                else:
+                    self.df.loc[new_row_index, 'timestamp'] = newTimestamp
+                    self.df.loc[new_row_index, 'open'] = newrow[1]
+                    self.df.loc[new_row_index, 'high'] = newrow[2]
+                    self.df.loc[new_row_index, 'low'] = newrow[3]
+                    self.df.loc[new_row_index, 'close'] = newrow[4]
+                    self.df.loc[new_row_index, 'volume'] = newrow[5]
 
-                    runOpenCandle( self )
+                # update the chart
+                if( chart != None and not self.initializing ):
+                    data_dict = {'time': pd.to_datetime( self.df['timestamp'].iloc[-1], unit='ms' ), 'open': self.df['open'].iloc[-1], 'high': self.df['high'].iloc[-1], 'low': self.df['low'].iloc[-1], 'close': self.df['close'].iloc[-1] }
+                    if SHOW_VOLUME:
+                        data_dict['volume'] = self.df['volume'].iloc[-1]
+                    chart.update( pd.Series(data_dict) )
+
+                    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=self.symbol + ' - ' + self.timeframeStr + ' - ' + self.exchange.id + ' - ' + f'candles:{len(self.df)}' )
+
+                runOpenCandle( self )
+                if( self.shadowcopy and new_row_index % 5000 == 0 ):
+                    print( new_row_index, "candles processed." )
 
     def updateAllCustomSeries( self ):
         for cseries in self.customSeries:
@@ -388,12 +400,16 @@ class customSeries_c:
             raise SystemError( f"Custom Series  with invalid period [{period}]")
         
     def initialize( self ):
-        df = self.context.df
-        if( len(df) >= self.period and not self.name in df.columns ):
-            df[self.name] = df[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period))
-            self.timestamp = df['timestamp'].iloc[-1]
+        if( len(self.context.df) >= self.period and not self.name in self.context.df.columns ):
+            if( self.context.shadowcopy ):
+                raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
+            self.context.df[self.name] = self.context.df[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period))
+            self.timestamp = self.context.df['timestamp'].iloc[-1]
 
     def update( self ):
+        if( self.context.shadowcopy ):
+            return
+        
         df = self.context.df
         #if non existant try to create new
         if( self.timestamp == 0 ):
@@ -402,10 +418,12 @@ class customSeries_c:
         
         # has this row already been updated?
         if( self.timestamp >= df['timestamp'].iloc[-1] ):
+            # print( self.name, self.timestamp, "datafrne:", df['timestamp'].iloc[-1] )
             return
         
-        # this should never happen
+        # this happens when making the shadow copy
         if( not pd.isna(df[self.name].iloc[-1]) ):
+            return
             raise ValueError( f"customSeries {self.name} had a value with a outdated timestamp" )
         
         # isolate only the required block of candles to calculate the current value of the custom series
@@ -530,12 +548,14 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
 
     rsi = calcRSI( 'close', 14 )
 
-    # if( barindex > sma.period ):
-    if( sma.crossingUp(close) ):
-        context.createMarker( text='🔷' )
+    # # if( barindex > sma.period ):
+    # if( sma.crossingUp(close) ):
+    #     pass
+    #     #context.createMarker( text='🔷' )
 
-    if( crossingDown( sma, close ) ):
-        context.createMarker( text='🔺' )
+    # if( crossingDown( sma, close ) ):
+    #     pass
+    #     #context.createMarker( text='🔺' )
 
     
 
@@ -554,6 +574,7 @@ async def fetchCandleUpdates( context:context_c ):
         if( len(response) > maxRows ):
             response = response[len(response)-maxRows:]
 
+        #print( f"FETCHED {len(response)} CANDLES")
         context.parseCandleUpdate( response )
         
         await asyncio.sleep(0.003)
@@ -637,7 +658,7 @@ def launchChart( df ):
     return chart
 
 if __name__ == '__main__':
-    
+
     # WIP context
     context = context_c( 'LDO/USDT:USDT', 'bitget', '1m' )
     registeredContexts.append( context )
@@ -649,46 +670,87 @@ if __name__ == '__main__':
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
     
-    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=2000 )
+    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=20000 )
 
+    if 1:
+        context.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-    # df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+        total_start_time = time.time()
+        # delete the last row in the dataframe and extract the last row in ohlcvs.
+        print( "Creating dataframe" )
+        context.df.drop( context.df.tail(1).index, inplace=True )
+        last_ohlcv = ohlcvs[-1]
+        ohlcvs = ohlcvs[:-1]
+        print( "Calculating custom series" )
+        start_time = time.time()
+        context.parseCandleUpdate( [last_ohlcv] )
+        print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
-    # # delete the last row in the dataframe and extract the last row in ohlcvs.
-    # df.drop( df.tail(1).index, inplace=True )
-    # last_ohlcv = [ohlcvs[-1]]
-    
-    # chart = launchChart( df )
+        ###############################################################################
+        # at this point we have the customSeries initialized for the whole dataframe
+        # move the dataframe to use it as source for the initialization with precomputed data
+        print( "Computing script logic" )
 
-    # # jump-start the series and plots calculation by running the last row as if it was a update
-    # parseCandleUpdate( last_ohlcv, chart )
+        context.timestamp = 0
+        context.barindex = -1
+        context.initdata = context.df
+        context.shadowcopy = True
 
+        start_time = time.time()
+        # start with a blank dataframe with only the first row copied from the precomputed dataframe
+        context.df = pd.DataFrame( pd.DataFrame(context.initdata.iloc[0]).T, columns=context.initdata.columns )
+        
+        # run the script
+        context.parseCandleUpdate( ohlcvs )
+        context.shadowcopy = False
+        print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
+        ###############################################################################
+
+        # jump-start the chart by running the last row as if it was a update
+        start_time = time.time()
+        print( "Finishing" )
+        context.chart = launchChart( context.df )
+        context.parseCandleUpdate( [last_ohlcv] ) # parse the last candle so the chart graphics are jumpstarted
+        print( len(context.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - total_start_time))
+        context.initializing = False
+        context.initdata = None # free memory
+        ohlcvs = None
+        
+
+        
+        
 
     ##########################
     #### Set up the data and perform the backtest ####
     ##########################
-    # context_initializing = True
+    else:
+        #   extract the last ohlcv on the list
+        last_ohlcv = ohlcvs[-1]
+        ohlcvs = ohlcvs[:-1]
+        context.df = pd.DataFrame( [ohlcvs[0]], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-    #   extract the last ohlcv on the list
-    last_ohlcv = ohlcvs[-1]
-    ohlcvs = ohlcvs[:-1]
-    context.df = pd.DataFrame( [ohlcvs[0]], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+        print('---------------------------------------------------')
+        print('  Processing. This may take a while. Please wait')
 
-    print('---------------------------------------------------')
-    print('  Processing. This may take a while. Please wait')
+        start_time = time.time()
 
-    context.parseCandleUpdate( ohlcvs )
-    context.initializing = False
+        context.parseCandleUpdate( ohlcvs )
+        context.initializing = False
 
-    ohlcvs.append( last_ohlcv ) # this is not really needed, but... restore the ohlcvs list to its original form
+        ohlcvs.append( last_ohlcv ) # this is not really needed, but... restore the ohlcvs list to its original form
 
-    print('                   Done.')
-    print('---------------------------------------------------')
+        print('                   Done.')
+        print("  Elapsed time: {:.2f} seconds".format(time.time() - start_time))
+        print('---------------------------------------------------')
 
-    context.chart = launchChart( context.df )
+        print( "OHLCVs PARSED" )
 
-    #jump start it with the last candle
-    context.parseCandleUpdate( [last_ohlcv] )
+        context.chart = launchChart( context.df )
+
+        #jump start it with the last candle
+        print( "PARSING LAST OHLCV" )
+        context.parseCandleUpdate( [last_ohlcv] )
+        print( "DONE LAST OHLCV" )
 
     #########################################################
 
