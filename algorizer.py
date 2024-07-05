@@ -403,8 +403,10 @@ class customSeries_c:
         if( len(self.context.df) >= self.period and not self.name in self.context.df.columns ):
             if( self.context.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
+            start_time = time.time()
             self.context.df[self.name] = self.context.df[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period))
             self.timestamp = self.context.df['timestamp'].iloc[-1]
+            print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
     def update( self ):
         if( self.context.shadowcopy ):
@@ -422,16 +424,19 @@ class customSeries_c:
             return
         
         # this happens when making the shadow copy
-        if( not pd.isna(df[self.name].iloc[-1]) ):
+        if( not pd.isna( df[self.name].iloc[-1] ) ):
             return
             raise ValueError( f"customSeries {self.name} had a value with a outdated timestamp" )
+        
+        if( len(self.context.df) < self.period ):
+            return
+        
+        # This should only happen in realtime updates
+        # print( f"Updating {self.name}" )
         
         # isolate only the required block of candles to calculate the current value of the custom series
         # Extract the last 'num_rows' rows of the specified column into a new DataFrame
         sdf = df[self.source].tail(self.period).to_frame(name=self.source)
-        if( len(sdf) < self.period ):
-            return
-        
         newval = self.func( sdf[self.source], self.period )
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = df['timestamp'].iloc[-1]
@@ -548,14 +553,11 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
 
     rsi = calcRSI( 'close', 14 )
 
-    # # if( barindex > sma.period ):
-    # if( sma.crossingUp(close) ):
-    #     pass
-    #     #context.createMarker( text='🔷' )
+    if( sma.crossingUp(close) ):
+        context.createMarker( text='🔷' )
 
-    # if( crossingDown( sma, close ) ):
-    #     pass
-    #     #context.createMarker( text='🔺' )
+    if( crossingDown( sma, close ) ):
+        context.createMarker( text='🔺' )
 
     
 
@@ -630,7 +632,7 @@ def launchChart( df ):
         tmpdf['volume'] = df['volume']
 
     chart = Chart( toolbox = False )
-    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(ohlcvs)}' )
+    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(df)}' )
     chart.precision(4)
     #chart.watermark("Hello World")
     # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
@@ -670,7 +672,7 @@ if __name__ == '__main__':
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
     
-    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=20000 )
+    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=2000 )
 
     if 1:
         context.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
@@ -715,10 +717,6 @@ if __name__ == '__main__':
         context.initializing = False
         context.initdata = None # free memory
         ohlcvs = None
-        
-
-        
-        
 
     ##########################
     #### Set up the data and perform the backtest ####
