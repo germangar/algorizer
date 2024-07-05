@@ -78,7 +78,9 @@ def timeframeString( timeframe )->str:
     # fall through if unsucessful
     SystemError( "timeframeNameToMinutes: Unsupported timeframe:", timeframe )
 
-
+def replaceValueByTimestamp( df, timestamp, key:str, value ):
+    if( key == 'open' or key == 'high' or key == 'low' or key == 'close' ):
+        df.loc[df['timestamp'] == timestamp, f'{key}'] = value
 
 '''
 class sma_c:
