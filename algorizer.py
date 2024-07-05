@@ -186,7 +186,7 @@ class context_c:
         self.symbol = symbol # FIXME: add verification
         self.market = None
         self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
-        self.timeframeName = tools.timeframeString( self.timeframe )
+        self.timeframeStr = tools.timeframeString( self.timeframe )
         self.barindex = -1
         self.timestamp = 0
         self.initializing = True
@@ -264,7 +264,7 @@ class context_c:
                             data_dict['volume'] = newrow[5]
                         chart.update( pd.Series(data_dict) )
 
-                        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(df)}' )
+                        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=self.symbol + ' - ' + self.timeframeStr + ' - ' + self.exchange.id + ' - ' + f'candles:{len(df)}' )
 
                     runOpenCandle( self )
 
@@ -543,10 +543,10 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
 
 
 async def fetchCandleUpdates( context:context_c ):
-    subscriptions = f'{coin}/USDT:USDT'
+
     maxRows = 100
     while True:
-        response = await context.exchange.watch_ohlcv( subscriptions, timeframe, limit = maxRows )
+        response = await context.exchange.watch_ohlcv( context.symbol, context.timeframeStr, limit = maxRows )
         #print(response)
 
         # extract the data
@@ -609,7 +609,7 @@ def launchChart( df ):
         tmpdf['volume'] = df['volume']
 
     chart = Chart( toolbox = False )
-    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' )
+    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(ohlcvs)}' )
     chart.precision(4)
     #chart.watermark("Hello World")
     # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
@@ -637,38 +637,19 @@ def launchChart( df ):
     return chart
 
 if __name__ == '__main__':
-    coin = 'LDO'
-    timeframe = '1m'
-    exchangeName = 'bitget'
-    symbol = f'{coin}/USDT:USDT'
+    
+    # WIP context
+    context = context_c( 'LDO/USDT:USDT', 'bitget', '1m' )
+    registeredContexts.append( context )
 
     # the fetcher will be inside the context
-    fetcher = candles_c( exchangeName, symbol )
-
-    # WIP context
-    context = context_c( symbol, exchangeName, timeframe )
-    registeredContexts.append( context )
+    fetcher = candles_c( context.exchange.id, context.symbol )
 
     # filename = f'stuff/{exchangeName}-{coin}-USDT-{timeframe}.csv'
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
-
-    # Define column names and meanings
-    # column_meanings = {
-    #     0: 'time',
-    #     1: 'open',
-    #     2: 'high',
-    #     3: 'low',
-    #     4: 'close',
-    #     5: 'volume'
-    # }
     
-    # df.columns = column_meanings.values()
-
-    ########################################################
-    # Columns: time | open | high | high | close | volume
-    
-    ohlcvs = fetcher.fetchAmount( symbol, timeframe=timeframe, amount=2000 )
+    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=2000 )
 
 
     # df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
