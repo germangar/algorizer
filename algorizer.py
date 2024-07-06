@@ -650,7 +650,7 @@ def launchChart( df ):
     # chart.horizontal_line(2.080, func=on_horizontal_line_move)
         
     chart.set(tmpdf)
-    chart.show( block=False )
+    #chart.show( block=False )
     chart_opened = True
 
     # dump all the collected markers into the chart
