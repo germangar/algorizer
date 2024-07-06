@@ -610,8 +610,8 @@ async def runTasks( context ):
     # Run functions concurrently
     await asyncio.gather( task1, task2 )
 
-# async def on_timeframe_selection(chart):
-#     print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
+async def on_timeframe_selection(chart):
+    print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
 
 # async def on_button_press(chart):
 #     new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
@@ -621,18 +621,18 @@ async def runTasks( context ):
 # def on_horizontal_line_move(chart, line):
 #     print(f'Horizontal line moved to: {line.price}')
 
-def launchChart( df ):
+def launchChart( context:context_c, last_ohlcv ):
     global chart_opened
     ##########################
     #### Set up the chart ####
     ##########################
     
-    tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close']} )
+    tmpdf = pd.DataFrame( { 'time':pd.to_datetime( context.df['timestamp'], unit='ms' ), 'open':context.df['open'], 'high':context.df['high'], 'low':context.df['low'], 'close':context.df['close']} )
     if( SHOW_VOLUME ):
-        tmpdf['volume'] = df['volume']
+        tmpdf['volume'] = context.df['volume']
 
     chart = Chart( toolbox = False )
-    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(df)}' )
+    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(context.df)}' )
     chart.precision(4)
     #chart.watermark("Hello World")
     # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
@@ -657,6 +657,10 @@ def launchChart( df ):
     for marker in context.markers:
         marker.refreshInChart( chart )
 
+    context.chart = chart
+    context.parseCandleUpdate( last_ohlcv )
+
+    chart.show( block=False )
     return chart
 
 if __name__ == '__main__':
@@ -674,85 +678,50 @@ if __name__ == '__main__':
     
     ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=2000 )
 
-    if 1:
-        context.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-        total_start_time = time.time()
-        # delete the last row in the dataframe and extract the last row in ohlcvs.
-        print( "Creating dataframe" )
-        context.df.drop( context.df.tail(1).index, inplace=True )
-        last_ohlcv = ohlcvs[-1]
-        ohlcvs = ohlcvs[:-1]
-        print( "Calculating custom series" )
-        start_time = time.time()
-        context.parseCandleUpdate( [last_ohlcv] )
-        print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
+    context.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-        ###############################################################################
-        # at this point we have the customSeries initialized for the whole dataframe
-        # move the dataframe to use it as source for the initialization with precomputed data
-        print( "Computing script logic" )
+    total_start_time = time.time()
+    # delete the last row in the dataframe and extract the last row in ohlcvs.
+    print( "Creating dataframe" )
+    context.df.drop( context.df.tail(1).index, inplace=True )
+    last_ohlcv = ohlcvs[-1]
+    ohlcvs = ohlcvs[:-1]
+    print( "Calculating custom series" )
+    start_time = time.time()
+    context.parseCandleUpdate( [last_ohlcv] )
+    print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
-        context.timestamp = 0
-        context.barindex = -1
-        context.initdata = context.df
-        context.shadowcopy = True
+    ###############################################################################
+    # at this point we have the customSeries initialized for the whole dataframe
+    # move the dataframe to use it as source for the initialization with precomputed data
+    print( "Computing script logic" )
 
-        start_time = time.time()
-        # start with a blank dataframe with only the first row copied from the precomputed dataframe
-        context.df = pd.DataFrame( pd.DataFrame(context.initdata.iloc[0]).T, columns=context.initdata.columns )
-        
-        # run the script
-        context.parseCandleUpdate( ohlcvs )
-        context.shadowcopy = False
-        print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
-        ###############################################################################
+    context.timestamp = 0
+    context.barindex = -1
+    context.initdata = context.df
+    context.shadowcopy = True
 
-        # jump-start the chart by running the last row as if it was a update
-        start_time = time.time()
-        print( "Finishing" )
-        context.chart = launchChart( context.df )
-        context.parseCandleUpdate( [last_ohlcv] ) # parse the last candle so the chart graphics are jumpstarted
-        print( len(context.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - total_start_time))
-        context.initializing = False
-        context.initdata = None # free memory
-        ohlcvs = None
-
-    ##########################
-    #### Set up the data and perform the backtest ####
-    ##########################
-    else:
-        #   extract the last ohlcv on the list
-        last_ohlcv = ohlcvs[-1]
-        ohlcvs = ohlcvs[:-1]
-        context.df = pd.DataFrame( [ohlcvs[0]], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
-
-        print('---------------------------------------------------')
-        print('  Processing. This may take a while. Please wait')
-
-        start_time = time.time()
-
-        context.parseCandleUpdate( ohlcvs )
-        context.initializing = False
-
-        ohlcvs.append( last_ohlcv ) # this is not really needed, but... restore the ohlcvs list to its original form
-
-        print('                   Done.')
-        print("  Elapsed time: {:.2f} seconds".format(time.time() - start_time))
-        print('---------------------------------------------------')
-
-        print( "OHLCVs PARSED" )
-
-        context.chart = launchChart( context.df )
-
-        #jump start it with the last candle
-        print( "PARSING LAST OHLCV" )
-        context.parseCandleUpdate( [last_ohlcv] )
-        print( "DONE LAST OHLCV" )
-
-    #########################################################
-
-    asyncio.run( runTasks(context) )
-
+    start_time = time.time()
+    # start with a blank dataframe with only the first row copied from the precomputed dataframe
+    context.df = pd.DataFrame( pd.DataFrame(context.initdata.iloc[0]).T, columns=context.initdata.columns )
     
+    # run the script
+    context.parseCandleUpdate( ohlcvs )
+    context.shadowcopy = False
+    print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
+    ###############################################################################
+
+    # jump-start the chart by running the last row as if it was a update
+    start_time = time.time()
+    print( len(context.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - total_start_time))
+    context.initializing = False
+    context.initdata = None # free memory
+    ohlcvs = None
+    
+    launchChart( context, [last_ohlcv] )
+    asyncio.run( runTasks(context) )
+    
+    #context.chart.show( block=True )
+
 
