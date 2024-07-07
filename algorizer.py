@@ -125,6 +125,8 @@ class plot_c:
             else:
                 print( "Can't initialize a plot not associated with a chart")
                 return
+            
+        source = source.dropna()
         
         if( not self.initialized ):
             if( len(source)<1 ): # pd.isna(source)
@@ -462,15 +464,11 @@ class customSeries_c:
     def plot( self ):
         chart = self.context.chart
         if( self.timestamp > 0 and chart != None ):
-            plot( self.name, self.plotData(), chart )
+            plot( self.name, self.getSeries(), chart )
     
-    def plotData( self ):
-        #df = self.context.df
-        #if( self.timestamp == 0 ):
-            #return pd.NA
-            #return pd.DataFrame( columns = ['timestamp', self.name] )
-        #return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
-        return self.context.df[self.name].dropna()
+    def getSeries( self ):
+        return self.context.df[self.name]
+        #return self.context.df[self.name].dropna()
     
     def crossingUp( self, other ):
         df = self.context.df
@@ -516,7 +514,6 @@ class customSeries_c:
     def value( self, backindex = 0 ):
         df = self.context.df
         if( self.timestamp == 0 ):
-            #print( f"Warning: {self.name} has not yet produced any value")
             return 0 # let's do this just to avoid crashes
         
         if( backindex < 0 ):
@@ -581,18 +578,18 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     # strategy code goes here #
     ###########################
 
-    sma = calcSMA( 'close', 90 )
+    sma = calcSMA( 'close', 350 )
     sma.plot()
 
     ema = calcEMA( 'close', 4 )
-    plot( ema.name, ema.plotData(), context.chart )
+    plot( ema.name, ema.getSeries(), context.chart )
 
     rsi = calcRSI( 'close', 14 )
 
     dev = calcDEV( 'close', 30 )
     #plot( dev.name, dev.plotData(), context.chart )
 
-    rma = calcRMA( 'close', 500 )
+    rma = calcRMA( 'close', 90 )
     rma.plot()
 
     stdev = calcSTDEV( 'close', 350 )
@@ -601,11 +598,6 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     #willr.plot()
 
     calcHMA( 'close', 150 ).plot()
-
-    # create_histogram(name: str, color: COLOR, price_line: bool, price_label: bool, scale_margin_top: float, scale_margin_bottom: float)
-    # if( context.chart != None and rsi.timestamp != 0 ):
-    #     hist = context.chart.create_histogram( rsi.name, price_line = False, price_label = True )
-    #     hist.set( rsi.plotData() )
 
     if( sma.crossingUp(close) ):
         context.createMarker( text='🔷' )
