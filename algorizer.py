@@ -1,6 +1,7 @@
 #lightweight-charts simple test
 
 import pandas as pd
+import pandas_ta as ta
 import math
 from lightweight_charts import Chart
 import asyncio
@@ -15,7 +16,6 @@ from fetcher import candles_c
 
 SHOW_VOLUME = False
 chart_opened = False
-
 
 
 
@@ -311,72 +311,32 @@ activeConext:context_c = None
 
 # Define the function for RSI calculation using apply
 def customseries_calculate_rsi(series, period):
-    deltas = series.diff()
-    gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
-    loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi.iloc[-1]  # Returning the last value of RSI
+    return ta.rsi(series, length=period)
 
 def customseries_calculate_sma(series: pd.Series, period: int) -> float:
-    if len(series) < period:
-        return pd.NA  # Not enough data to calculate the SMA
-    return series.mean()
+    return ta.sma( series, period )
 
 def customseries_calculate_ema(series: pd.Series, period: int) -> float:
-    if len(series) < period:
-        return pd.NA  # Not enough data to calculate the EMA
-    alpha = 2 / (period + 1)
-    ema = series.ewm(alpha=alpha, adjust=False).mean().iloc[-1]
-    return ema
+    return ta.ema(series, period)
 
-def customseries_calculate_stdev(series: pd.Series, length: int) -> float:
-    if len(series) < length:
-        return pd.NA  # Not enough data to calculate the standard deviation
+def customseries_calculate_stdev(series: pd.Series, period: int) -> float:
+    return ta.stdev(series, period)
 
-    avg = series.rolling(window=length).mean().iloc[-1]  # Calculate the SMA
-    sum_of_square_deviations = 0.0
+def customseries_calculate_rma(series: pd.Series, period: int) -> float:
+    return ta.rma(series, period)
 
-    for i in range(len(series) - length, len(series)):
-        deviation = series.iloc[i] - avg
-        sum_of_square_deviations += deviation ** 2
-
-    stdev = math.sqrt(sum_of_square_deviations / length)
-    return stdev
-
-def customseries_calculate_rma(series: pd.Series, length: int) -> float:
-    if len(series) < length:
-        return pd.NA  # Not enough data to calculate the RMA
-
-    alpha = 1 / length
-
-    # Initialize sum with SMA if previous sum is NaN, otherwise calculate RMA recursively
-    sum_value = series.rolling(window=length).mean().iloc[length - 1]
-
-    for i in range(length, len(series)):
-        if pd.isna(sum_value):
-            sum_value = series.iloc[:length].mean()
-
-        sum_value = alpha * series.iloc[i] + (1 - alpha) * sum_value
-
-    return sum_value
-
-def customseries_calculate_dev(series: pd.Series, length: int) -> float:
-    """
-    Calculate the average deviation over a given rolling window in a pandas Series.
-    """
-    if len(series) < length:
-        return pd.NA  # Not enough data to calculate the deviation
-
-    mean = series.rolling(window=length).mean().iloc[-1]  # Calculate the SMA
-    deviation_sum = 0.0
-
-    for i in range(len(series) - length, len(series)):
-        val = series.iloc[i]
-        deviation_sum += abs(val - mean)
-
-    average_deviation = deviation_sum / length
-    return average_deviation
+def customseries_calculate_dev(series: pd.Series, period: int) -> float:
+    # Calculate the average deviation over a given rolling window in a pandas Series.
+    # Initialize a list to hold the deviation values
+    deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
+    # Iterate over each rolling window
+    for i in range(period - 1, len(series)):
+        window = series[i - period + 1:i + 1]
+        mean = window.mean()
+        deviation = (window - mean).abs().sum() / period
+        deviations.append(deviation)
+    
+    return pd.Series(deviations, index=series.index)
 
 class customSeries_c:
     def __init__( self, type:str, source:str, period:int, func = None, context:context_c = None ):
@@ -404,7 +364,7 @@ class customSeries_c:
             if( self.context.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.context.df[self.name] = self.context.df[self.source].rolling(window=self.period).apply(lambda x: self.func(x, self.period))
+            self.context.df[self.name] = self.func(self.context.df[self.source], self.period)
             self.timestamp = self.context.df['timestamp'].iloc[-1]
             print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
@@ -437,7 +397,7 @@ class customSeries_c:
         # isolate only the required block of candles to calculate the current value of the custom series
         # Extract the last 'num_rows' rows of the specified column into a new DataFrame
         sdf = df[self.source].tail(self.period).to_frame(name=self.source)
-        newval = self.func( sdf[self.source], self.period )
+        newval = self.func( sdf[self.source], self.period ).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = df['timestamp'].iloc[-1]
         
@@ -528,7 +488,8 @@ def calcEMA( source:str, period:int ):
     return activeConext.calcCustomSeries( "ema", source, period, customseries_calculate_ema )
 
 def calcRSI( source:str, period:int ):
-    return activeConext.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
+    # return activeConext.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
+    return activeConext.calcCustomSeries( 'rsi', source, period, ta.rsi )
 
 
 
@@ -552,6 +513,11 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     plot( ema.name, ema.plotData(), context.chart )
 
     rsi = calcRSI( 'close', 14 )
+
+    # create_histogram(name: str, color: COLOR, price_line: bool, price_label: bool, scale_margin_top: float, scale_margin_bottom: float)
+    # if( context.chart != None and rsi.timestamp != 0 ):
+    #     hist = context.chart.create_histogram( rsi.name, price_line = False, price_label = True )
+    #     hist.set( rsi.plotData() )
 
     if( sma.crossingUp(close) ):
         context.createMarker( text='🔷' )
@@ -584,39 +550,36 @@ async def fetchCandleUpdates( context:context_c ):
     await exchange.close()
 
 
-async def otherstuff():
+async def doNothing():
     while True:
         # doing nothing yet
         await asyncio.sleep(1)
 
-# from datetime import datetime
-# async def update_clock(chart):
-#     if( chart == None ):
-#         return
-#     while chart.is_alive:
-#         await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-#         chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=symbol + ' - ' + timeframe + ' - ' + exchangeName + ' - ' + f'candles:{len(ohlcvs)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+from datetime import datetime
+async def update_clock(context):
+    if( context.chart == None ):
+        return
+    while context.chart.is_alive:
+        await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+        context.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(context.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
 
-async def runTasks( context ):
-    # Start the fetchCandleUpdates function
-    task1 = asyncio.create_task( fetchCandleUpdates(context) )
+async def runTasks(context):
+    task1 = asyncio.create_task(fetchCandleUpdates(context))
+    task2 = asyncio.create_task(update_clock(context))
+    task3 = context.chart.show_async() if context.chart is not None else None
+
+    tasks = [task for task in [task1, task2, task3] if task is not None]
+    await asyncio.gather(*tasks)
+
     
-    # Start the monitorOtherUpdates function
-    task2 = asyncio.create_task( otherstuff() )
-
-    # clock
-    # task3 = asyncio.create_task( update_clock(context.chart) )
-
-    # Run functions concurrently
-    await asyncio.gather( task1, task2 )
 
 async def on_timeframe_selection(chart):
     print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
 
-# async def on_button_press(chart):
-#     new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
-#     chart.topbar['my_button'].set(new_button_value)
-#     print(f'Turned something {new_button_value.lower()}.')
+async def on_button_press(chart):
+    new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
+    chart.topbar['my_button'].set(new_button_value)
+    print(f'Turned something {new_button_value.lower()}.')
 
 # def on_horizontal_line_move(chart, line):
 #     print(f'Horizontal line moved to: {line.price}')
@@ -645,9 +608,9 @@ def launchChart( context:context_c, last_ohlcv ):
     #     default='5min',
     #     func=on_timeframe_selection)
     
-    # chart.topbar.button('my_button', 'Off', func=on_button_press)
+    chart.topbar.button('my_button', 'Off', func=on_button_press)
 
-    # chart.horizontal_line(2.080, func=on_horizontal_line_move)
+    # chart.horizontal_line(1.6, func=on_horizontal_line_move)
         
     chart.set(tmpdf)
     #chart.show( block=False )
@@ -660,7 +623,7 @@ def launchChart( context:context_c, last_ohlcv ):
     context.chart = chart
     context.parseCandleUpdate( last_ohlcv )
 
-    chart.show( block=False )
+    # chart.show( block=False )
     return chart
 
 if __name__ == '__main__':
@@ -676,7 +639,7 @@ if __name__ == '__main__':
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
     
-    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=2000 )
+    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=10000 )
 
 
     context.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
@@ -718,10 +681,9 @@ if __name__ == '__main__':
     context.initializing = False
     context.initdata = None # free memory
     ohlcvs = None
-    
+
     launchChart( context, [last_ohlcv] )
     asyncio.run( runTasks(context) )
-    
-    #context.chart.show( block=True )
+
 
 
