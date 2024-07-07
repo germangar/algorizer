@@ -38,7 +38,7 @@ def crossingUp( self, other ):
             other_old = other.iloc[-2]
             self_new = other.iloc[-1]
         elif isinstance( other, customSeries_c ):
-            if( other.timestamp == 0 or len(df) < 2 ):
+            if( other.timestamp == 0 or len(other.source) < 2 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -80,7 +80,7 @@ def crossingDown( self, other ):
             other_old = other.iloc[-2]
             self_new = other.iloc[-1]
         elif isinstance( other, customSeries_c ):
-            if( other.timestamp == 0 or len(df) < 2 ):
+            if( other.timestamp == 0 or len(other.source) < 2 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -130,13 +130,13 @@ class plot_c:
             if( len(source)<1 ): # pd.isna(source)
                 return
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( source['timestamp'], unit='ms' ), self.name: source[self.name]}).dropna() )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( activeContext.df['timestamp'], unit='ms' ), self.name: source}).dropna() )
             self.initialized = True
             return
 
         # it's initalized so only update the new line
-        newval = source.iloc[-1][self.name]
-        timestamp = int(source.iloc[-1]['timestamp'])
+        newval = source.iloc[-1]
+        timestamp = int(activeContext.df.iloc[-1]['timestamp'])
         self.line.update( pd.Series( {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval } ) )
 
 
@@ -208,8 +208,8 @@ class context_c:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
         
     def parseCandleUpdate( self, rows ):
-        global activeConext
-        activeConext = self
+        global activeContext
+        activeContext = self
         chart = self.chart
         for newrow in rows:
             newTimestamp = int(newrow[0])
@@ -280,6 +280,9 @@ class context_c:
                 if( self.shadowcopy and new_row_index % 5000 == 0 ):
                     print( new_row_index, "candles processed." )
 
+                # if( not self.shadowcopy ):
+                #     print( self.df )
+
     def updateAllCustomSeries( self ):
         for cseries in self.customSeries:
             cseries.update()
@@ -306,37 +309,80 @@ class context_c:
     
 
 registeredContexts:context_c = []
-activeConext:context_c = None
+activeContext:context_c = None
 
+def customseries_calculate_rma(series: pd.Series, length: int) -> pd.Series:
+    # RMA needs to be recalculated in full every time
+    return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean()
 
-# Define the function for RSI calculation using apply
-def customseries_calculate_rsi(series, period):
-    return ta.rsi(series, length=period)
+def customseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
+    if 1:
+        return ta.mad( series, period )
+    else:
+        # Calculate the average deviation over a given rolling window in a pandas Series.
+        # Initialize a list to hold the deviation values
+        deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
+        # Iterate over each rolling window
+        for i in range(period - 1, len(series)):
+            window = series[i - period + 1:i + 1]
+            mean = window.mean()
+            deviation = (window - mean).abs().sum() / period
+            deviations.append(deviation)
+        return pd.Series(deviations, index=series.index).dropna()
 
-def customseries_calculate_sma(series: pd.Series, period: int) -> float:
-    return ta.sma( series, period )
+def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Series:
+    if 0:
+        """
+        Calculate Williams %R for a given series using OHLC data from activeContext.df over a period.
 
-def customseries_calculate_ema(series: pd.Series, period: int) -> float:
-    return ta.ema(series, period)
+        Args:
+        - series: pd.Series, typically a placeholder, but required for compatibility with customSeries_c.
+        - period: int, the period/window for the Williams %R calculation.
 
-def customseries_calculate_stdev(series: pd.Series, period: int) -> float:
-    return ta.stdev(series, period)
+        Returns:
+        - pd.Series, the calculated Williams %R values.
+        """
+        # global activeContext
 
-def customseries_calculate_rma(series: pd.Series, period: int) -> float:
-    return ta.rma(series, period)
+        # Ensure activeContext and its DataFrame are accessible
+        if 'activeContext' not in globals():
+            raise ValueError("activeContext is not defined in the global scope")
 
-def customseries_calculate_dev(series: pd.Series, period: int) -> float:
-    # Calculate the average deviation over a given rolling window in a pandas Series.
-    # Initialize a list to hold the deviation values
-    deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
-    # Iterate over each rolling window
-    for i in range(period - 1, len(series)):
-        window = series[i - period + 1:i + 1]
-        mean = window.mean()
-        deviation = (window - mean).abs().sum() / period
-        deviations.append(deviation)
-    
-    return pd.Series(deviations, index=series.index)
+        df = activeContext.df
+
+        # Ensure the DataFrame has the required columns
+        if not all(col in df.columns for col in ['high', 'low', 'close']):
+            raise ValueError("The global DataFrame must contain 'high', 'low', and 'close' columns")
+
+        if len(df) < period:
+            return pd.Series([pd.NA] * len(df), index=df.index)  # Not enough data to calculate Williams %R
+
+        # Initialize a list to hold the Williams %R values
+        williams_r_values = [pd.NA] * (period - 1)  # NA for the initial period
+    else:
+        return ta.willr( activeContext.df['high'], activeContext.df['low'], activeContext.df['close'], length=period )
+
+    # Calculate Williams %R for each rolling window
+    for i in range(period - 1, len(df)):
+        highest_high = df['high'].iloc[i - period + 1:i + 1].max()
+        lowest_low = df['low'].iloc[i - period + 1:i + 1].min()
+        current_close = df['close'].iloc[i]
+
+        if highest_high == lowest_low:  # Prevent division by zero
+            williams_r_values.append(pd.NA)
+        else:
+            williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100
+            williams_r_values.append(williams_r)
+
+    return pd.Series(williams_r_values, index=df.index)
+
+def customseries_calculate_rsi(series, period) -> pd.Series:
+    deltas = series.diff()
+    gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
+    loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi #.iloc[-1]  # Returning the last value of RSI
 
 class customSeries_c:
     def __init__( self, type:str, source:str, period:int, func = None, context:context_c = None ):
@@ -346,6 +392,7 @@ class customSeries_c:
         self.func = func
         self.context = context
         self.timestamp = 0
+        self.alwaysReset = True if self.func == customseries_calculate_rma or self.func == ta.rma else False
 
         if( self.context == None ):
             raise SystemError( f"Custom Series has no assigned context [{self.name}]")
@@ -360,27 +407,30 @@ class customSeries_c:
             raise SystemError( f"Custom Series  with invalid period [{period}]")
         
     def initialize( self ):
-        if( len(self.context.df) >= self.period and not self.name in self.context.df.columns ):
+        if( len(self.context.df) >= self.period and ( not self.name in self.context.df.columns or self.alwaysReset ) ):
             if( self.context.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
             self.context.df[self.name] = self.func(self.context.df[self.source], self.period)
             self.timestamp = self.context.df['timestamp'].iloc[-1]
-            print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
+            if( self.context.initializing ):
+                print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
     def update( self ):
         if( self.context.shadowcopy ):
             return
         
         df = self.context.df
-        #if non existant try to create new
-        if( self.timestamp == 0 ):
-            self.initialize()
-            return
-        
+
         # has this row already been updated?
         if( self.timestamp >= df['timestamp'].iloc[-1] ):
             # print( self.name, self.timestamp, "datafrne:", df['timestamp'].iloc[-1] )
+            return
+
+        # if non existant try to create new
+        # the rma needs to be recalculated in full for every new candle
+        if( self.timestamp == 0 or self.alwaysReset ):
+            self.initialize()
             return
         
         # this happens when making the shadow copy
@@ -396,8 +446,13 @@ class customSeries_c:
         
         # isolate only the required block of candles to calculate the current value of the custom series
         # Extract the last 'num_rows' rows of the specified column into a new DataFrame
-        sdf = df[self.source].tail(self.period).to_frame(name=self.source)
-        newval = self.func( sdf[self.source], self.period ).iloc[-1]
+        #sdf = df[self.source].tail(self.period).to_frame(name=self.source)
+        #newval = self.func( sdf[self.source], self.period ).iloc[-1]
+        #sdf = df.iloc[-self.period:, :][self.source]
+        newval = self.func( df.iloc[-self.period:, :][self.source], self.period ).iloc[-1]
+        
+        # with full dataframe: newval = self.func( df.iloc[-self.period:, :], self.period ).iloc[-1]
+        #newval = self.func( df.iloc[-self.period:, :][self.name], self.period ).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = df['timestamp'].iloc[-1]
         
@@ -409,8 +464,10 @@ class customSeries_c:
     def plotData( self ):
         df = self.context.df
         if( self.timestamp == 0 ):
-            return pd.DataFrame( columns = ['timestamp', self.name] )
-        return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
+            return pd.NA
+            #return pd.DataFrame( columns = ['timestamp', self.name] )
+        #return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
+        return df[self.name]
     
     def crossingUp( self, other ):
         df = self.context.df
@@ -480,19 +537,29 @@ class customSeries_c:
             return 0 # let's do this just to avoid crashes
         
         return df[self.name].iloc[index]
+    
 
+# this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
 def calcSMA( source:str, period:int ):
-    return activeConext.calcCustomSeries( 'sma', source, period, customseries_calculate_sma )
+    return activeContext.calcCustomSeries( 'sma', source, period, ta.sma )
 
 def calcEMA( source:str, period:int ):
-    return activeConext.calcCustomSeries( "ema", source, period, customseries_calculate_ema )
+    return activeContext.calcCustomSeries( "ema", source, period, ta.ema )
 
 def calcRSI( source:str, period:int ):
-    # return activeConext.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
-    return activeConext.calcCustomSeries( 'rsi', source, period, ta.rsi )
+    return activeContext.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
 
+def calcDEV( source:str, period:int ):
+    return activeContext.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
 
+def calcSTDEV( source:str, period:int ):
+    return activeContext.calcCustomSeries( 'stdev', source, period, ta.stdev )
 
+def calcRMA( source:str, period:int ):
+    return activeContext.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
+
+def calcWPR( source:str, period:int ):
+    return activeContext.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
 
 
 def runOpenCandle( context:context_c ):
@@ -513,6 +580,18 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     plot( ema.name, ema.plotData(), context.chart )
 
     rsi = calcRSI( 'close', 14 )
+
+    dev = calcDEV( 'close', 30 )
+    #plot( dev.name, dev.plotData(), context.chart )
+
+    rma = calcRMA( 'close', 500 )
+    rma.plot()
+
+    stdev = calcSTDEV( 'close', 350 )
+
+    willr = calcWPR( 'close', 32)
+
+    calcSMA( 'close', 500 )
 
     # create_histogram(name: str, color: COLOR, price_line: bool, price_label: bool, scale_margin_top: float, scale_margin_bottom: float)
     # if( context.chart != None and rsi.timestamp != 0 ):
@@ -629,7 +708,7 @@ def launchChart( context:context_c, last_ohlcv ):
 if __name__ == '__main__':
 
     # WIP context
-    context = context_c( 'LDO/USDT:USDT', 'bitget', '1m' )
+    context = context_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
     registeredContexts.append( context )
 
     # the fetcher will be inside the context
