@@ -108,13 +108,13 @@ def crossing( self, other ):
 
 
 class plot_c:
-    def __init__( self, name:str, source:pd.DataFrame, chart = None ):
+    def __init__( self, name:str, source:pd.Series, chart = None ):
         self.name = name
         self.chart = chart
         self.line = None
         self.initialized = False
 
-    def update( self, source:pd.DataFrame, chart = None ):
+    def update( self, source:pd.Series, chart = None ):
         if( not chart_opened ):
             return
 
@@ -130,14 +130,16 @@ class plot_c:
             if( len(source)<1 ): # pd.isna(source)
                 return
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( activeContext.df['timestamp'], unit='ms' ), self.name: source}).dropna() )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( activeContext.df['timestamp'], unit='ms' ), self.name: source}) )
             self.initialized = True
             return
 
+        if( len(source) < 1 ):
+            return
+        
         # it's initalized so only update the new line
         newval = source.iloc[-1]
-        timestamp = int(activeContext.df.iloc[-1]['timestamp'])
-        self.line.update( pd.Series( {'time': pd.to_datetime( timestamp, unit='ms' ), 'value': newval } ) )
+        self.line.update( pd.Series( {'time': pd.to_datetime( activeContext.timestamp, unit='ms' ), 'value': newval } ) )
 
 
 registeredPlots:plot_c = []
@@ -192,6 +194,7 @@ class context_c:
         self.initializing = True
         self.shadowcopy = False
         self.chart = None
+        self.bottomPanel = None
 
         self.markers:markers_c = []
         self.customSeries:customSeries_c = []
@@ -458,16 +461,16 @@ class customSeries_c:
         
     def plot( self ):
         chart = self.context.chart
-        if( self.timestamp > 0 or chart != None ):
+        if( self.timestamp > 0 and chart != None ):
             plot( self.name, self.plotData(), chart )
     
     def plotData( self ):
-        df = self.context.df
-        if( self.timestamp == 0 ):
-            return pd.NA
+        #df = self.context.df
+        #if( self.timestamp == 0 ):
+            #return pd.NA
             #return pd.DataFrame( columns = ['timestamp', self.name] )
         #return pd.DataFrame({'timestamp': df['timestamp'], self.name: df[self.name]}).dropna()
-        return df[self.name]
+        return self.context.df[self.name].dropna()
     
     def crossingUp( self, other ):
         df = self.context.df
@@ -546,6 +549,9 @@ def calcSMA( source:str, period:int ):
 def calcEMA( source:str, period:int ):
     return activeContext.calcCustomSeries( "ema", source, period, ta.ema )
 
+def calcHMA( source:str, period:int ):
+    return activeContext.calcCustomSeries( "hma", source, period, ta.hma )
+
 def calcRSI( source:str, period:int ):
     return activeContext.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
 
@@ -560,6 +566,8 @@ def calcRMA( source:str, period:int ):
 
 def calcWPR( source:str, period:int ):
     return activeContext.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
+
+
 
 
 def runOpenCandle( context:context_c ):
@@ -590,8 +598,9 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     stdev = calcSTDEV( 'close', 350 )
 
     willr = calcWPR( 'close', 32)
+    #willr.plot()
 
-    calcSMA( 'close', 500 )
+    calcHMA( 'close', 150 ).plot()
 
     # create_histogram(name: str, color: COLOR, price_line: bool, price_label: bool, scale_margin_top: float, scale_margin_bottom: float)
     # if( context.chart != None and rsi.timestamp != 0 ):
@@ -673,7 +682,7 @@ def launchChart( context:context_c, last_ohlcv ):
     if( SHOW_VOLUME ):
         tmpdf['volume'] = context.df['volume']
 
-    chart = Chart( toolbox = False )
+    chart = Chart( inner_height=0.8, toolbox = False )
     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(context.df)}' )
     chart.precision(4)
     #chart.watermark("Hello World")
@@ -762,6 +771,17 @@ if __name__ == '__main__':
     ohlcvs = None
 
     launchChart( context, [last_ohlcv] )
+
+    # context.bottomPanel = context.chart.create_subchart(position='bottom', width=1, height=0.25, sync=True ) # sync_crosshairs_only=True
+    # context.bottomPanel.legend(visible=True)
+    # line = context.bottomPanel.create_line(name='vol')
+    # line.set( pd.DataFrame( {'time': pd.to_datetime( context.df['timestamp'], unit='ms' ), 'vol': context.df['volume']} ) )
+    # hist = context.bottomPanel.create_histogram(name='vol_hist')
+    # hist.set( pd.DataFrame({'time': pd.to_datetime( context.df['timestamp'], unit='ms' ), 'vol_hist': context.df['volume']}).dropna() )
+
+
+
+
     asyncio.run( runTasks(context) )
 
 
