@@ -132,7 +132,7 @@ class plot_c:
             if( len(source)<1 ): # pd.isna(source)
                 return
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( activeContext.df['timestamp'], unit='ms' ), self.name: source}) )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( activeStream.df['timestamp'], unit='ms' ), self.name: source}) )
             self.initialized = True
             return
 
@@ -141,7 +141,7 @@ class plot_c:
         
         # it's initalized so only update the new line
         newval = source.iloc[-1]
-        self.line.update( pd.Series( {'time': pd.to_datetime( activeContext.timestamp, unit='ms' ), 'value': newval } ) )
+        self.line.update( pd.Series( {'time': pd.to_datetime( activeStream.timestamp, unit='ms' ), 'value': newval } ) )
 
 
 registeredPlots:plot_c = []
@@ -186,7 +186,7 @@ class markers_c:
         self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
 
 
-class context_c:
+class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframe ):
         self.symbol = symbol # FIXME: add verification
         self.market = None
@@ -214,8 +214,8 @@ class context_c:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
         
     def parseCandleUpdate( self, rows ):
-        global activeContext
-        activeContext = self
+        global activeStream
+        activeStream = self
         chart = self.chart
         for newrow in rows:
             newTimestamp = int(newrow[0])
@@ -314,8 +314,8 @@ class context_c:
 
     
 
-registeredContexts:context_c = []
-activeContext:context_c = None
+registeredStreams:stream_c = []
+activeStream:stream_c = None
 
 def customseries_calculate_rma(series: pd.Series, length: int) -> pd.Series:
     # RMA needs to be recalculated in full every time
@@ -339,7 +339,7 @@ def customseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
 def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Series:
     if 0:
         """
-        Calculate Williams %R for a given series using OHLC data from activeContext.df over a period.
+        Calculate Williams %R for a given series using OHLC data from activeStream.df over a period.
 
         Args:
         - series: pd.Series, typically a placeholder, but required for compatibility with customSeries_c.
@@ -348,13 +348,13 @@ def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Seri
         Returns:
         - pd.Series, the calculated Williams %R values.
         """
-        # global activeContext
+        # global activeStream
 
-        # Ensure activeContext and its DataFrame are accessible
-        if 'activeContext' not in globals():
-            raise ValueError("activeContext is not defined in the global scope")
+        # Ensure activeStream and its DataFrame are accessible
+        if 'activeStream' not in globals():
+            raise ValueError("activeStream is not defined in the global scope")
 
-        df = activeContext.df
+        df = activeStream.df
 
         # Ensure the DataFrame has the required columns
         if not all(col in df.columns for col in ['high', 'low', 'close']):
@@ -366,7 +366,7 @@ def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Seri
         # Initialize a list to hold the Williams %R values
         williams_r_values = [pd.NA] * (period - 1)  # NA for the initial period
     else:
-        return ta.willr( activeContext.df['high'], activeContext.df['low'], activeContext.df['close'], length=period )
+        return ta.willr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
 
     # Calculate Williams %R for each rolling window
     for i in range(period - 1, len(df)):
@@ -391,42 +391,42 @@ def customseries_calculate_rsi(series, period) -> pd.Series:
     return rsi #.iloc[-1]  # Returning the last value of RSI
 
 class customSeries_c:
-    def __init__( self, type:str, source:str, period:int, func = None, context:context_c = None ):
+    def __init__( self, type:str, source:str, period:int, func = None, stream:stream_c = None ):
         self.name = f'{type} {source} {period}'
         self.source = source
         self.period = period
         self.func = func
-        self.context = context
+        self.stream = stream
         self.timestamp = 0
         self.alwaysReset = True if self.func == customseries_calculate_rma or self.func == ta.rma else False
 
-        if( self.context == None ):
-            raise SystemError( f"Custom Series has no assigned context [{self.name}]")
+        if( self.stream == None ):
+            raise SystemError( f"Custom Series has no assigned stream [{self.name}]")
 
         if( self.func == None ):
             raise SystemError( f"Custom Series without a func [{self.name}]")
 
-        if( not self.source in context.df.columns ):
+        if( not self.source in stream.df.columns ):
             raise SystemError( f"Custom Series  with unknown source [{source}]")
 
         if( self.period < 1 ):
             raise SystemError( f"Custom Series  with invalid period [{period}]")
         
     def initialize( self ):
-        if( len(self.context.df) >= self.period and ( not self.name in self.context.df.columns or self.alwaysReset ) ):
-            if( self.context.shadowcopy ):
+        if( len(self.stream.df) >= self.period and ( not self.name in self.stream.df.columns or self.alwaysReset ) ):
+            if( self.stream.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.context.df[self.name] = self.func(self.context.df[self.source], self.period)
-            self.timestamp = self.context.df['timestamp'].iloc[-1]
-            if( self.context.initializing ):
+            self.stream.df[self.name] = self.func(self.stream.df[self.source], self.period)
+            self.timestamp = self.stream.df['timestamp'].iloc[-1]
+            if( self.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
     def update( self ):
-        if( self.context.shadowcopy ):
+        if( self.stream.shadowcopy ):
             return
         
-        df = self.context.df
+        df = self.stream.df
 
         # has this row already been updated?
         if( self.timestamp >= df['timestamp'].iloc[-1] ):
@@ -444,7 +444,7 @@ class customSeries_c:
             return
             raise ValueError( f"customSeries {self.name} had a value with a outdated timestamp" )
         
-        if( len(self.context.df) < self.period ):
+        if( len(self.stream.df) < self.period ):
             return
         
         # realtime updates
@@ -452,19 +452,19 @@ class customSeries_c:
         # slice the required block of candles to calculate the current value of the custom series
         newval = self.func( df.iloc[-self.period:, :][self.source], self.period ).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
-        self.timestamp = self.context.timestamp #df['timestamp'].iloc[-1]
+        self.timestamp = self.stream.timestamp #df['timestamp'].iloc[-1]
         
     def plot( self ):
-        chart = self.context.chart
+        chart = self.stream.chart
         if( self.timestamp > 0 and chart != None ):
             plot( self.name, self.getSeries(), chart )
     
     def getSeries( self ):
-        return self.context.df[self.name]
-        #return self.context.df[self.name].dropna()
+        return self.stream.df[self.name]
+        #return self.stream.df[self.name].dropna()
     
     def crossingUp( self, other ):
-        df = self.context.df
+        df = self.stream.df
         if( self.timestamp == 0 or len(df)<1 ):
             return False
         if isinstance( other, customSeries_c ):
@@ -483,7 +483,7 @@ class customSeries_c:
             return ( self.value(1) <= float(other) and self.value() >= float(other) and self.value() != self.value(1) )
     
     def crossingDown( self, other ):
-        df = self.context.df
+        df = self.stream.df
         if( self.timestamp == 0 or len(df)<1 ):
             return False
         if isinstance( other, customSeries_c ):
@@ -505,7 +505,7 @@ class customSeries_c:
         return self.crossingUp(other) or self.crossingDown(other)
     
     def value( self, backindex = 0 ):
-        df = self.context.df
+        df = self.stream.df
         if( self.timestamp == 0 ):
             return 0 # let's do this just to avoid crashes
         
@@ -514,7 +514,7 @@ class customSeries_c:
         return df[self.name].iloc[-(backindex + 1)]
         
     def loc( self, index = 0 ):
-        df = self.context.df
+        df = self.stream.df
         if( self.timestamp == 0 ):
             print( f"Warning: {self.name} has not yet produced any value")
             return 0 # let's do this just to avoid crashes
@@ -524,7 +524,7 @@ class customSeries_c:
         return df[self.name].loc[index]
     
     def iloc( self, index = -1 ):
-        df = self.context.df
+        df = self.stream.df
         if( self.timestamp == 0 ):
             print( f"Warning: {self.name} has not yet produced any value")
             return 0 # let's do this just to avoid crashes
@@ -534,40 +534,40 @@ class customSeries_c:
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
 def calcSMA( source:str, period:int ):
-    return activeContext.calcCustomSeries( 'sma', source, period, ta.sma )
+    return activeStream.calcCustomSeries( 'sma', source, period, ta.sma )
 
 def calcEMA( source:str, period:int ):
-    return activeContext.calcCustomSeries( "ema", source, period, ta.ema )
+    return activeStream.calcCustomSeries( "ema", source, period, ta.ema )
 
 def calcHMA( source:str, period:int ):
-    return activeContext.calcCustomSeries( "hma", source, period, ta.hma )
+    return activeStream.calcCustomSeries( "hma", source, period, ta.hma )
 
 def calcRSI( source:str, period:int ):
-    return activeContext.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
+    return activeStream.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
 
 def calcDEV( source:str, period:int ):
-    return activeContext.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
+    return activeStream.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
 
 def calcSTDEV( source:str, period:int ):
-    return activeContext.calcCustomSeries( 'stdev', source, period, ta.stdev )
+    return activeStream.calcCustomSeries( 'stdev', source, period, ta.stdev )
 
 def calcRMA( source:str, period:int ):
-    return activeContext.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
+    return activeStream.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
 
 def calcWPR( source:str, period:int ):
-    return activeContext.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
+    return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
 
 
 
 
-def runOpenCandle( context:context_c ):
+def runOpenCandle( stream:stream_c ):
     return
 
 oversoldLine = None
 overboughtLine = None
 middleLine = None
-def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    barindex = context.barindex
+def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    barindex = stream.barindex
     global oversoldLine
     global overboughtLine
     global middleLine
@@ -580,10 +580,10 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     sma.plot()
 
     ema = calcEMA( 'close', 4 )
-    # plot( ema.name, ema.getSeries(), context.chart )
+    # plot( ema.name, ema.getSeries(), stream.chart )
 
     rsi = calcRSI( 'close', 14 )
-    rsiplot = plot( rsi.name, rsi.getSeries(), context.bottomPanel )
+    rsiplot = plot( rsi.name, rsi.getSeries(), stream.bottomPanel )
     # if( rsiplot != None ):
     #     if( middleLine == None ):
     #         middleLine = rsiplot.line.horizontal_line( 50, width=1, style='dotted', axis_label_visible=False )
@@ -600,7 +600,7 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     # LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
 
     dev = calcDEV( 'close', 30 )
-    #plot( dev.name, dev.plotData(), context.chart )
+    #plot( dev.name, dev.plotData(), stream.chart )
 
     rma = calcRMA( 'close', 90 )
     rma.plot()
@@ -613,21 +613,21 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     calcHMA( 'close', 150 ).plot()
 
     if( sma.crossingUp(close) ):
-        context.createMarker( text='🔷' )
+        stream.createMarker( text='🔷' )
 
     if( crossingDown( sma, close ) ):
-        context.createMarker( text='🔺' )
+        stream.createMarker( text='🔺' )
 
     
 
     return
 
 
-async def fetchCandleUpdates( context:context_c ):
+async def fetchCandleUpdates( stream:stream_c ):
 
     maxRows = 100
     while True:
-        response = await context.exchange.watch_ohlcv( context.symbol, context.timeframeStr, limit = maxRows )
+        response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeStr, limit = maxRows )
         #print(response)
 
         # extract the data
@@ -636,7 +636,7 @@ async def fetchCandleUpdates( context:context_c ):
             response = response[len(response)-maxRows:]
 
         #print( f"FETCHED {len(response)} CANDLES")
-        context.parseCandleUpdate( response )
+        stream.parseCandleUpdate( response )
         
         await asyncio.sleep(0.003)
 
@@ -649,17 +649,17 @@ async def doNothing():
         await asyncio.sleep(1)
 
 from datetime import datetime
-async def update_clock(context):
-    if( context.chart == None ):
+async def update_clock(stream):
+    if( stream.chart == None ):
         return
-    while context.chart.is_alive:
+    while stream.chart.is_alive:
         await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-        context.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(context.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+        stream.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
 
-async def runTasks(context):
-    task1 = asyncio.create_task(fetchCandleUpdates(context))
-    task2 = asyncio.create_task(update_clock(context))
-    task3 = context.chart.show_async() if context.chart is not None else None
+async def runTasks(stream):
+    task1 = asyncio.create_task(fetchCandleUpdates(stream))
+    task2 = asyncio.create_task(update_clock(stream))
+    task3 = stream.chart.show_async() if stream.chart is not None else None
 
     tasks = [task for task in [task1, task2, task3] if task is not None]
     await asyncio.gather(*tasks)
@@ -677,18 +677,18 @@ async def on_button_press(chart):
 # def on_horizontal_line_move(chart, line):
 #     print(f'Horizontal line moved to: {line.price}')
 
-def launchChart( context:context_c, last_ohlcv ):
+def launchChart( stream:stream_c, last_ohlcv ):
     global chart_opened
     ##########################
     #### Set up the chart ####
     ##########################
     
-    tmpdf = pd.DataFrame( { 'time':pd.to_datetime( context.df['timestamp'], unit='ms' ), 'open':context.df['open'], 'high':context.df['high'], 'low':context.df['low'], 'close':context.df['close']} )
+    tmpdf = pd.DataFrame( { 'time':pd.to_datetime( stream.df['timestamp'], unit='ms' ), 'open':stream.df['open'], 'high':stream.df['high'], 'low':stream.df['low'], 'close':stream.df['close']} )
     if( SHOW_VOLUME ):
-        tmpdf['volume'] = context.df['volume']
+        tmpdf['volume'] = stream.df['volume']
 
     chart = Chart( inner_height=0.8, toolbox = False )
-    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(context.df)}' )
+    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' )
     #chart.time_scale(right_offset: int, min_bar_spacing: float, visible: bool, time_visible: bool, seconds_visible: bool, border_visible: bool, border_color: COLOR)
     chart.time_scale(visible=False)
     chart.precision(4)
@@ -710,51 +710,49 @@ def launchChart( context:context_c, last_ohlcv ):
     chart_opened = True
 
     # dump all the collected markers into the chart
-    for marker in context.markers:
+    for marker in stream.markers:
         marker.refreshInChart( chart )
 
-    context.chart = chart
-    context.bottomPanel = context.chart.create_subchart(position='bottom', width=1, height=0.2, sync=True ) # sync_crosshairs_only=True
-    context.bottomPanel.legend(visible=True)
-    context.bottomPanel.time_scale(visible=True, time_visible=True)
-    context.bottomPanel.crosshair(horz_visible=False)
+    stream.chart = chart
+    stream.bottomPanel = stream.chart.create_subchart(position='bottom', width=1, height=0.2, sync=True ) # sync_crosshairs_only=True
+    stream.bottomPanel.legend(visible=True)
+    stream.bottomPanel.time_scale(visible=True, time_visible=True)
+    stream.bottomPanel.crosshair(horz_visible=False)
 
     #chart.horizontal_line(price= 1.6)
-    #rsi70line = context.bottomPanel.horizontal_line(1.65)
-    # rsi30line = context.bottomPanel.horizontal_line(30)
 
-    context.parseCandleUpdate( last_ohlcv )
+    stream.parseCandleUpdate( last_ohlcv )
 
     # chart.show( block=False )
     return chart
 
 if __name__ == '__main__':
 
-    # WIP context
-    context = context_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
-    registeredContexts.append( context )
+    # WIP stream
+    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
+    registeredStreams.append( stream )
 
-    # the fetcher will be inside the context
-    fetcher = candles_c( context.exchange.id, context.symbol )
+    # the fetcher will be inside the stream
+    fetcher = candles_c( stream.exchange.id, stream.symbol )
 
     # filename = f'stuff/{exchangeName}-{coin}-USDT-{timeframe}.csv'
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
     
-    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=5000 )
+    ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=5000 )
 
 
-    context.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+    stream.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
     total_start_time = time.time()
     # delete the last row in the dataframe and extract the last row in ohlcvs.
     print( "Creating dataframe" )
-    context.df.drop( context.df.tail(1).index, inplace=True )
+    stream.df.drop( stream.df.tail(1).index, inplace=True )
     last_ohlcv = ohlcvs[-1]
     ohlcvs = ohlcvs[:-1]
     print( "Calculating custom series" )
     start_time = time.time()
-    context.parseCandleUpdate( [last_ohlcv] )
+    stream.parseCandleUpdate( [last_ohlcv] )
     print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
     ###############################################################################
@@ -762,36 +760,36 @@ if __name__ == '__main__':
     # move the dataframe to use it as source for the initialization with precomputed data
     print( "Computing script logic" )
 
-    context.timestamp = 0
-    context.barindex = -1
-    context.initdata = context.df
-    context.shadowcopy = True
+    stream.timestamp = 0
+    stream.barindex = -1
+    stream.initdata = stream.df
+    stream.shadowcopy = True
 
     start_time = time.time()
     # start with a blank dataframe with only the first row copied from the precomputed dataframe
-    context.df = pd.DataFrame( pd.DataFrame(context.initdata.iloc[0]).T, columns=context.initdata.columns )
+    stream.df = pd.DataFrame( pd.DataFrame(stream.initdata.iloc[0]).T, columns=stream.initdata.columns )
     
     # run the script
-    context.parseCandleUpdate( ohlcvs )
-    context.shadowcopy = False
+    stream.parseCandleUpdate( ohlcvs )
+    stream.shadowcopy = False
     print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
     ###############################################################################
 
     # jump-start the chart by running the last row as if it was a update
     start_time = time.time()
-    print( len(context.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - total_start_time))
-    context.initializing = False
-    context.initdata = None # free memory
+    print( len(stream.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - total_start_time))
+    stream.initializing = False
+    stream.initdata = None # free memory
     ohlcvs = None
 
-    launchChart( context, [last_ohlcv] )
+    launchChart( stream, [last_ohlcv] )
 
     
 
 
 
 
-    asyncio.run( runTasks(context) )
+    asyncio.run( runTasks(stream) )
 
 
 
