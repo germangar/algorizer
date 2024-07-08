@@ -146,7 +146,7 @@ class plot_c:
 
 registeredPlots:plot_c = []
 
-def plot( name, source:pd.DataFrame, chart ):
+def plot( name, source:pd.Series, chart ):
     if( chart == None ):
         return
     plot = None
@@ -161,6 +161,7 @@ def plot( name, source:pd.DataFrame, chart ):
         registeredPlots.append( plot )
 
     plot.update( source, chart )
+    return plot
 
 class markers_c:
     def __init__( self, text:str, timestamp, chart = None ):
@@ -446,20 +447,12 @@ class customSeries_c:
         if( len(self.context.df) < self.period ):
             return
         
-        # This should only happen in realtime updates
-        # print( f"Updating {self.name}" )
-        
-        # isolate only the required block of candles to calculate the current value of the custom series
-        # Extract the last 'num_rows' rows of the specified column into a new DataFrame
-        #sdf = df[self.source].tail(self.period).to_frame(name=self.source)
-        #newval = self.func( sdf[self.source], self.period ).iloc[-1]
-        #sdf = df.iloc[-self.period:, :][self.source]
+        # realtime updates
+
+        # slice the required block of candles to calculate the current value of the custom series
         newval = self.func( df.iloc[-self.period:, :][self.source], self.period ).iloc[-1]
-        
-        # with full dataframe: newval = self.func( df.iloc[-self.period:, :], self.period ).iloc[-1]
-        #newval = self.func( df.iloc[-self.period:, :][self.name], self.period ).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
-        self.timestamp = df['timestamp'].iloc[-1]
+        self.timestamp = self.context.timestamp #df['timestamp'].iloc[-1]
         
     def plot( self ):
         chart = self.context.chart
@@ -570,9 +563,14 @@ def calcWPR( source:str, period:int ):
 def runOpenCandle( context:context_c ):
     return
 
-
+oversoldLine = None
+overboughtLine = None
+middleLine = None
 def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     barindex = context.barindex
+    global oversoldLine
+    global overboughtLine
+    global middleLine
 
     ###########################
     # strategy code goes here #
@@ -582,9 +580,24 @@ def runCloseCandle( context:context_c, open:pd.Series, high:pd.Series, low:pd.Se
     sma.plot()
 
     ema = calcEMA( 'close', 4 )
-    plot( ema.name, ema.getSeries(), context.chart )
+    # plot( ema.name, ema.getSeries(), context.chart )
 
     rsi = calcRSI( 'close', 14 )
+    rsiplot = plot( rsi.name, rsi.getSeries(), context.bottomPanel )
+    # if( rsiplot != None ):
+    #     if( middleLine == None ):
+    #         middleLine = rsiplot.line.horizontal_line( 50, width=1, style='dotted', axis_label_visible=False )
+    #     if( oversoldLine == None ):
+    #         oversoldLine = rsiplot.line.horizontal_line( 30, width=1, style='dotted', axis_label_visible=False )
+    #     if( overboughtLine == None ):
+    #         overboughtLine = rsiplot.line.horizontal_line( 70, width=1, style='dotted', axis_label_visible=False )
+
+    # def horizontal_line(self, price: NUM, color: str = 'rgb(122, 146, 202)', width: int = 2,
+    #                     style: LINE_STYLE = 'solid', text: str = '', axis_label_visible: bool = True,
+    #                     func: Optional[Callable] = None
+                        # ) -> 'HorizontalLine':
+    #
+    # LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
 
     dev = calcDEV( 'close', 30 )
     #plot( dev.name, dev.plotData(), context.chart )
@@ -676,6 +689,8 @@ def launchChart( context:context_c, last_ohlcv ):
 
     chart = Chart( inner_height=0.8, toolbox = False )
     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=context.symbol + ' - ' + context.timeframeStr + ' - ' + context.exchange.id + ' - ' + f'candles:{len(context.df)}' )
+    #chart.time_scale(right_offset: int, min_bar_spacing: float, visible: bool, time_visible: bool, seconds_visible: bool, border_visible: bool, border_color: COLOR)
+    chart.time_scale(visible=False)
     chart.precision(4)
     #chart.watermark("Hello World")
     # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
@@ -689,8 +704,6 @@ def launchChart( context:context_c, last_ohlcv ):
     #     func=on_timeframe_selection)
     
     chart.topbar.button('my_button', 'Off', func=on_button_press)
-
-    # chart.horizontal_line(1.6, func=on_horizontal_line_move)
         
     chart.set(tmpdf)
     #chart.show( block=False )
@@ -701,6 +714,15 @@ def launchChart( context:context_c, last_ohlcv ):
         marker.refreshInChart( chart )
 
     context.chart = chart
+    context.bottomPanel = context.chart.create_subchart(position='bottom', width=1, height=0.2, sync=True ) # sync_crosshairs_only=True
+    context.bottomPanel.legend(visible=True)
+    context.bottomPanel.time_scale(visible=True, time_visible=True)
+    context.bottomPanel.crosshair(horz_visible=False)
+
+    #chart.horizontal_line(price= 1.6)
+    #rsi70line = context.bottomPanel.horizontal_line(1.65)
+    # rsi30line = context.bottomPanel.horizontal_line(30)
+
     context.parseCandleUpdate( last_ohlcv )
 
     # chart.show( block=False )
@@ -719,7 +741,7 @@ if __name__ == '__main__':
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
     
-    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=10000 )
+    ohlcvs = fetcher.fetchAmount( context.symbol, context.timeframeStr, amount=5000 )
 
 
     context.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
@@ -764,12 +786,7 @@ if __name__ == '__main__':
 
     launchChart( context, [last_ohlcv] )
 
-    # context.bottomPanel = context.chart.create_subchart(position='bottom', width=1, height=0.25, sync=True ) # sync_crosshairs_only=True
-    # context.bottomPanel.legend(visible=True)
-    # line = context.bottomPanel.create_line(name='vol')
-    # line.set( pd.DataFrame( {'time': pd.to_datetime( context.df['timestamp'], unit='ms' ), 'vol': context.df['volume']} ) )
-    # hist = context.bottomPanel.create_histogram(name='vol_hist')
-    # hist.set( pd.DataFrame({'time': pd.to_datetime( context.df['timestamp'], unit='ms' ), 'vol_hist': context.df['volume']}).dropna() )
+    
 
 
 
