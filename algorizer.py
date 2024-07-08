@@ -390,9 +390,54 @@ def customseries_calculate_rsi(series, period) -> pd.Series:
     rsi = 100 - (100 / (1 + rs))
     return rsi #.iloc[-1]  # Returning the last value of RSI
 
+def customseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
+    """
+    Check if the series has been rising for the given length of time.
+
+    Args:
+    - series: pd.Series, the input series.
+    - length: int, the number of periods to check.
+
+    Returns:
+    - pd.Series, a boolean series indicating where the series is rising.
+    """
+    if len(series) < length:
+        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
+
+    # Calculate the difference between consecutive elements
+    diff_series = series.diff().dropna()
+    
+    # Create a boolean series indicating whether each rolling window is rising
+    is_rising = diff_series.rolling(window=length-1).apply(lambda x: (x > 0).all(), raw=True)
+    is_rising = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_rising])
+
+    return is_rising
+
+def customseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
+    """
+    Check if the series has been falling for the given length of time.
+
+    Args:
+    - series: pd.Series, the input series.
+    - length: int, the number of periods to check.
+
+    Returns:
+    - pd.Series, a boolean series indicating where the series is falling.
+    """
+    if len(series) < length:
+        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
+    
+    # Calculate the difference between consecutive elements
+    diff_series = series.diff().dropna()
+
+    # Create a boolean series indicating whether each rolling window is falling
+    is_falling = diff_series.rolling(window=length-1).apply(lambda x: (x < 0).all(), raw=True)
+    is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
+    return is_falling
+
 class customSeries_c:
     def __init__( self, type:str, source:str, period:int, func = None, stream:stream_c = None ):
-        self.name = f'{type} {source} {period}'
+        self.name = f'{type} {period} {source}'
         self.source = source
         self.period = period
         self.func = func
@@ -452,7 +497,7 @@ class customSeries_c:
         # slice the required block of candles to calculate the current value of the custom series
         newval = self.func( df.iloc[-self.period:, :][self.source], self.period ).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
-        self.timestamp = self.stream.timestamp #df['timestamp'].iloc[-1]
+        self.timestamp = self.stream.timestamp
         
     def plot( self ):
         chart = self.stream.chart
@@ -512,6 +557,17 @@ class customSeries_c:
         if( backindex < 0 ):
             raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
         return df[self.name].iloc[-(backindex + 1)]
+    
+    def bool( self, backindex = 0 ):
+        df = self.stream.df
+        if( self.timestamp == 0 ):
+            return False # let's do this just to avoid crashes
+        
+        if( backindex < 0 ):
+            raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
+        if( df[self.name].iloc[-(backindex + 1)] == pd.NA ):
+            return False
+        return df[self.name].iloc[-(backindex + 1)] != 0.0
         
     def loc( self, index = 0 ):
         df = self.stream.df
@@ -557,7 +613,11 @@ def calcRMA( source:str, period:int ):
 def calcWPR( source:str, period:int ):
     return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
 
+def falling( source:str, period:int ):
+    return activeStream.calcCustomSeries( 'falling', source, period, customseries_calculate_falling )
 
+def rising( source:str, period:int ):
+    return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
 
 
 def runOpenCandle( stream:stream_c ):
@@ -584,20 +644,9 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     rsi = calcRSI( 'close', 14 )
     rsiplot = plot( rsi.name, rsi.getSeries(), stream.bottomPanel )
-    # if( rsiplot != None ):
-    #     if( middleLine == None ):
-    #         middleLine = rsiplot.line.horizontal_line( 50, width=1, style='dotted', axis_label_visible=False )
-    #     if( oversoldLine == None ):
-    #         oversoldLine = rsiplot.line.horizontal_line( 30, width=1, style='dotted', axis_label_visible=False )
-    #     if( overboughtLine == None ):
-    #         overboughtLine = rsiplot.line.horizontal_line( 70, width=1, style='dotted', axis_label_visible=False )
 
-    # def horizontal_line(self, price: NUM, color: str = 'rgb(122, 146, 202)', width: int = 2,
-    #                     style: LINE_STYLE = 'solid', text: str = '', axis_label_visible: bool = True,
-    #                     func: Optional[Callable] = None
-                        # ) -> 'HorizontalLine':
-    #
-    # LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+    sma_rising = rising( sma.name, 10 )
+
 
     dev = calcDEV( 'close', 30 )
     #plot( dev.name, dev.plotData(), stream.chart )
@@ -729,7 +778,7 @@ def launchChart( stream:stream_c, last_ohlcv ):
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '1m' )
     registeredStreams.append( stream )
 
     # the fetcher will be inside the stream
