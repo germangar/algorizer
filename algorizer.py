@@ -294,7 +294,7 @@ class stream_c:
             cseries.update()
 
     def calcCustomSeries( self, type:str, source:str, period:int, func ):
-        name = f'{type} {source} {period}'
+        name = customSeriesNameFormat( type, source, period )
         cseries = None
         # find if there's a item already created for this series
         for thisCS in self.customSeries:
@@ -435,9 +435,12 @@ def customseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
     is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
     return is_falling
 
+def customSeriesNameFormat( type, source, period ):
+    return f'{type} {period} {source}'
+
 class customSeries_c:
     def __init__( self, type:str, source:str, period:int, func = None, stream:stream_c = None ):
-        self.name = f'{type} {period} {source}'
+        self.name = customSeriesNameFormat( type, source, period )
         self.source = source
         self.period = period
         self.func = func
@@ -499,8 +502,9 @@ class customSeries_c:
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = self.stream.timestamp
         
-    def plot( self ):
-        chart = self.stream.chart
+    def plot( self, chart = None ):
+        if( chart == None ):
+            chart = self.stream.chart
         if( self.timestamp > 0 and chart != None ):
             plot( self.name, self.getSeries(), chart )
     
@@ -657,7 +661,7 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     stdev = calcSTDEV( 'close', 350 )
 
     willr = calcWPR( 'close', 32)
-    #willr.plot()
+    willr.plot( stream.bottomPanel )
 
     calcHMA( 'close', 150 ).plot()
 
