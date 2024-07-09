@@ -486,6 +486,8 @@ def customseries_calculate_hma(series: pd.Series, period: int) -> pd.Series:
         
         return hma
 
+
+
 def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
     """
     Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
@@ -500,9 +502,11 @@ def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
     if len(series) < period:
         return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
     
-    if 1:
+    if 1: 
+        # the straight to pandas_t route fails on single candle updates
         return pta.slope( series, period )
     else:
+        # this one doesn't fail on single candle updates but it's slower than recalculating it all using pandas_ta
         def slope_calc(y):
             x = range(len(y))
             n = len(y)
@@ -522,6 +526,10 @@ def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
         slope_series = series.rolling(window=period).apply(slope_calc, raw=False)
 
         return slope_series
+    
+def customseries_calculate_cci(series: pd.Series, period: int) -> pd.Series:
+    df = activeStream.df
+    return pta.cci( df['high'], df['low'], df['close'], period )
 
 def customSeriesNameFormat( type, source, period ):
     return f'{type}{period} {source}'
@@ -535,7 +543,9 @@ class customSeries_c:
         self.stream = stream
         self.timestamp = 0
         self.alwaysReset = True if ( self.func == customseries_calculate_rma or self.func == pta.rma 
-                                    or self.func == customseries_calculate_hma  or self.func == pta.hma ) else False
+                                    or self.func == customseries_calculate_hma  or self.func == pta.hma
+                                    or self.func == customseries_calculate_slope or self.func == pta.slope
+                                    ) else False
 
         if( self.stream == None ):
             raise SystemError( f"Custom Series has no assigned stream [{self.name}]")
@@ -595,11 +605,10 @@ class customSeries_c:
         if( chart == None ):
             chart = self.stream.chart
         if( self.timestamp > 0 and chart != None ):
-            plot( self.name, self.getSeries(), chart )
+            plot( self.name, self.series(), chart )
     
-    def getSeries( self ):
+    def series( self ):
         return self.stream.df[self.name]
-        #return self.stream.df[self.name].dropna()
     
     def crossingUp( self, other ):
         df = self.stream.df
@@ -682,6 +691,12 @@ class customSeries_c:
     
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
+def falling( source:str, period:int ):
+    return activeStream.calcCustomSeries( 'falling', source, period, customseries_calculate_falling )
+
+def rising( source:str, period:int ):
+    return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
+
 def calcSMA( source:str, period:int ):
     return activeStream.calcCustomSeries( 'sma', source, period, pta.sma )
 
@@ -709,14 +724,19 @@ def calcRMA( source:str, period:int ):
 def calcWPR( source:str, period:int ):
     return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
 
-def falling( source:str, period:int ):
-    return activeStream.calcCustomSeries( 'falling', source, period, customseries_calculate_falling )
-
-def rising( source:str, period:int ):
-    return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
-
 def calcSLOPE( source:str, period:int ):
-    return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope ) # not working?
+    return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope )
+
+def calcBIAS( source:str, period:int ):
+    return activeStream.calcCustomSeries( 'bias', source, period, pta.bias )
+
+def calcCCI( period:int ): # CCI uses high, low and close as multi-source
+    return activeStream.calcCustomSeries( 'cci', 'close', period, customseries_calculate_cci )
+
+def calcCFO( source:str, period:int ):
+    return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
+
+
 
 
 
@@ -728,16 +748,13 @@ overboughtLine = None
 middleLine = None
 def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     barindex = stream.barindex
-    global oversoldLine
-    global overboughtLine
-    global middleLine
 
     ###########################
     # strategy code goes here #
     ###########################
 
     sma = calcSMA( 'close', 350 )
-    sma.plot()
+    # sma.plot()
 
     ema = calcEMA( 'close', 4 )
     # plot( ema.name, ema.getSeries(), stream.chart )
@@ -746,6 +763,8 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     #rsiplot = plot( rsi.name, rsi.getSeries(), stream.bottomPanel )
 
     sma_rising = rising( sma.name, 10 )
+
+    calcCFO( 'close', 20 ).plot(stream.bottomPanel)
 
 
     dev = calcDEV( 'close', 30 )
@@ -756,10 +775,11 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     stdev = calcSTDEV( 'close', 350 )
 
-    willr = calcWPR( 'close', 32 ).plot(stream.bottomPanel)
+    # willr = calcWPR( 'close', 32 ).plot(stream.bottomPanel)
+    # calcBIAS( 'close', 32 ).plot(stream.bottomPanel)
 
-    calcHMA( 'close', 150 ).plot()
-    # slope1000 = calcSLOPE( 'close', 200 )
+    calcHMA( 'close', 150 )
+    slope1000 = calcSLOPE( 'close', 200 )
     # plot( slope1000.name, slope1000.getSeries() * 100000, stream.bottomPanel )
 
     if( sma.crossingUp(close) ):
