@@ -435,6 +435,40 @@ def customseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
     is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
     return is_falling
 
+def customseries_calculate_slope(series: pd.Series, length: int) -> pd.Series:
+    """
+    Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
+
+    Args:
+    - series: pd.Series, the input series.
+    - length: int, the period/window for the slope calculation.
+
+    Returns:
+    - pd.Series, the calculated slope series.
+    """
+    if len(series) < length:
+        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
+
+    def slope_calc(y):
+        x = range(len(y))
+        n = len(y)
+        x_mean = sum(x) / n
+        y_mean = sum(y) / n
+
+        num = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y))
+        den = sum((x_i - x_mean) ** 2 for x_i in x)
+
+        if den == 0:
+            return 0  # Prevent division by zero
+
+        slope = num / den
+        return slope
+
+    # Apply the slope calculation to each rolling window
+    slope_series = series.rolling(window=length).apply(slope_calc, raw=False)
+
+    return slope_series
+
 def customSeriesNameFormat( type, source, period ):
     return f'{type} {period} {source}'
 
@@ -623,6 +657,10 @@ def falling( source:str, period:int ):
 def rising( source:str, period:int ):
     return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
 
+def calcSLOPE( source:str, period:int ):
+    return activeStream.calcCustomSeries( 'slope', source, period, pta.slope ) # not working?
+
+
 
 def runOpenCandle( stream:stream_c ):
     return
@@ -647,7 +685,7 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # plot( ema.name, ema.getSeries(), stream.chart )
 
     rsi = calcRSI( 'close', 14 )
-    rsiplot = plot( rsi.name, rsi.getSeries(), stream.bottomPanel )
+    #rsiplot = plot( rsi.name, rsi.getSeries(), stream.bottomPanel )
 
     sma_rising = rising( sma.name, 10 )
 
@@ -660,10 +698,11 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     stdev = calcSTDEV( 'close', 350 )
 
-    willr = calcWPR( 'close', 32)
-    willr.plot( stream.bottomPanel )
+    willr = calcWPR( 'close', 32 ).plot(stream.bottomPanel)
 
     calcHMA( 'close', 150 ).plot()
+    # slope1000 = calcSLOPE( 'close', 200 )
+    # plot( slope1000.name, slope1000.getSeries() * 100000, stream.bottomPanel )
 
     if( sma.crossingUp(close) ):
         stream.createMarker( text='🔷' )
@@ -688,7 +727,6 @@ async def fetchCandleUpdates( stream:stream_c ):
         if( len(response) > maxRows ):
             response = response[len(response)-maxRows:]
 
-        #print( f"FETCHED {len(response)} CANDLES")
         stream.parseCandleUpdate( response )
         
         await asyncio.sleep(0.003)
