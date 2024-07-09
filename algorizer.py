@@ -1,7 +1,7 @@
 #lightweight-charts simple test
 
 import pandas as pd
-import pandas_ta as ta
+import pandas_ta as pta
 import math
 from lightweight_charts import Chart
 import asyncio
@@ -323,7 +323,7 @@ def customseries_calculate_rma(series: pd.Series, length: int) -> pd.Series:
 
 def customseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
     if 1:
-        return ta.mad( series, period )
+        return pta.mad( series, period )
     else:
         # Calculate the average deviation over a given rolling window in a pandas Series.
         # Initialize a list to hold the deviation values
@@ -337,7 +337,9 @@ def customseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
         return pd.Series(deviations, index=series.index).dropna()
 
 def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Series:
-    if 0:
+    if 1:
+        return pta.willr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+    else:
         """
         Calculate Williams %R for a given series using OHLC data from activeStream.df over a period.
 
@@ -365,22 +367,20 @@ def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Seri
 
         # Initialize a list to hold the Williams %R values
         williams_r_values = [pd.NA] * (period - 1)  # NA for the initial period
-    else:
-        return ta.willr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
 
-    # Calculate Williams %R for each rolling window
-    for i in range(period - 1, len(df)):
-        highest_high = df['high'].iloc[i - period + 1:i + 1].max()
-        lowest_low = df['low'].iloc[i - period + 1:i + 1].min()
-        current_close = df['close'].iloc[i]
+        # Calculate Williams %R for each rolling window
+        for i in range(period - 1, len(df)):
+            highest_high = df['high'].iloc[i - period + 1:i + 1].max()
+            lowest_low = df['low'].iloc[i - period + 1:i + 1].min()
+            current_close = df['close'].iloc[i]
 
-        if highest_high == lowest_low:  # Prevent division by zero
-            williams_r_values.append(pd.NA)
-        else:
-            williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100
-            williams_r_values.append(williams_r)
+            if highest_high == lowest_low:  # Prevent division by zero
+                williams_r_values.append(pd.NA)
+            else:
+                williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100
+                williams_r_values.append(williams_r)
 
-    return pd.Series(williams_r_values, index=df.index)
+        return pd.Series(williams_r_values, index=df.index)
 
 def customseries_calculate_rsi(series, period) -> pd.Series:
     deltas = series.diff()
@@ -446,7 +446,7 @@ class customSeries_c:
         self.func = func
         self.stream = stream
         self.timestamp = 0
-        self.alwaysReset = True if self.func == customseries_calculate_rma or self.func == ta.rma else False
+        self.alwaysReset = True if self.func == customseries_calculate_rma or self.func == pta.rma else False
 
         if( self.stream == None ):
             raise SystemError( f"Custom Series has no assigned stream [{self.name}]")
@@ -594,13 +594,13 @@ class customSeries_c:
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
 def calcSMA( source:str, period:int ):
-    return activeStream.calcCustomSeries( 'sma', source, period, ta.sma )
+    return activeStream.calcCustomSeries( 'sma', source, period, pta.sma )
 
 def calcEMA( source:str, period:int ):
-    return activeStream.calcCustomSeries( "ema", source, period, ta.ema )
+    return activeStream.calcCustomSeries( "ema", source, period, pta.ema )
 
 def calcHMA( source:str, period:int ):
-    return activeStream.calcCustomSeries( "hma", source, period, ta.hma )
+    return activeStream.calcCustomSeries( "hma", source, period, pta.hma )
 
 def calcRSI( source:str, period:int ):
     return activeStream.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
@@ -609,7 +609,7 @@ def calcDEV( source:str, period:int ):
     return activeStream.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
 
 def calcSTDEV( source:str, period:int ):
-    return activeStream.calcCustomSeries( 'stdev', source, period, ta.stdev )
+    return activeStream.calcCustomSeries( 'stdev', source, period, pta.stdev )
 
 def calcRMA( source:str, period:int ):
     return activeStream.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
