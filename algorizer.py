@@ -16,7 +16,7 @@ from fetcher import candles_c
 
 SHOW_VOLUME = False
 chart_opened = False
-
+verbose = True
 
 
 def crossingUp( self, other ):
@@ -286,8 +286,8 @@ class stream_c:
                 if( self.shadowcopy and new_row_index % 5000 == 0 ):
                     print( new_row_index, "candles processed." )
 
-                # if( not self.shadowcopy ):
-                #     print( self.df )
+                if( not self.shadowcopy and verbose ):
+                    print( self.df )
 
     def updateAllCustomSeries( self ):
         for cseries in self.customSeries:
@@ -435,7 +435,58 @@ def customseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
     is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
     return is_falling
 
-def customseries_calculate_slope(series: pd.Series, length: int) -> pd.Series:
+def customseries_calculate_wma(series: pd.Series, period: int) -> pd.Series:
+    if 1:
+        if len(series) < period:
+            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
+        return pta.wma( series, period )
+    else:
+        """
+        Calculate the Weighted Moving Average (WMA) for a given series and length.
+        
+        Args:
+        - series: pd.Series, the input series.
+        - length: int, the period/window for the WMA calculation.
+        
+        Returns:
+        - pd.Series, the calculated WMA series.
+        """
+        weights = pd.Series(range(1, period + 1))
+        wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
+        return wma
+
+def customseries_calculate_hma(series: pd.Series, period: int) -> pd.Series:
+    if 1:
+        if len(series) < period:
+            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
+        return pta.hma( series, period )
+    else:
+        """
+        Calculate the Hull Moving Average (HMA) for a given series and length.
+        
+        Args:
+        - series: pd.Series, the input series.
+        - length: int, the period/window for the HMA calculation.
+        
+        Returns:
+        - pd.Series, the calculated HMA series.
+        """
+        if len(series) < period:
+            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the HMA
+        
+        half_length = int(period / 2)
+        sqrt_length = int(period ** 0.5)
+        
+        wma_half_length = pta.wma(series, half_length)
+        wma_full_length = pta.wma(series, period)
+        
+        diff_wma = 2 * wma_half_length - wma_full_length
+        
+        hma = pta.wma(diff_wma, sqrt_length)
+        
+        return hma
+
+def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
     """
     Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
 
@@ -446,31 +497,34 @@ def customseries_calculate_slope(series: pd.Series, length: int) -> pd.Series:
     Returns:
     - pd.Series, the calculated slope series.
     """
-    if len(series) < length:
+    if len(series) < period:
         return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
+    
+    if 1:
+        return pta.slope( series, period )
+    else:
+        def slope_calc(y):
+            x = range(len(y))
+            n = len(y)
+            x_mean = sum(x) / n
+            y_mean = sum(y) / n
 
-    def slope_calc(y):
-        x = range(len(y))
-        n = len(y)
-        x_mean = sum(x) / n
-        y_mean = sum(y) / n
+            num = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y))
+            den = sum((x_i - x_mean) ** 2 for x_i in x)
 
-        num = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y))
-        den = sum((x_i - x_mean) ** 2 for x_i in x)
+            if den == 0:
+                return 0  # Prevent division by zero
 
-        if den == 0:
-            return 0  # Prevent division by zero
+            slope = num / den
+            return slope
 
-        slope = num / den
-        return slope
+        # Apply the slope calculation to each rolling window
+        slope_series = series.rolling(window=period).apply(slope_calc, raw=False)
 
-    # Apply the slope calculation to each rolling window
-    slope_series = series.rolling(window=length).apply(slope_calc, raw=False)
-
-    return slope_series
+        return slope_series
 
 def customSeriesNameFormat( type, source, period ):
-    return f'{type} {period} {source}'
+    return f'{type}{period} {source}'
 
 class customSeries_c:
     def __init__( self, type:str, source:str, period:int, func = None, stream:stream_c = None ):
@@ -480,7 +534,8 @@ class customSeries_c:
         self.func = func
         self.stream = stream
         self.timestamp = 0
-        self.alwaysReset = True if self.func == customseries_calculate_rma or self.func == pta.rma else False
+        self.alwaysReset = True if ( self.func == customseries_calculate_rma or self.func == pta.rma 
+                                    or self.func == customseries_calculate_hma  or self.func == pta.hma ) else False
 
         if( self.stream == None ):
             raise SystemError( f"Custom Series has no assigned stream [{self.name}]")
@@ -633,8 +688,11 @@ def calcSMA( source:str, period:int ):
 def calcEMA( source:str, period:int ):
     return activeStream.calcCustomSeries( "ema", source, period, pta.ema )
 
+def calcWMA( source:str, period:int ):
+    return activeStream.calcCustomSeries( "wma", source, period, customseries_calculate_wma )
+
 def calcHMA( source:str, period:int ):
-    return activeStream.calcCustomSeries( "hma", source, period, pta.hma )
+    return activeStream.calcCustomSeries( "hma", source, period, customseries_calculate_hma )
 
 def calcRSI( source:str, period:int ):
     return activeStream.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
@@ -658,7 +716,7 @@ def rising( source:str, period:int ):
     return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
 
 def calcSLOPE( source:str, period:int ):
-    return activeStream.calcCustomSeries( 'slope', source, period, pta.slope ) # not working?
+    return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope ) # not working?
 
 
 
@@ -830,10 +888,11 @@ if __name__ == '__main__':
     # df = pd.read_csv( filename )
     # print( 'Loading', filename )
     
-    ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=5000 )
+    ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
 
 
     stream.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+    # stream.df['timestamp'] = stream.df['timestamp'].astype(int)
 
     total_start_time = time.time()
     # delete the last row in the dataframe and extract the last row in ohlcvs.
