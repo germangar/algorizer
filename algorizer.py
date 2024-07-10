@@ -108,13 +108,13 @@ def crossing( self, other ):
 
 
 class plot_c:
-    def __init__( self, name:str, source:pd.Series, chart = None ):
+    def __init__( self, name:str, source, chart = None ):
         self.name = name
         self.chart = chart
         self.line = None
         self.initialized = False
 
-    def update( self, source:pd.Series, chart = None ):
+    def update( self, source, chart = None ):
         if( not chart_opened ):
             return
 
@@ -126,7 +126,8 @@ class plot_c:
                 print( "Can't initialize a plot not associated with a chart")
                 return
             
-        source = source.dropna()
+        if( not isinstance(source, pd.Series) ):
+            source = pd.Series([source] * len(activeStream.df), index=activeStream.df.index)
         
         if( not self.initialized ):
             if( len(source)<1 ): # pd.isna(source)
@@ -135,7 +136,8 @@ class plot_c:
             self.line.set( pd.DataFrame({'time': pd.to_datetime( activeStream.df['timestamp'], unit='ms' ), self.name: source}) )
             self.initialized = True
             return
-
+        
+        source = source.dropna()
         if( len(source) < 1 ):
             return
         
@@ -146,7 +148,7 @@ class plot_c:
 
 registeredPlots:plot_c = []
 
-def plot( name, source:pd.Series, chart ):
+def plot( name, source, chart ):
     if( chart == None ):
         return
     plot = None
@@ -564,7 +566,7 @@ class customSeries_c:
             if( self.stream.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.stream.df[self.name] = self.func(self.stream.df[self.source], self.period)
+            self.stream.df[self.name] = self.func(self.stream.df[self.source], self.period).dropna()
             self.timestamp = self.stream.df['timestamp'].iloc[-1]
             if( self.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
@@ -612,14 +614,16 @@ class customSeries_c:
     
     def crossingUp( self, other ):
         df = self.stream.df
-        if( self.timestamp == 0 or len(df)<1 ):
+        if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
             return False
         if isinstance( other, customSeries_c ):
-            if( other.timestamp == 0 ):
+            if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
                 return False
             return ( self.value(1) <= other.value(1) and self.value() >= other.value() and self.value() != self.value(1) )
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
+                return False
+            if pd.isna(other.iloc[-2]) or pd.isna(other.iloc[-1]) :
                 return False
             return ( self.value(1) <= other.iloc[-2] and self.value() >= other.iloc[-1] and self.value() != self.value(1) )
         try:
@@ -631,14 +635,16 @@ class customSeries_c:
     
     def crossingDown( self, other ):
         df = self.stream.df
-        if( self.timestamp == 0 or len(df)<1 ):
+        if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
             return False
         if isinstance( other, customSeries_c ):
-            if( other.timestamp == 0 ):
+            if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
                 return False
             return ( self.value(1) >= other.value(1) and self.value() <= other.value() and self.value() != self.value(1) )
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
+                return False
+            if pd.isna(other.iloc[-2]) or pd.isna(other.iloc[-1]) :
                 return False
             return ( self.value(1) >= other.iloc[-2] and self.value() <= other.iloc[-1] and self.value() != self.value(1) )
         try:
@@ -653,23 +659,21 @@ class customSeries_c:
     
     def value( self, backindex = 0 ):
         df = self.stream.df
-        if( self.timestamp == 0 ):
-            return 0 # let's do this just to avoid crashes
-        
-        if( backindex < 0 ):
-            raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
+        if( backindex < 0 or backindex + 1 > len(df) ):
+            return None
+            #raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
+        if( self.timestamp == 0 or pd.isna(df[self.name].iloc[-(backindex + 1)]) ):
+            return None
         return df[self.name].iloc[-(backindex + 1)]
     
     def bool( self, backindex = 0 ):
         df = self.stream.df
-        if( self.timestamp == 0 ):
-            return False # let's do this just to avoid crashes
-        
-        if( backindex < 0 ):
-            raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
-        if( df[self.name].iloc[-(backindex + 1)] == pd.NA ):
-            return False
-        return df[self.name].iloc[-(backindex + 1)] != 0.0
+        if( backindex < 0 or backindex + 1 > len(df) ):
+            return None
+            #raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
+        if( self.timestamp == 0 or pd.isna(df[self.name].iloc[-(backindex + 1)]) ):
+            return None
+        return df[self.name].iloc[-(backindex + 1)] != 0
         
     def loc( self, index = 0 ):
         df = self.stream.df
@@ -756,24 +760,29 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     sma = calcSMA( 'close', 350 )
     # sma.plot()
 
-    ema = calcEMA( 'close', 4 )
-    # plot( ema.name, ema.getSeries(), stream.chart )
+    # ema = calcEMA( 'close', 4 )
 
-    rsi = calcRSI( 'close', 14 )
+    # rsi = calcRSI( 'close', 14 )
     #rsiplot = plot( rsi.name, rsi.getSeries(), stream.bottomPanel )
 
-    sma_rising = rising( sma.name, 10 )
+    # sma_rising = rising( sma.name, 10 )
 
-    calcCFO( 'close', 20 ).plot(stream.bottomPanel)
+    cfo = calcCFO( 'close', 20 )
+    cfo.plot(stream.bottomPanel)
+
+    r = rising( sma.name, 10 ).value()
+    # if( barindex < 400 ):
+    #     print( "rising:", r, "type:", type(r) )
+    #plot( "lazyline", 10 if r else 5, stream.bottomPanel )
 
 
-    dev = calcDEV( 'close', 30 )
+    # dev = calcDEV( 'close', 30 )
     #plot( dev.name, dev.plotData(), stream.chart )
 
     rma = calcRMA( 'close', 90 )
     rma.plot()
 
-    stdev = calcSTDEV( 'close', 350 )
+    # stdev = calcSTDEV( 'close', 350 )
 
     # willr = calcWPR( 'close', 32 ).plot(stream.bottomPanel)
     # calcBIAS( 'close', 32 ).plot(stream.bottomPanel)
@@ -782,10 +791,11 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     slope1000 = calcSLOPE( 'close', 200 )
     # plot( slope1000.name, slope1000.getSeries() * 100000, stream.bottomPanel )
 
+
     if( sma.crossingUp(close) ):
         stream.createMarker( text='🔷' )
 
-    if( crossingDown( sma, close ) ):
+    if crossingDown( sma, close ):
         stream.createMarker( text='🔺' )
 
     
