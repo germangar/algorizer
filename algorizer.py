@@ -807,8 +807,14 @@ async def fetchCandleUpdates( stream:stream_c ):
 
     maxRows = 100
     while True:
-        response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeStr, limit = maxRows )
-        #print(response)
+        try:
+            response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeStr, limit = maxRows )
+            #print(response)
+        except Exception as e:
+            if isinstance( e, ConnectionResetError ):
+                continue
+            raise SystemError( 'Exception raised at fetchCandleupdates:', e )
+            
 
         # extract the data
 
