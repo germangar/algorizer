@@ -758,37 +758,37 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     ###########################
 
     sma = calcSMA( 'close', 350 )
-    # sma.plot()
+    sma.plot()
 
     # ema = calcEMA( 'close', 4 )
 
-    # rsi = calcRSI( 'close', 14 )
-    #rsiplot = plot( rsi.name, rsi.getSeries(), stream.bottomPanel )
+    rsi = calcRSI( 'close', 14 )
+    rsiplot = plot( rsi.name, rsi.series(), stream.bottomPanel )
 
     # sma_rising = rising( sma.name, 10 )
 
-    cfo = calcCFO( 'close', 20 )
-    cfo.plot(stream.bottomPanel)
+    # cfo = calcCFO( 'close', 20 )
+    # cfo.plot(stream.bottomPanel)
 
-    r = rising( sma.name, 10 ).value()
+    # r = rising( sma.name, 10 ).value()
     # if( barindex < 400 ):
     #     print( "rising:", r, "type:", type(r) )
-    #plot( "lazyline", 10 if r else 5, stream.bottomPanel )
+    plot( "lazyline", 30, stream.bottomPanel )
 
 
     # dev = calcDEV( 'close', 30 )
     #plot( dev.name, dev.plotData(), stream.chart )
 
-    rma = calcRMA( 'close', 90 )
-    rma.plot()
+    # rma = calcRMA( 'close', 90 )
+    # rma.plot()
 
     # stdev = calcSTDEV( 'close', 350 )
 
     # willr = calcWPR( 'close', 32 ).plot(stream.bottomPanel)
     # calcBIAS( 'close', 32 ).plot(stream.bottomPanel)
 
-    calcHMA( 'close', 150 )
-    slope1000 = calcSLOPE( 'close', 200 )
+    # calcHMA( 'close', 150 )
+    # slope1000 = calcSLOPE( 'close', 200 )
     # plot( slope1000.name, slope1000.getSeries() * 100000, stream.bottomPanel )
 
 
@@ -811,8 +811,15 @@ async def fetchCandleUpdates( stream:stream_c ):
             response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeStr, limit = maxRows )
             #print(response)
         except Exception as e:
-            if isinstance( e, ConnectionResetError ):
+            # isinstance(e, ccxt.OnMaintenance) or 
+            if( isinstance(e, ccxt.NetworkError) 
+               or isinstance(e, ccxt.RateLimitExceeded) or isinstance(e, ccxt.RequestTimeout) 
+               or isinstance(e, ccxt.ExchangeNotAvailable) or isinstance(e, ccxt.RateLimitExceeded)
+               or isinstance( e, ConnectionResetError ) 
+               or 'not available' in e ):
+                # ccxt.base.errors.ExchangeError: Service is not available during funding fee settlement. Please try again later.
                 continue
+
             raise SystemError( 'Exception raised at fetchCandleupdates:', e )
             
 
@@ -914,7 +921,7 @@ def launchChart( stream:stream_c, last_ohlcv ):
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '1m' )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
     registeredStreams.append( stream )
 
     # the fetcher will be inside the stream
