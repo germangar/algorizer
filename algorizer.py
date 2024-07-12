@@ -293,7 +293,8 @@ class stream_c:
 
     def updateAllCustomSeries( self ):
         for cseries in self.customSeries:
-            cseries.update()
+            pass # FIXME!!!!!
+            #cseries.update( cseries.source )
 
     def calcCustomSeries( self, type:str, source:pd.Series, period:int, func ):
         name = customSeriesNameFormat( type, source, period )
@@ -307,7 +308,7 @@ class stream_c:
         if cseries == None:
             cseries = customSeries_c( type, source, period, func, self )
             self.customSeries.append(cseries)
-        cseries.update()
+        cseries.update( source )
         return cseries
 
 
@@ -410,7 +411,7 @@ def customseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
     diff_series = series.diff().dropna()
     
     # Create a boolean series indicating whether each rolling window is rising
-    is_rising = diff_series.rolling(window=length-1).apply(lambda x: (x > 0).all(), raw=True)
+    is_rising = diff_series.rolling(window=length-1).apply(lambda x: (x > 0).all(), raw=True).astype(bool)
     is_rising = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_rising])
 
     return is_rising
@@ -433,7 +434,7 @@ def customseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
     diff_series = series.diff().dropna()
 
     # Create a boolean series indicating whether each rolling window is falling
-    is_falling = diff_series.rolling(window=length-1).apply(lambda x: (x < 0).all(), raw=True)
+    is_falling = diff_series.rolling(window=length-1).apply(lambda x: (x < 0).all(), raw=True).astype(bool)
     is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
     return is_falling
 
@@ -505,7 +506,6 @@ def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
         return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
     
     if 1: 
-        # the straight to pandas_t route fails on single candle updates
         return pta.slope( series, period )
     else:
         # this one doesn't fail on single candle updates but it's slower than recalculating it all using pandas_ta
@@ -533,6 +533,7 @@ def customseries_calculate_cci(series: pd.Series, period: int) -> pd.Series:
     df = activeStream.df
     return pta.cci( df['high'], df['low'], df['close'], period )
 
+
 def customSeriesNameFormat( type, source:pd.Series, period ):
     if( source.name == None ):
         raise SystemError( f"Custom Series has no valid name [{type}{period} {source.name}]")
@@ -541,7 +542,7 @@ def customSeriesNameFormat( type, source:pd.Series, period ):
 class customSeries_c:
     def __init__( self, type:str, source:pd.Series, period:int, func = None, stream:stream_c = None ):
         self.name = customSeriesNameFormat( type, source, period )
-        self.source = source
+        self.sourceName = source.name
         self.period = period
         self.func = func
         self.stream = stream
@@ -549,6 +550,7 @@ class customSeries_c:
         self.alwaysReset = True if ( self.func == customseries_calculate_rma or self.func == pta.rma 
                                     or self.func == customseries_calculate_hma  or self.func == pta.hma
                                     or self.func == customseries_calculate_slope or self.func == pta.slope
+                                    # or self.func == customseries_calculate_barssince
                                     ) else False
 
         if( self.stream == None ):
@@ -560,17 +562,19 @@ class customSeries_c:
         if( self.period < 1 ):
             raise SystemError( f"Custom Series  with invalid period [{period}]")
         
-    def initialize( self ):
-        if( len(self.stream.df) >= self.period and ( not self.name in self.stream.df.columns or self.alwaysReset ) ):
+
+    def initialize( self, source:pd.Series ):
+        if( len(source) >= self.period and ( not self.name in self.stream.df.columns or self.alwaysReset ) ):
             if( self.stream.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.stream.df[self.name] = self.func(self.source, self.period).dropna()
+            self.stream.df[self.name] = self.func(source, self.period).dropna()
             self.timestamp = self.stream.df['timestamp'].iloc[-1]
             if( self.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
-    def update( self ):
+
+    def update( self, source:pd.Series ):
         if( self.stream.shadowcopy ):
             return
         
@@ -578,15 +582,13 @@ class customSeries_c:
 
         # has this row already been updated?
         if( self.timestamp >= df['timestamp'].iloc[-1] ):
-            # print( self.name, self.timestamp, "datafrne:", df['timestamp'].iloc[-1] )
             return
 
         # if non existant try to create new
         # the rma needs to be recalculated in full for every new candle
         if( self.timestamp == 0 or self.alwaysReset ):
-            self.initialize()
+            self.initialize( source )
             return
-        
         
         # this happens when making the shadow copy
         if( not pd.isna( df[self.name].iloc[-1] ) ):
@@ -599,7 +601,7 @@ class customSeries_c:
         # realtime updates
 
         # slice the required block of candles to calculate the current value of the custom series
-        newval = self.func(self.source[-self.period:], self.period).iloc[-1]
+        newval = self.func(source[-self.period:], self.period).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = self.stream.timestamp
         
@@ -735,12 +737,15 @@ def calcBIAS( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'bias', source, period, pta.bias )
 
 def calcCCI( period:int ): # CCI uses high, low and close as multi-source
-    return activeStream.calcCustomSeries( 'cci', activeStream.df['close'], period, customseries_calculate_cci )
+    return activeStream.calcCustomSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, customseries_calculate_cci )
 
 def calcCFO( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
 
-
+def calcBarsSince( source:pd.Series ):
+    # if( not stream.initializing ):
+    #     print( source )
+    return
 
 
 
@@ -769,10 +774,7 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     cfo = calcCFO( close, 20 )
     cfo.plot(stream.bottomPanel)
-
-    # r = rising( sma.name, 10 ).value()
-    # if( barindex < 400 ):
-    #     print( "rising:", r, "type:", type(r) )
+    
     plot( "lazyline", 30, stream.bottomPanel )
 
 
@@ -787,7 +789,13 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     willr = calcWPR( close, 32 ).plot(stream.bottomPanel)
     calcBIAS( close, 32 ).plot(stream.bottomPanel)
 
-    calcHMA( close, 150 ).plot()
+    hma = calcHMA( close, 150 )
+    hma.plot()
+    r = rising( hma.series(), 10 )
+    s = calcBarsSince( r.series() != 0 )
+
+    calcCCI( 20 )
+
     slope1000 = calcSLOPE( close, 200 )
     plot( slope1000.name, slope1000.series() * 100000, stream.bottomPanel )
 
