@@ -295,7 +295,7 @@ class stream_c:
         for cseries in self.customSeries:
             cseries.update()
 
-    def calcCustomSeries( self, type:str, source:str, period:int, func ):
+    def calcCustomSeries( self, type:str, source:pd.Series, period:int, func ):
         name = customSeriesNameFormat( type, source, period )
         cseries = None
         # find if there's a item already created for this series
@@ -533,11 +533,13 @@ def customseries_calculate_cci(series: pd.Series, period: int) -> pd.Series:
     df = activeStream.df
     return pta.cci( df['high'], df['low'], df['close'], period )
 
-def customSeriesNameFormat( type, source, period ):
-    return f'{type}{period} {source}'
+def customSeriesNameFormat( type, source:pd.Series, period ):
+    if( source.name == None ):
+        raise SystemError( f"Custom Series has no valid name [{type}{period} {source.name}]")
+    return f'{type}{period} {source.name}'
 
 class customSeries_c:
-    def __init__( self, type:str, source:str, period:int, func = None, stream:stream_c = None ):
+    def __init__( self, type:str, source:pd.Series, period:int, func = None, stream:stream_c = None ):
         self.name = customSeriesNameFormat( type, source, period )
         self.source = source
         self.period = period
@@ -555,9 +557,6 @@ class customSeries_c:
         if( self.func == None ):
             raise SystemError( f"Custom Series without a func [{self.name}]")
 
-        if( not self.source in stream.df.columns ):
-            raise SystemError( f"Custom Series  with unknown source [{source}]")
-
         if( self.period < 1 ):
             raise SystemError( f"Custom Series  with invalid period [{period}]")
         
@@ -566,7 +565,7 @@ class customSeries_c:
             if( self.stream.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.stream.df[self.name] = self.func(self.stream.df[self.source], self.period).dropna()
+            self.stream.df[self.name] = self.func(self.source, self.period).dropna()
             self.timestamp = self.stream.df['timestamp'].iloc[-1]
             if( self.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
@@ -588,6 +587,7 @@ class customSeries_c:
             self.initialize()
             return
         
+        
         # this happens when making the shadow copy
         if( not pd.isna( df[self.name].iloc[-1] ) ):
             return
@@ -599,7 +599,7 @@ class customSeries_c:
         # realtime updates
 
         # slice the required block of candles to calculate the current value of the custom series
-        newval = self.func( df.iloc[-self.period:, :][self.source], self.period ).iloc[-1]
+        newval = self.func(self.source[-self.period:], self.period).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = self.stream.timestamp
         
@@ -695,49 +695,49 @@ class customSeries_c:
     
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
-def falling( source:str, period:int ):
+def falling( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'falling', source, period, customseries_calculate_falling )
 
-def rising( source:str, period:int ):
+def rising( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
 
-def calcSMA( source:str, period:int ):
+def calcSMA( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'sma', source, period, pta.sma )
 
-def calcEMA( source:str, period:int ):
+def calcEMA( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( "ema", source, period, pta.ema )
 
-def calcWMA( source:str, period:int ):
+def calcWMA( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( "wma", source, period, customseries_calculate_wma )
 
-def calcHMA( source:str, period:int ):
+def calcHMA( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( "hma", source, period, customseries_calculate_hma )
 
-def calcRSI( source:str, period:int ):
+def calcRSI( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
 
-def calcDEV( source:str, period:int ):
+def calcDEV( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
 
-def calcSTDEV( source:str, period:int ):
+def calcSTDEV( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'stdev', source, period, pta.stdev )
 
-def calcRMA( source:str, period:int ):
+def calcRMA( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
 
-def calcWPR( source:str, period:int ):
+def calcWPR( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
 
-def calcSLOPE( source:str, period:int ):
+def calcSLOPE( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope )
 
-def calcBIAS( source:str, period:int ):
+def calcBIAS( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'bias', source, period, pta.bias )
 
 def calcCCI( period:int ): # CCI uses high, low and close as multi-source
-    return activeStream.calcCustomSeries( 'cci', 'close', period, customseries_calculate_cci )
+    return activeStream.calcCustomSeries( 'cci', activeStream.df['close'], period, customseries_calculate_cci )
 
-def calcCFO( source:str, period:int ):
+def calcCFO( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
 
 
@@ -757,18 +757,18 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # strategy code goes here #
     ###########################
 
-    sma = calcSMA( 'close', 350 )
+    sma = calcSMA( close, 350 )
     sma.plot()
 
-    # ema = calcEMA( 'close', 4 )
+    ema = calcEMA( close, 4 )
 
-    rsi = calcRSI( 'close', 14 )
+    rsi = calcRSI( close, 14 )
     rsiplot = plot( rsi.name, rsi.series(), stream.bottomPanel )
 
     # sma_rising = rising( sma.name, 10 )
 
-    # cfo = calcCFO( 'close', 20 )
-    # cfo.plot(stream.bottomPanel)
+    cfo = calcCFO( close, 20 )
+    cfo.plot(stream.bottomPanel)
 
     # r = rising( sma.name, 10 ).value()
     # if( barindex < 400 ):
@@ -776,20 +776,20 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     plot( "lazyline", 30, stream.bottomPanel )
 
 
-    # dev = calcDEV( 'close', 30 )
-    #plot( dev.name, dev.plotData(), stream.chart )
+    dev = calcDEV( close, 30 )
+    plot( dev.name, dev.series(), stream.bottomPanel )
 
-    # rma = calcRMA( 'close', 90 )
-    # rma.plot()
+    rma = calcRMA( close, 90 )
+    rma.plot()
 
-    # stdev = calcSTDEV( 'close', 350 )
+    stdev = calcSTDEV( close, 350 )
 
-    # willr = calcWPR( 'close', 32 ).plot(stream.bottomPanel)
-    # calcBIAS( 'close', 32 ).plot(stream.bottomPanel)
+    willr = calcWPR( close, 32 ).plot(stream.bottomPanel)
+    calcBIAS( close, 32 ).plot(stream.bottomPanel)
 
-    # calcHMA( 'close', 150 )
-    # slope1000 = calcSLOPE( 'close', 200 )
-    # plot( slope1000.name, slope1000.getSeries() * 100000, stream.bottomPanel )
+    calcHMA( close, 150 ).plot()
+    slope1000 = calcSLOPE( close, 200 )
+    plot( slope1000.name, slope1000.series() * 100000, stream.bottomPanel )
 
 
     if( sma.crossingUp(close) ):
