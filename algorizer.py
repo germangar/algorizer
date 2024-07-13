@@ -757,7 +757,7 @@ def calcBarsSince( source ):
         return None
     return activeStream.barindex - index_when_true
 
-
+''
 def calcIndexWhenFalse( source ):
     if( not isinstance(source, pd.Series ) ):
         if( isinstance( source, customSeries_c) ):
@@ -774,15 +774,8 @@ def calcIndexWhenFalse( source ):
 
         return first_false_index
     else:
-        return 0  # Return 0 if the series is empty or has no True values
+        return 0  # Return 0 if the series is empty or has no True values''
 
-# def calcIndexWhenFalse( ssource:pd.Series ):
-#     if ssource.dtype != bool:
-#         # raise SystemError( 'calcIndexWhenFalse: dtype != BOOL')
-#         source = ssource.astype(bool)
-#     else:
-#         source = ssource
-#     return (~source[::-1]).cumsum().eq(0).idxmax() if source.any() else None
 
 def calcBarsWhileTrue( source ):
     index_when_false = calcIndexWhenFalse( source )
