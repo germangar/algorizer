@@ -742,10 +742,55 @@ def calcCCI( period:int ): # CCI uses high, low and close as multi-source
 def calcCFO( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
 
-def calcBarsSince( source:pd.Series ):
-    # if( not stream.initializing ):
-    #     print( source )
-    return
+def calcIndexWhenTrue( source ):
+    if( not isinstance(source, pd.Series ) ):
+        if( isinstance( source, customSeries_c) ):
+            source = source.series()
+        else:
+            raise ValueError( "calcIndexWhenTrue must be called with a series" )
+    boolean_source = source.astype(bool) if source.dtype != bool else source
+    return boolean_source[::-1].idxmax() if source.any() else None
+
+def calcBarsSince( source ):
+    index_when_true = calcIndexWhenTrue( source )
+    if( index_when_true == None ):
+        return None
+    return activeStream.barindex - index_when_true
+
+
+def calcIndexWhenFalse( source ):
+    if( not isinstance(source, pd.Series ) ):
+        if( isinstance( source, customSeries_c) ):
+            source = source.series()
+        else:
+            raise ValueError( "calcIndexWhenFalse must be called with a series" )
+    if not source.empty and source.any():
+        # Ensure the source is boolean
+        boolean_source = source.astype(bool) if source.dtype != bool else source
+        
+        # Reverse the boolean source and Calculate the cumulative sum of the negated values
+        cumsum_negated = (~boolean_source[::-1]).cumsum()
+        first_false_index = cumsum_negated[cumsum_negated == 1].index.min() # Find the first 1 in the cumulative sum (which means the first False in the original series from the end)
+
+        return first_false_index
+    else:
+        return 0  # Return 0 if the series is empty or has no True values
+
+# def calcIndexWhenFalse( ssource:pd.Series ):
+#     if ssource.dtype != bool:
+#         # raise SystemError( 'calcIndexWhenFalse: dtype != BOOL')
+#         source = ssource.astype(bool)
+#     else:
+#         source = ssource
+#     return (~source[::-1]).cumsum().eq(0).idxmax() if source.any() else None
+
+def calcBarsWhileTrue( source ):
+    index_when_false = calcIndexWhenFalse( source )
+    if( index_when_false == None ):
+        return None
+    return activeStream.barindex - index_when_false
+
+
 
 
 
@@ -779,7 +824,7 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
 
     dev = calcDEV( close, 30 )
-    plot( dev.name, dev.series(), stream.bottomPanel )
+    # plot( dev.name, dev.series(), stream.bottomPanel )
 
     rma = calcRMA( close, 90 )
     rma.plot()
@@ -787,17 +832,20 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     stdev = calcSTDEV( close, 350 )
 
     willr = calcWPR( close, 32 ).plot(stream.bottomPanel)
-    calcBIAS( close, 32 ).plot(stream.bottomPanel)
+    # calcBIAS( close, 32 ).plot(stream.bottomPanel)
 
     hma = calcHMA( close, 150 )
     hma.plot()
     r = rising( hma.series(), 10 )
-    s = calcBarsSince( r.series() != 0 )
+    f = falling( hma.series(), 10 )
+    if( not activeStream.initializing ):
+        print( "hma last rising:", calcBarsSince( r ) )
+        print( "hma falling for:", calcBarsWhileTrue( f.series() ) )
 
     calcCCI( 20 )
 
-    slope1000 = calcSLOPE( close, 200 )
-    plot( slope1000.name, slope1000.series() * 100000, stream.bottomPanel )
+    slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
+    plot( slope1000.name, slope1000.series(), stream.bottomPanel )
 
 
     if( sma.crossingUp(close) ):
