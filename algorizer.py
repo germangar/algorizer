@@ -13,10 +13,12 @@ import tools
 from tools import df_append
 from fetcher import candles_c
 
+import strategy
+
 
 SHOW_VOLUME = False
 chart_opened = False
-verbose = True
+verbose = False
 
 
 def crossingUp( self, other ):
@@ -254,19 +256,18 @@ class stream_c:
                 self.timestamp = self.df['timestamp'].iloc[-1]
                 new_row_index = self.barindex + 1
 
-                # if( self.shadowcopy and self.barindex + 1 != len(self.df) ):
-                #     raise SystemError( f"self.barindex [{self.barindex}] != len(self.df [{len(self.df)}])" )
-
-                if( not self.shadowcopy ):
-                    self.updateAllCustomSeries() # update all calculated series regardless if they are called or not
-
                 runCloseCandle( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
+
+                # if( not self.shadowcopy ):
+                #     self.updateAllCustomSeries() # update all calculated series regardless if they are called or not
 
                 # OPEN A NEW CANDLE
 
                 if( self.shadowcopy ):
-                    row_to_append = self.initdata.iloc[new_row_index].to_frame().T
-                    self.df = pd.concat( [self.df, row_to_append], ignore_index=True )
+                    # row_to_append = self.initdata.iloc[new_row_index].to_frame().T
+                    # self.df = pd.concat( [self.df, row_to_append], ignore_index=True )
+                    self.df = pd.concat( [self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True )
+
                 else:
                     self.df.loc[new_row_index, 'timestamp'] = newTimestamp
                     self.df.loc[new_row_index, 'open'] = newrow[1]
@@ -284,25 +285,21 @@ class stream_c:
 
                     chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=self.symbol + ' - ' + self.timeframeStr + ' - ' + self.exchange.id + ' - ' + f'candles:{len(self.df)}' )
 
-                runOpenCandle( self )
+
                 if( self.shadowcopy and new_row_index % 5000 == 0 ):
                     print( new_row_index, "candles processed." )
 
                 if( not self.shadowcopy and verbose ):
                     print( self.df )
 
-    def updateAllCustomSeries( self ):
-        for cseries in self.customSeries:
-            pass # FIXME!!!!!
-            #cseries.update( cseries.source )
 
     def calcCustomSeries( self, type:str, source:pd.Series, period:int, func ):
         name = customSeriesNameFormat( type, source, period )
         cseries = None
         # find if there's a item already created for this series
-        for thisCS in self.customSeries:
-            if thisCS.name == name:
-                cseries = thisCS
+        for cs in self.customSeries:
+            if cs.name == name:
+                cseries = cs
                 # print( 'found', name )
                 break
         if cseries == None:
@@ -552,9 +549,13 @@ class customSeries_c:
                                     or self.func == customseries_calculate_slope or self.func == pta.slope
                                     # or self.func == customseries_calculate_barssince
                                     ) else False
+        
 
         if( self.stream == None ):
             raise SystemError( f"Custom Series has no assigned stream [{self.name}]")
+        
+        if( self.stream.shadowcopy ):
+            raise SystemError( f'Tried to create series [{self.name}] while shadowcopying.' )
 
         if( self.func == None ):
             raise SystemError( f"Custom Series without a func [{self.name}]")
@@ -786,13 +787,6 @@ def calcBarsWhileTrue( source ):
 
 
 
-
-def runOpenCandle( stream:stream_c ):
-    return
-
-oversoldLine = None
-overboughtLine = None
-middleLine = None
 def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     barindex = stream.barindex
 
@@ -800,54 +794,57 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # strategy code goes here #
     ###########################
 
-    sma = calcSMA( close, 350 )
-    sma.plot()
+    # sma = calcSMA( close, 350 )
+    # sma.plot()
 
-    ema = calcEMA( close, 4 )
+    # ema = calcEMA( close, 4 )
 
-    rsi = calcRSI( close, 14 )
-    rsiplot = plot( rsi.name, rsi.series(), stream.bottomPanel )
+    # rsi = calcRSI( close, 14 )
+    # rsiplot = plot( rsi.name, rsi.series(), stream.bottomPanel )
 
-    # sma_rising = rising( sma.name, 10 )
+    # # sma_rising = rising( sma.name, 10 )
 
-    cfo = calcCFO( close, 20 )
-    cfo.plot(stream.bottomPanel)
-    
-    plot( "lazyline", 30, stream.bottomPanel )
+    # cfo = calcCFO( close, 20 )
+    # cfo.plot(stream.bottomPanel)
 
+    # dev = calcDEV( close, 30 )
+    # # plot( dev.name, dev.series(), stream.bottomPanel )
 
-    dev = calcDEV( close, 30 )
-    # plot( dev.name, dev.series(), stream.bottomPanel )
+    # rma = calcRMA( close, 90 )
+    # rma.plot()
 
-    rma = calcRMA( close, 90 )
-    rma.plot()
+    # stdev = calcSTDEV( close, 350 )
 
-    stdev = calcSTDEV( close, 350 )
+    # willr = calcWPR( close, 32 ).plot(stream.bottomPanel)
+    # # calcBIAS( close, 32 ).plot(stream.bottomPanel)
 
-    willr = calcWPR( close, 32 ).plot(stream.bottomPanel)
-    # calcBIAS( close, 32 ).plot(stream.bottomPanel)
-
-    hma = calcHMA( close, 150 )
-    hma.plot()
-    r = rising( hma.series(), 10 )
-    f = falling( hma.series(), 10 )
-    if( not activeStream.initializing ):
-        print( "hma last rising:", calcBarsSince( r ) )
-        print( "hma falling for:", calcBarsWhileTrue( f.series() ) )
-
-    calcCCI( 20 )
-
-    slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
-    plot( slope1000.name, slope1000.series(), stream.bottomPanel )
+    # hma = calcHMA( close, 150 )
+    # hma.plot()
+    # r = rising( hma.series(), 10 )
+    # f = falling( hma.series(), 10 )
+    # if( not activeStream.initializing ):
+    #     print( (hma.series() > 1.7) )
 
 
-    if( sma.crossingUp(close) ):
-        stream.createMarker( text='🔷' )
+    # calcBarsSince( r )
+    # calcBarsWhileTrue( hma.series() > 1.7 )
 
-    if crossingDown( sma, close ):
-        stream.createMarker( text='🔺' )
+    # calcCCI( 20 )
 
-    
+    # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
+    # plot( slope1000.name, slope1000.series(), stream.bottomPanel )
+
+
+    # if( sma.crossingUp(close) ):
+    #     # strategy.entry( 'buy', 100 )
+    #     stream.createMarker( text='🔷' )
+
+    # if crossingDown( sma, close ):
+    #     stream.createMarker( text='🔺' )
+
+    # plot( "lazyline", 30, stream.bottomPanel )
+
+
 
     return
 
@@ -861,8 +858,8 @@ async def fetchCandleUpdates( stream:stream_c ):
             #print(response)
         except Exception as e:
             # isinstance(e, ccxt.OnMaintenance) or 
-            if( isinstance(e, ccxt.NetworkError) 
-               or isinstance(e, ccxt.RateLimitExceeded) or isinstance(e, ccxt.RequestTimeout) 
+            # isinstance(e, ccxt.NetworkError) 
+            if( isinstance(e, ccxt.RateLimitExceeded) or isinstance(e, ccxt.RequestTimeout) 
                or isinstance(e, ccxt.ExchangeNotAvailable) or isinstance(e, ccxt.RateLimitExceeded)
                or isinstance( e, ConnectionResetError ) 
                or 'not available' in e ):
@@ -970,28 +967,24 @@ def launchChart( stream:stream_c, last_ohlcv ):
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '5m' )
     registeredStreams.append( stream )
 
     # the fetcher will be inside the stream
     fetcher = candles_c( stream.exchange.id, stream.symbol )
 
-    # filename = f'stuff/{exchangeName}-{coin}-USDT-{timeframe}.csv'
-    # df = pd.read_csv( filename )
-    # print( 'Loading', filename )
-    
-    ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
+    #ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
+    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 147679 )
 
-
-    stream.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
-    # stream.df['timestamp'] = stream.df['timestamp'].astype(int)
-
-    total_start_time = time.time()
-    # delete the last row in the dataframe and extract the last row in ohlcvs.
     print( "Creating dataframe" )
-    stream.df.drop( stream.df.tail(1).index, inplace=True )
+
+    # take out the last row to jumpstart the customSeries later
     last_ohlcv = ohlcvs[-1]
     ohlcvs = ohlcvs[:-1]
+    stream.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+
+    
+    #stream.df.drop( stream.df.tail(1).index, inplace=True )
     print( "Calculating custom series" )
     start_time = time.time()
     stream.parseCandleUpdate( [last_ohlcv] )
@@ -1007,19 +1000,16 @@ if __name__ == '__main__':
     stream.initdata = stream.df
     stream.shadowcopy = True
 
-    start_time = time.time()
     # start with a blank dataframe with only the first row copied from the precomputed dataframe
     stream.df = pd.DataFrame( pd.DataFrame(stream.initdata.iloc[0]).T, columns=stream.initdata.columns )
     
     # run the script
     stream.parseCandleUpdate( ohlcvs )
     stream.shadowcopy = False
-    print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
     ###############################################################################
 
     # jump-start the chart by running the last row as if it was a update
-    start_time = time.time()
-    print( len(stream.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - total_start_time))
+    print( len(stream.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
     stream.initializing = False
     stream.initdata = None # free memory
     ohlcvs = None
