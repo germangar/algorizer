@@ -794,10 +794,11 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # strategy code goes here #
     ###########################
 
-    # sma = calcSMA( close, 350 )
-    # sma.plot()
+    sma = calcSMA( close, 350 )
+    sma.plot()
 
-    # ema = calcEMA( close, 4 )
+    ema = calcEMA( close, 4 )
+    ema.plot()
 
     # rsi = calcRSI( close, 14 )
     # rsiplot = plot( rsi.name, rsi.series(), stream.bottomPanel )
@@ -839,10 +840,10 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     #     # strategy.entry( 'buy', 100 )
     #     stream.createMarker( text='🔷' )
 
-    # if crossingDown( sma, close ):
-    #     stream.createMarker( text='🔺' )
+    if crossingDown( sma, ema ):
+        stream.createMarker( text='🔺' )
 
-    # plot( "lazyline", 30, stream.bottomPanel )
+    plot( "lazyline", 30, stream.bottomPanel )
 
 
 
@@ -974,7 +975,7 @@ if __name__ == '__main__':
     fetcher = candles_c( stream.exchange.id, stream.symbol )
 
     #ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
-    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 147679 )
+    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 10000 )
 
     print( "Creating dataframe" )
 
