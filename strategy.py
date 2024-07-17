@@ -16,7 +16,7 @@ class s_position_c:
         self.entries:s_entry_c = []
         return
     
-    def close(sefl):
+    def close(self):
         self.active = False
         return
 

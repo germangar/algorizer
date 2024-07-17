@@ -17,7 +17,6 @@ import strategy
 
 
 SHOW_VOLUME = False
-chart_opened = False
 verbose = False
 
 
@@ -110,23 +109,14 @@ def crossing( self, other ):
 
 
 class plot_c:
-    def __init__( self, name:str, source, chart = None ):
+    def __init__( self, name:str, source ):
         self.name = name
-        self.chart = chart
         self.line = None
         self.initialized = False
 
     def update( self, source, chart = None ):
-        if( not chart_opened ):
+        if( chart == None ):
             return
-
-        if( self.chart == None ):
-            if( chart != None ):
-                self.chart = chart
-                print( "Plot assigned a chart")
-            else:
-                print( "Can't initialize a plot not associated with a chart")
-                return
             
         if( not isinstance(source, pd.Series) ):
             source = pd.Series([source] * len(activeStream.df), index=activeStream.df.index)
@@ -150,8 +140,8 @@ class plot_c:
 
 registeredPlots:plot_c = []
 
-def plot( name, source, chart ):
-    if( chart == None ):
+def plot( name, source, chart_name = None ):
+    if( window == None ):
         return
     plot = None
     for thisPlot in registeredPlots:
@@ -161,9 +151,10 @@ def plot( name, source, chart ):
             break
 
     if( plot == None ):
-        plot = plot_c( name, source, chart )
+        plot = plot_c( name, source )
         registeredPlots.append( plot )
 
+    chart = window.bottomPanel if( chart_name == 'panel' ) else window.chart
     plot.update( source, chart )
     return plot
 
@@ -189,6 +180,10 @@ class markers_c:
             self.chart = chart
         self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
 
+markers:markers_c = []
+
+def createMarker( text:str, timestamp, chart ):
+    markers.append( markers_c( text, timestamp, chart ) )
 
 class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframe ):
@@ -200,10 +195,7 @@ class stream_c:
         self.timestamp = 0
         self.initializing = True
         self.shadowcopy = False
-        self.chart = None
-        self.bottomPanel = None
 
-        self.markers:markers_c = []
         self.customSeries:customSeries_c = []
 
         self.df:pd.DataFrame = []
@@ -220,7 +212,6 @@ class stream_c:
     def parseCandleUpdate( self, rows ):
         global activeStream
         activeStream = self
-        chart = self.chart
         for newrow in rows:
             newTimestamp = int(newrow[0])
             if( newTimestamp == None ):
@@ -240,11 +231,8 @@ class stream_c:
                 self.df.loc[self.df.index[-1], 'volume'] = newrow[5]
 
                 #update the chart
-                if( chart != None and not self.initializing ):
-                    data_dict = {'time': pd.to_datetime( self.df['timestamp'].iloc[-1], unit='ms' ), 'open': self.df['open'].iloc[-1], 'high': self.df['high'].iloc[-1], 'low': self.df['low'].iloc[-1], 'close': self.df['close'].iloc[-1] }
-                    if SHOW_VOLUME:
-                        data_dict['volume'] = self.df['volume'].iloc[-1]
-                    chart.update( pd.Series(data_dict) )
+                if( window != None ):
+                    window.updateChart()
 
             else:
                 if( not self.initializing ):
@@ -277,14 +265,8 @@ class stream_c:
                     self.df.loc[new_row_index, 'volume'] = newrow[5]
 
                 # update the chart
-                if( chart != None and not self.initializing ):
-                    data_dict = {'time': pd.to_datetime( self.df['timestamp'].iloc[-1], unit='ms' ), 'open': self.df['open'].iloc[-1], 'high': self.df['high'].iloc[-1], 'low': self.df['low'].iloc[-1], 'close': self.df['close'].iloc[-1] }
-                    if SHOW_VOLUME:
-                        data_dict['volume'] = self.df['volume'].iloc[-1]
-                    chart.update( pd.Series(data_dict) )
-
-                    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=self.symbol + ' - ' + self.timeframeStr + ' - ' + self.exchange.id + ' - ' + f'candles:{len(self.df)}' )
-
+                if( window != None ):
+                    window.updateChart()
 
                 if( self.shadowcopy and new_row_index % 5000 == 0 ):
                     print( new_row_index, "candles processed." )
@@ -309,8 +291,7 @@ class stream_c:
         return cseries
 
 
-    def createMarker( self, text:str ):
-        self.markers.append( markers_c( text, self.timestamp, self.chart ) )
+    
 
     
 
@@ -607,9 +588,9 @@ class customSeries_c:
         self.timestamp = self.stream.timestamp
         
     def plot( self, chart = None ):
-        if( chart == None ):
-            chart = self.stream.chart
-        if( self.timestamp > 0 and chart != None ):
+        if( window == None ):
+            return
+        if( self.timestamp > 0 ):
             plot( self.name, self.series(), chart )
     
     def series( self ):
@@ -800,24 +781,24 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     ema = calcEMA( close, 4 )
     ema.plot()
 
-    # rsi = calcRSI( close, 14 )
-    # rsiplot = plot( rsi.name, rsi.series(), stream.bottomPanel )
+    rsi = calcRSI( close, 14 )
+    rsiplot = plot( rsi.name, rsi.series(), 'panel' )
 
     # # sma_rising = rising( sma.name, 10 )
 
     # cfo = calcCFO( close, 20 )
-    # cfo.plot(stream.bottomPanel)
+    # cfo.plot(window.bottomPanel)
 
     # dev = calcDEV( close, 30 )
-    # # plot( dev.name, dev.series(), stream.bottomPanel )
+    # # plot( dev.name, dev.series(), window.bottomPanel )
 
     # rma = calcRMA( close, 90 )
     # rma.plot()
 
-    # stdev = calcSTDEV( close, 350 )
+    stdev = calcSTDEV( close, 350 )
 
-    # willr = calcWPR( close, 32 ).plot(stream.bottomPanel)
-    # # calcBIAS( close, 32 ).plot(stream.bottomPanel)
+    willr = calcWPR( close, 32 ).plot('panel')
+    # # calcBIAS( close, 32 ).plot(window.bottomPanel)
 
     # hma = calcHMA( close, 150 )
     # hma.plot()
@@ -833,17 +814,18 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # calcCCI( 20 )
 
     # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
-    # plot( slope1000.name, slope1000.series(), stream.bottomPanel )
+    # plot( slope1000.name, slope1000.series(), window.bottomPanel )
 
 
     # if( sma.crossingUp(close) ):
     #     # strategy.entry( 'buy', 100 )
-    #     stream.createMarker( text='🔷' )
+    #     createMarker( '🔷', stream.timestamp, window.chart )
 
     if crossingDown( sma, ema ):
-        stream.createMarker( text='🔺' )
+        if( window != None ):
+            createMarker( '🔺', stream.timestamp, window.chart )
 
-    plot( "lazyline", 30, stream.bottomPanel )
+    # plot( "lazyline", 30, window.bottomPanel )
 
 
 
@@ -889,24 +871,37 @@ async def doNothing():
 
 from datetime import datetime
 async def update_clock(stream):
-    if( stream.chart == None ):
+    if( window.chart == None ):
         return
-    while stream.chart.is_alive:
+    while window.chart.is_alive:
         await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-        stream.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+        window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+
+
+async def watch_chart_and_add_task(tasks):
+    while window.chart is None:
+        print("Waiting for chart to become available...")
+        await asyncio.sleep(0.2)
+    print("Chart is now available, adding show_async task...")
+    tasks.append(asyncio.create_task(window.chart.show_async()))
+
 
 async def runTasks(stream):
     task1 = asyncio.create_task(fetchCandleUpdates(stream))
     task2 = asyncio.create_task(update_clock(stream))
-    task3 = stream.chart.show_async() if stream.chart is not None else None
 
-    tasks = [task for task in [task1, task2, task3] if task is not None]
+    tasks = [task1, task2]
+
+    # Create a task that waits for window.chart to become available
+    task3 = asyncio.create_task(watch_chart_and_add_task(tasks))
+    tasks.append(task3)
+
     await asyncio.gather(*tasks)
-
     
 
 async def on_timeframe_selection(chart):
     print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
+
 
 async def on_button_press(chart):
     new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
@@ -916,59 +911,68 @@ async def on_button_press(chart):
 # def on_horizontal_line_move(chart, line):
 #     print(f'Horizontal line moved to: {line.price}')
 
-def launchChart( stream:stream_c, last_ohlcv ):
-    global chart_opened
-    ##########################
-    #### Set up the chart ####
-    ##########################
-    
-    tmpdf = pd.DataFrame( { 'time':pd.to_datetime( stream.df['timestamp'], unit='ms' ), 'open':stream.df['open'], 'high':stream.df['high'], 'low':stream.df['low'], 'close':stream.df['close']} )
-    if( SHOW_VOLUME ):
-        tmpdf['volume'] = stream.df['volume']
 
-    chart = Chart( inner_height=0.8, toolbox = False )
-    chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' )
-    #chart.time_scale(right_offset: int, min_bar_spacing: float, visible: bool, time_visible: bool, seconds_visible: bool, border_visible: bool, border_color: COLOR)
-    chart.time_scale(visible=False)
-    chart.precision(4)
-    #chart.watermark("Hello World")
-    # chart.layout( background_color='rgb(249, 250, 246)', text_color='rgb(54, 71, 77)', font_size=14 )
-    # chart.grid(vert_enabled: bool, horz_enabled: bool, color: COLOR, style: LINE_STYLE)
-    chart.layout( font_size=14 )
+class window_c:
+    def __init__( self, precision = 4, bottompanel_precision = 2 ):
+        self.stream = None
+        self.chart = None
+        self.bottomPanel = None
+        self.precision = precision
+        self.bottompanel_precision = bottompanel_precision
 
-    # chart.topbar.switcher(
-    #     name='my_switcher',
-    #     options=('1min', '5min', '30min'),
-    #     default='5min',
-    #     func=on_timeframe_selection)
-    
-    chart.topbar.button('my_button', 'Off', func=on_button_press)
+    def initChart( self, stream ):
+        if( stream == None ): raise SystemError( "Attempted to create a window without a stream" )
+        self.stream = stream
         
-    chart.set(tmpdf)
-    #chart.show( block=False )
-    chart_opened = True
+        self.chart = chart = Chart( inner_height=0.8, toolbox = False )
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' )
+        chart.time_scale( visible=False )
+        chart.layout( font_size=14 )
+        chart.precision( self.precision )
+        chart.topbar.button('my_button', 'Off', func=on_button_press)
 
-    # dump all the collected markers into the chart
-    for marker in stream.markers:
-        marker.refreshInChart( chart )
+        tmpdf = pd.DataFrame( { 'time':pd.to_datetime( stream.df['timestamp'], unit='ms' ), 'open':stream.df['open'], 'high':stream.df['high'], 'low':stream.df['low'], 'close':stream.df['close']} )
+        if( SHOW_VOLUME ):
+            tmpdf['volume'] = stream.df['volume']
 
-    stream.chart = chart
-    stream.bottomPanel = stream.chart.create_subchart(position='bottom', width=1, height=0.2, sync=True ) # sync_crosshairs_only=True
-    stream.bottomPanel.legend(visible=True)
-    stream.bottomPanel.time_scale(visible=True, time_visible=True)
-    stream.bottomPanel.crosshair(horz_visible=False)
+        chart.set( tmpdf )
 
-    #chart.horizontal_line(price= 1.6)
+        # bottom panel
+        self.bottomPanel = bottomPanel = chart.create_subchart( position='bottom', width=1.0, height=0.2, sync=chart.id )
+        bottomPanel.legend( visible=True, ohlc=False, percent=False, font_size=18 )
+        bottomPanel.time_scale( visible=True, time_visible=True )
+        bottomPanel.crosshair( horz_visible=False )
+        bottomPanel.price_line( label_visible=False, line_visible=False )
+        bottomPanel.layout( font_size=14 )
+        bottomPanel.precision( self.bottompanel_precision )
+        bottomPanel.set(tmpdf)
+        bottomPanel.hide_data()
 
-    stream.parseCandleUpdate( last_ohlcv )
+        for marker in markers:
+            marker.refreshInChart( chart )
+        
 
-    # chart.show( block=False )
-    return chart
+    def updateChart( self ):
+        if( self.stream == None or self.chart == None ): 
+            return
+        #update the chart
+        df = self.stream.df
+        data_dict = {'time': pd.to_datetime( df['timestamp'].iloc[-1], unit='ms' ), 'open': df['open'].iloc[-1], 'high': df['high'].iloc[-1], 'low': df['low'].iloc[-1], 'close': df['close'].iloc[-1] }
+        if SHOW_VOLUME:
+            data_dict['volume'] = df['volume'].iloc[-1]
+
+        self.chart.update( pd.Series(data_dict) )
+        if( self.bottomPanel != None ):
+            self.bottomPanel.update( pd.Series(data_dict) )
+
+
+window = None
+
 
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '5m' )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '1m' )
     registeredStreams.append( stream )
 
     # the fetcher will be inside the stream
@@ -1015,13 +1019,11 @@ if __name__ == '__main__':
     stream.initdata = None # free memory
     ohlcvs = None
 
-    launchChart( stream, [last_ohlcv] )
+    window = window_c()
+    window.initChart( stream )
 
+    stream.parseCandleUpdate( [last_ohlcv] ) # jump-start the chart plots
     
-
-
-
-
     asyncio.run( runTasks(stream) )
 
 
