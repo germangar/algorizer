@@ -9,6 +9,9 @@ import ccxt.pro as ccxt
 import time
 from pprint import pprint
 
+from window import window_c
+from window import createWindow
+
 import tools
 from tools import df_append
 from fetcher import candles_c
@@ -16,6 +19,7 @@ from fetcher import candles_c
 import strategy
 
 
+window = None
 SHOW_VOLUME = False
 verbose = False
 
@@ -157,6 +161,7 @@ def plot( name, source, chart_name = None ):
     chart = window.bottomPanel if( chart_name == 'panel' ) else window.chart
     plot.update( source, chart )
     return plot
+
 
 class markers_c:
     def __init__( self, text:str, timestamp, chart = None ):
@@ -871,7 +876,7 @@ async def doNothing():
 
 from datetime import datetime
 async def update_clock(stream):
-    if( window.chart == None ):
+    if( window == None ):
         return
     while window.chart.is_alive:
         await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
@@ -879,7 +884,7 @@ async def update_clock(stream):
 
 
 async def watch_chart_and_add_task(tasks):
-    while window.chart is None:
+    while window is None:
         print("Waiting for chart to become available...")
         await asyncio.sleep(0.2)
     print("Chart is now available, adding show_async task...")
@@ -903,70 +908,7 @@ async def on_timeframe_selection(chart):
     print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
 
 
-async def on_button_press(chart):
-    new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
-    chart.topbar['my_button'].set(new_button_value)
-    print(f'Turned something {new_button_value.lower()}.')
 
-# def on_horizontal_line_move(chart, line):
-#     print(f'Horizontal line moved to: {line.price}')
-
-
-class window_c:
-    def __init__( self, precision = 4, bottompanel_precision = 2 ):
-        self.stream = None
-        self.chart = None
-        self.bottomPanel = None
-        self.precision = precision
-        self.bottompanel_precision = bottompanel_precision
-
-    def initChart( self, stream ):
-        if( stream == None ): raise SystemError( "Attempted to create a window without a stream" )
-        self.stream = stream
-        
-        self.chart = chart = Chart( inner_height=0.8, toolbox = False )
-        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' )
-        chart.time_scale( visible=False )
-        chart.layout( font_size=14 )
-        chart.precision( self.precision )
-        chart.topbar.button('my_button', 'Off', func=on_button_press)
-
-        tmpdf = pd.DataFrame( { 'time':pd.to_datetime( stream.df['timestamp'], unit='ms' ), 'open':stream.df['open'], 'high':stream.df['high'], 'low':stream.df['low'], 'close':stream.df['close']} )
-        if( SHOW_VOLUME ):
-            tmpdf['volume'] = stream.df['volume']
-
-        chart.set( tmpdf )
-
-        # bottom panel
-        self.bottomPanel = bottomPanel = chart.create_subchart( position='bottom', width=1.0, height=0.2, sync=chart.id )
-        bottomPanel.legend( visible=True, ohlc=False, percent=False, font_size=18 )
-        bottomPanel.time_scale( visible=True, time_visible=True )
-        bottomPanel.crosshair( horz_visible=False )
-        bottomPanel.price_line( label_visible=False, line_visible=False )
-        bottomPanel.layout( font_size=14 )
-        bottomPanel.precision( self.bottompanel_precision )
-        bottomPanel.set(tmpdf)
-        bottomPanel.hide_data()
-
-        for marker in markers:
-            marker.refreshInChart( chart )
-        
-
-    def updateChart( self ):
-        if( self.stream == None or self.chart == None ): 
-            return
-        #update the chart
-        df = self.stream.df
-        data_dict = {'time': pd.to_datetime( df['timestamp'].iloc[-1], unit='ms' ), 'open': df['open'].iloc[-1], 'high': df['high'].iloc[-1], 'low': df['low'].iloc[-1], 'close': df['close'].iloc[-1] }
-        if SHOW_VOLUME:
-            data_dict['volume'] = df['volume'].iloc[-1]
-
-        self.chart.update( pd.Series(data_dict) )
-        if( self.bottomPanel != None ):
-            self.bottomPanel.update( pd.Series(data_dict) )
-
-
-window = None
 
 
 if __name__ == '__main__':
@@ -1019,12 +961,14 @@ if __name__ == '__main__':
     stream.initdata = None # free memory
     ohlcvs = None
 
-    window = window_c()
-    window.initChart( stream )
+    window = createWindow( stream )
 
     stream.parseCandleUpdate( [last_ohlcv] ) # jump-start the chart plots
     
     asyncio.run( runTasks(stream) )
+
+
+    
 
 
 
