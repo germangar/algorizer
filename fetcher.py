@@ -31,14 +31,17 @@ class candles_c:
                         ohlcv_cache.insert( i, [ int(row[0]), float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5]) ] )
                         i += 1
         except Exception:
-            with open(filename, 'x') as file:
-                writer = csv.writer(file)
-                file.close()
+            # with open(filename, 'x') as file:
+            #     writer = csv.writer(file)
+            #     file.close()
+            pass
 
         print( len(ohlcv_cache), 'candles loaded')
         return ohlcv_cache
     
     def writeOHLCVfile( self, symbol, timeframe, ohlcv_data ):
+        if( len(ohlcv_data) == 0 ): 
+            return
         symbolName = symbol[:-len(':USDT')]
         symbolName = symbolName.replace( '/', '-' )
         filename = symbolName+'-'+timeframe
@@ -90,7 +93,7 @@ class candles_c:
         block = self.fetchBlock( symbol, timeframe, self.exchange.milliseconds(), blockSize )
         if( block == None or len(block) == 0 ):
             print( 'Nothing to retrieve' )
-            return
+            return []
         blockSize = min( blockSize, len(block) )
 
         # Do the real thing

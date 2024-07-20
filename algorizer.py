@@ -12,6 +12,8 @@ from pprint import pprint
 from window import window_c
 from window import createWindow
 
+import tasks
+
 import tools
 from tools import df_append
 from fetcher import candles_c
@@ -570,7 +572,7 @@ class customSeries_c:
         self.alwaysReset = True if ( self.func == customseries_calculate_rma or self.func == pta.rma 
                                     or self.func == customseries_calculate_hma  or self.func == pta.hma
                                     or self.func == customseries_calculate_slope or self.func == pta.slope
-                                    # or self.func == customseries_calculate_barssince
+                                    or self.func == pta.dema
                                     ) else False
         
 
@@ -720,62 +722,6 @@ class customSeries_c:
         return df[self.name].iloc[index]
     
 
-# this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
-def falling( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'falling', source, period, customseries_calculate_falling )
-
-def rising( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
-
-def calcSMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'sma', source, period, pta.sma )
-
-def calcEMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "ema", source, period, pta.ema )
-
-def calcWMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "wma", source, period, customseries_calculate_wma )
-
-def calcHMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "hma", source, period, customseries_calculate_hma )
-
-def calcRSI( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
-
-def calcDEV( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
-
-def calcSTDEV( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'stdev', source, period, pta.stdev )
-
-def calcRMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
-
-def calcWPR( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
-
-def calcATR2( period:int ): # The other one using pta is much faster
-    tr = activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
-    return activeStream.calcCustomSeries( 'atr', tr.series(), period, customseries_calculate_rma )
-
-def calcTR( period:int ):
-    return activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
-
-def calcATR( period:int ):
-    return activeStream.calcCustomSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, customseries_calculate_atr )
-
-def calcSLOPE( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope )
-
-def calcBIAS( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'bias', source, period, pta.bias )
-
-def calcCCI( period:int ): # CCI uses high, low and close as multi-source
-    return activeStream.calcCustomSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, customseries_calculate_cci )
-
-def calcCFO( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
-
 
 
 def calcIndexWhenTrue( source ):
@@ -820,6 +766,77 @@ def calcBarsWhileTrue( source ):
     return activeStream.barindex - index_when_false
 
 
+# this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
+def falling( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'falling', source, period, customseries_calculate_falling )
+
+def rising( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
+
+def calcSMA( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'sma', source, period, pta.sma )
+
+def calcEMA( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( "ema", source, period, pta.ema )
+
+def calcDEMA( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( "dema", source, period, pta.dema )
+
+def calcWMA( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( "wma", source, period, customseries_calculate_wma )
+
+def calcHMA( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( "hma", source, period, customseries_calculate_hma )
+
+# def calcJMA( source:pd.Series, period:int ):
+#     return activeStream.calcCustomSeries( "jma", source, period, pta.jma )
+
+# def calcKAMA( source:pd.Series, period:int ):
+#     return activeStream.calcCustomSeries( "kama", source, period, pta.kama )
+
+def calcLINREG( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( "linreg", source, period, pta.linreg )
+
+def calcRSI( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
+
+def calcDEV( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
+
+def calcSTDEV( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'stdev', source, period, pta.stdev )
+
+def calcRMA( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
+
+def calcWPR( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
+
+def calcATR2( period:int ): # The other one using pta is much faster
+    tr = activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
+    return activeStream.calcCustomSeries( 'atr', tr.series(), period, customseries_calculate_rma )
+
+def calcTR( period:int ):
+    return activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
+
+def calcATR( period:int ):
+    return activeStream.calcCustomSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, customseries_calculate_atr )
+
+def calcSLOPE( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope )
+
+def calcBIAS( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'bias', source, period, pta.bias )
+
+def calcCCI( period:int ): # CCI uses high, low and close as multi-source
+    return activeStream.calcCustomSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, customseries_calculate_cci )
+
+def calcCFO( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
+
+def calcFWMA( source:pd.Series, period:int ):
+    return activeStream.calcCustomSeries( 'fwma', source, period, pta.fwma )
+
 
 
 def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
@@ -834,6 +851,8 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     ema = calcEMA( close, 4 )
     ema.plot()
+
+    calcLINREG( close, 300 ).plot()
 
     # rsi = calcRSI( close, 14 )
     # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
@@ -916,11 +935,6 @@ async def fetchCandleUpdates( stream:stream_c ):
     await exchange.close()
 
 
-async def doNothing():
-    while True:
-        # doing nothing yet
-        await asyncio.sleep(1)
-
 from datetime import datetime
 async def update_clock(stream):
     if( window == None ):
@@ -930,45 +944,24 @@ async def update_clock(stream):
         window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
 
 
-async def watch_chart_and_add_task(tasks):
-    while window is None:
-        print("Waiting for chart to become available...")
-        await asyncio.sleep(0.2)
-    print("Chart is now available, adding show_async task...")
-    tasks.append(asyncio.create_task(window.chart.show_async()))
-
-
-async def runTasks(stream):
-    task1 = asyncio.create_task(fetchCandleUpdates(stream))
-    task2 = asyncio.create_task(update_clock(stream))
-
-    tasks = [task1, task2]
-
-    # Create a task that waits for window.chart to become available
-    task3 = asyncio.create_task(watch_chart_and_add_task(tasks))
-    tasks.append(task3)
-
-    await asyncio.gather(*tasks)
-    
-
 async def on_timeframe_selection(chart):
     print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
-
-
 
 
 
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '1m' )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
     registeredStreams.append( stream )
 
     # the fetcher will be inside the stream
     fetcher = candles_c( stream.exchange.id, stream.symbol )
 
     #ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
-    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 50000 )
+    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 10000 )
+    if( len(ohlcvs) == 0 ):
+        raise SystemExit( f'No candles available in {stream.exchange.id}. Aborting')
 
     print( "Creating dataframe" )
 
@@ -997,22 +990,24 @@ if __name__ == '__main__':
     # start with a blank dataframe with only the first row copied from the precomputed dataframe
     stream.df = pd.DataFrame( pd.DataFrame(stream.initdata.iloc[0]).T, columns=stream.initdata.columns )
     
-    # run the script
+    # run the script logic
     stream.parseCandleUpdate( ohlcvs )
     stream.shadowcopy = False
     ###############################################################################
 
-    # jump-start the chart by running the last row as if it was a update
     print( len(stream.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
     stream.initializing = False
     stream.initdata = None # free memory
     ohlcvs = None
 
+    tasks.registerTask( fetchCandleUpdates( stream ) )
+    tasks.registerTask( update_clock(stream) )
+
     window = createWindow( stream )
 
     stream.parseCandleUpdate( [last_ohlcv] ) # jump-start the chart plots
     
-    asyncio.run( runTasks(stream) )
+    asyncio.run( tasks.runTasks() )
 
 
     

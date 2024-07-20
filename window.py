@@ -1,7 +1,8 @@
 
 import pandas as pd
 from lightweight_charts import Chart
-# import asyncio
+# from algorizer import registerTask
+import tasks
 
 SHOW_VOLUME = False
 
@@ -47,6 +48,8 @@ class window_c:
             if( marker.chart == None ):
                 marker.chart = self.bottomPanel if marker.chartName == 'panel' else self.chart
             marker.refreshInChart()
+
+        tasks.registerTask( self.chart.show_async() )
         
 
     def updateChart( self ):
