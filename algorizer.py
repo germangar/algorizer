@@ -896,17 +896,20 @@ async def fetchCandleUpdates( stream:stream_c ):
         try:
             response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeStr, limit = maxRows )
             #print(response)
+# class BrokenPipeError(ConnectionError): ...
+# class ConnectionAbortedError(ConnectionError): ...
+# class ConnectionRefusedError(ConnectionError): ...
+# class ConnectionResetError(ConnectionError): ...
         except Exception as e:
-            # isinstance(e, ccxt.OnMaintenance) or 
-            # isinstance(e, ccxt.NetworkError) 
-            if( isinstance(e, ccxt.RateLimitExceeded) or isinstance(e, ccxt.RequestTimeout) 
-               or isinstance(e, ccxt.ExchangeNotAvailable) or isinstance(e, ccxt.RateLimitExceeded)
-               or isinstance( e, ConnectionResetError ) 
-               or 'not available' in e ):
+            if( isinstance( e, ConnectionResetError ) or isinstance( e, ConnectionRefusedError )
+               or isinstance( e, ConnectionAbortedError ) or isinstance( e, BrokenPipeError ) 
+               or isinstance( e, TimeoutError ) or isinstance( e, ccxt.RequestTimeout) ):
+                print( f"Server connection lost [{type(e)}]. Retying...")
+                asyncio.sleep(0.1)
                 # ccxt.base.errors.ExchangeError: Service is not available during funding fee settlement. Please try again later.
                 continue
 
-            raise SystemError( 'Exception raised at fetchCandleupdates:', e )
+            raise SystemError( 'Exception raised at fetchCandleupdates:', e, type(e) )
             
 
         # extract the data
@@ -973,7 +976,7 @@ if __name__ == '__main__':
     fetcher = candles_c( stream.exchange.id, stream.symbol )
 
     #ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
-    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 10000 )
+    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 50000 )
 
     print( "Creating dataframe" )
 
