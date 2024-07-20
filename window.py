@@ -43,8 +43,10 @@ class window_c:
         bottomPanel.set(tmpdf)
         bottomPanel.hide_data()
 
-        # for marker in markers:
-        #     marker.refreshInChart( chart )
+        for marker in stream.markers:
+            if( marker.chart == None ):
+                marker.chart = self.bottomPanel if marker.chartName == 'panel' else self.chart
+            marker.refreshInChart()
         
 
     def updateChart( self ):

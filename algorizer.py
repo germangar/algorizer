@@ -164,10 +164,11 @@ def plot( name, source, chart_name = None ):
 
 
 class markers_c:
-    def __init__( self, text:str, timestamp, chart = None ):
+    def __init__( self, text:str, timestamp:int, chart_name:str = None ):
         self.timestamp = timestamp
         self.text = text
-        self.chart = chart
+        self.chartName = chart_name
+        self.chart = None
         self.marker = None
     
     def __del__( self ):
@@ -177,18 +178,13 @@ class markers_c:
         if( self.marker != None ):
             if( self.chart ):
                 self.chart.remove_marker( self.marker )
-            self.marker = None
+                self.marker = None
 
-    def refreshInChart( self, chart ):
-        self.remove()
-        if( self.chart == None ):
-            self.chart = chart
-        self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
+    def refreshInChart( self ):
+        if( self.chart ):
+            self.remove()
+            self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
 
-markers:markers_c = []
-
-def createMarker( text:str, timestamp, chart ):
-    markers.append( markers_c( text, timestamp, chart ) )
 
 class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframe ):
@@ -202,6 +198,7 @@ class stream_c:
         self.shadowcopy = False
 
         self.customSeries:customSeries_c = []
+        self.markers:markers_c = []
 
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
@@ -294,9 +291,14 @@ class stream_c:
             self.customSeries.append(cseries)
         cseries.update( source )
         return cseries
-
-
     
+    def createMarker( self, text:str, timestamp:int, chart_name:str = None ):
+        self.markers.append( markers_c( text, timestamp, chart_name ) )
+        
+
+
+def createMarker( text:str, timestamp:int, chart_name:str = None ):
+    activeStream.createMarker( text, timestamp, chart_name )
 
     
 
@@ -378,33 +380,37 @@ def customseries_calculate_rsi(series, period) -> pd.Series:
 
 
 def customseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
-    """
-    Calculate the True Range (TR) for a given series.
+    if 1:
+        if len(series) < period:
+            return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
+        return pta.true_range( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+    else:
+        """
+        Calculate the True Range (TR) for a given series.
 
-    Args:
-    - series: pd.Series, the input series (only used to align with customSeries_c interface).
-    - period: int, the period for the True Range calculation.
+        Args:
+        - series: pd.Series, the input series (only used to align with customSeries_c interface).
+        - period: int, the period for the True Range calculation.
 
-    Returns:
-    - pd.Series, the calculated True Range series.
-    """
-    high = activeStream.df['high']
-    low = activeStream.df['low']
-    close = activeStream.df['close']
+        Returns:
+        - pd.Series, the calculated True Range series.
+        """
+        high = activeStream.df['high']
+        low = activeStream.df['low']
+        close = activeStream.df['close']
 
-    high_low = high - low
-    high_close_prev = (high - close.shift()).abs()
-    low_close_prev = (low - close.shift()).abs()
+        high_low = high - low
+        high_close_prev = (high - close.shift()).abs()
+        low_close_prev = (low - close.shift()).abs()
 
-    tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
-    return tr
+        tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
+        return tr
 
 def customseries_calculate_atr(series, period) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
         return pta.atr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
-    # else:
     
 
 def customseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
@@ -835,7 +841,7 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     atr = calcATR( 14 )
     plot( atr.name, atr.series(), 'panel' )
 
-    calcATR2(14).plot('panel')
+    calcTR(14).plot('panel')
 
     # # sma_rising = rising( sma.name, 10 )
 
@@ -870,13 +876,11 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # plot( slope1000.name, slope1000.series(), window.bottomPanel )
 
 
-    # if( sma.crossingUp(close) ):
-    #     # strategy.entry( 'buy', 100 )
-    #     createMarker( '🔷', stream.timestamp, window.chart )
+    if( sma.crossingUp(close) ):
+        createMarker( '🔷', stream.timestamp )
 
     if crossingDown( sma, ema ):
-        if( window != None ):
-            createMarker( '🔺', stream.timestamp, window.chart )
+        createMarker( '🔺', stream.timestamp )
 
     # plot( "lazyline", 30, window.bottomPanel )
 
