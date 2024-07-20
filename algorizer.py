@@ -896,22 +896,14 @@ async def fetchCandleUpdates( stream:stream_c ):
         try:
             response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeStr, limit = maxRows )
             #print(response)
-# class BrokenPipeError(ConnectionError): ...
-# class ConnectionAbortedError(ConnectionError): ...
-# class ConnectionRefusedError(ConnectionError): ...
-# class ConnectionResetError(ConnectionError): ...
+
         except Exception as e:
-            if( isinstance( e, ConnectionResetError ) or isinstance( e, ConnectionRefusedError )
-               or isinstance( e, ConnectionAbortedError ) or isinstance( e, BrokenPipeError ) 
-               or isinstance( e, TimeoutError ) or isinstance( e, ccxt.RequestTimeout) ):
-                print( f"Server connection lost [{type(e)}]. Retying...")
-                asyncio.sleep(0.1)
-                # ccxt.base.errors.ExchangeError: Service is not available during funding fee settlement. Please try again later.
-                continue
-
-            raise SystemError( 'Exception raised at fetchCandleupdates:', e, type(e) )
+            print( 'Exception raised at fetchCandleupdates: Reconnecting', e, type(e) )
+            await stream.exchange.close()
+            await asyncio.sleep(1.0)
+            continue
+        
             
-
         # extract the data
 
         if( len(response) > maxRows ):
@@ -919,7 +911,7 @@ async def fetchCandleUpdates( stream:stream_c ):
 
         stream.parseCandleUpdate( response )
         
-        await asyncio.sleep(0.003)
+        await asyncio.sleep(0.005)
 
     await exchange.close()
 
