@@ -14,7 +14,6 @@ class window_c:
         self.precision = precision
         self.bottompanel_precision = bottompanel_precision
 
-    # def initChart( self, stream ):
         if( stream == None ): raise SystemError( "Attempted to create a window without a stream" )
         self.stream = stream
         

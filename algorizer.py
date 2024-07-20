@@ -21,7 +21,7 @@ import strategy
 
 window = None
 SHOW_VOLUME = False
-verbose = False
+verbose = True
 
 
 def crossingUp( self, other ):
@@ -376,6 +376,37 @@ def customseries_calculate_rsi(series, period) -> pd.Series:
     rsi = 100 - (100 / (1 + rs))
     return rsi #.iloc[-1]  # Returning the last value of RSI
 
+
+def customseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
+    """
+    Calculate the True Range (TR) for a given series.
+
+    Args:
+    - series: pd.Series, the input series (only used to align with customSeries_c interface).
+    - period: int, the period for the True Range calculation.
+
+    Returns:
+    - pd.Series, the calculated True Range series.
+    """
+    high = activeStream.df['high']
+    low = activeStream.df['low']
+    close = activeStream.df['close']
+
+    high_low = high - low
+    high_close_prev = (high - close.shift()).abs()
+    low_close_prev = (low - close.shift()).abs()
+
+    tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
+    return tr
+
+def customseries_calculate_atr(series, period) -> pd.Series:
+    if 1:
+        if len(series) < period:
+            return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
+        return pta.atr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+    # else:
+    
+
 def customseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
     """
     Check if the series has been rising for the given length of time.
@@ -717,6 +748,16 @@ def calcRMA( source:pd.Series, period:int ):
 def calcWPR( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
 
+def calcATR2( period:int ): # The other one using pta is much faster
+    tr = activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
+    return activeStream.calcCustomSeries( 'atr', tr.series(), period, customseries_calculate_rma )
+
+def calcTR( period:int ):
+    return activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
+
+def calcATR( period:int ):
+    return activeStream.calcCustomSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, customseries_calculate_atr )
+
 def calcSLOPE( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope )
 
@@ -728,6 +769,8 @@ def calcCCI( period:int ): # CCI uses high, low and close as multi-source
 
 def calcCFO( source:pd.Series, period:int ):
     return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
+
+
 
 def calcIndexWhenTrue( source ):
     if( not isinstance(source, pd.Series ) ):
@@ -786,8 +829,13 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     ema = calcEMA( close, 4 )
     ema.plot()
 
-    rsi = calcRSI( close, 14 )
-    rsiplot = plot( rsi.name, rsi.series(), 'panel' )
+    # rsi = calcRSI( close, 14 )
+    # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
+
+    atr = calcATR( 14 )
+    plot( atr.name, atr.series(), 'panel' )
+
+    calcATR2(14).plot('panel')
 
     # # sma_rising = rising( sma.name, 10 )
 
@@ -802,8 +850,8 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     stdev = calcSTDEV( close, 350 )
 
-    willr = calcWPR( close, 32 ).plot('panel')
-    # # calcBIAS( close, 32 ).plot(window.bottomPanel)
+    # willr = calcWPR( close, 32 ).plot('panel')
+    # calcBIAS( close, 32 ).plot(window.bottomPanel)
 
     # hma = calcHMA( close, 150 )
     # hma.plot()
