@@ -49,7 +49,7 @@ class window_c:
                 marker.chart = self.bottomPanel if marker.chartName == 'panel' else self.chart
             marker.refreshInChart()
 
-        
+        self.stream.jumpstartPlots( self )
 
         tasks.registerTask( self.chart.show_async() )
         

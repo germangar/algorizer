@@ -123,10 +123,17 @@ class plot_c:
         self.initialized = False
 
     def update( self, source, stream, window = None ):
-        if( window == None ):
-            self.source = source
+
+        if( window == None ): 
+            # make a backup of the source series only on the last bar of the initialization
+            # which will be used to jump-start the plots at opening the chart
+            if( stream.shadowcopy ):
+                if( not isinstance(source, pd.Series) ):
+                    source = pd.Series([source] * len(stream.df), index=stream.df.index)
+                if( len( stream.initdata ) <= len(stream.df) + 1 ): 
+                    self.source = source
             return
-            
+        
         if( not isinstance(source, pd.Series) ):
             source = pd.Series([source] * len(stream.df), index=stream.df.index)
         
@@ -146,27 +153,6 @@ class plot_c:
         # it's initalized so only update the new line
         newval = source.iloc[-1]
         self.line.update( pd.Series( {'time': pd.to_datetime( stream.timestamp, unit='ms' ), 'value': newval } ) )
-
-
-# registeredPlots:plot_c = []
-
-# def plot( name, source, chart_name = None ):
-#     if( window == None ):
-#         return
-#     plot = None
-#     for thisPlot in registeredPlots:
-#         if( name == thisPlot.name ):
-#             plot = thisPlot
-#             #print( 'found Plot' )
-#             break
-
-#     if( plot == None ):
-#         plot = plot_c( name, source )
-#         registeredPlots.append( plot )
-
-#     chart = window.bottomPanel if( chart_name == 'panel' ) else window.chart
-#     plot.update( source, activeStream, chart )
-#     return plot
 
 
 class markers_c:
@@ -293,7 +279,7 @@ class stream_c:
                 #update the chart
                 if( window != None ):
                     window.updateChart()
-
+                    
             else:
                 if( not self.initializing ):
                     print( 'NEW CANDLE', newrow )
@@ -355,20 +341,24 @@ class stream_c:
 
     def plot( self, name, source, chart_name = None ):
         plot = None
-        for thisPlot in self.registeredPlots:
-            if( name == thisPlot.name ):
-                plot = thisPlot
+        for p in self.registeredPlots:
+            if( name == p.name ):
+                plot = p
                 break
 
         if( plot == None ):
             plot = plot_c( name, chart_name )
             self.registeredPlots.append( plot )
 
-        if( window == None ):
-            return
         
         plot.update( source, self, window )
         return plot
+    
+    def jumpstartPlots( self, window ):
+        for plot in self.registeredPlots:
+            if not plot.initialized:
+                plot.update( plot.source, self, window )
+
         
 
 
@@ -706,8 +696,6 @@ class customSeries_c:
         self.timestamp = self.stream.timestamp
         
     def plot( self, chart = None ):
-        if( window == None ):
-            return
         if( self.timestamp > 0 ):
             plot( self.name, self.series(), chart )
     
