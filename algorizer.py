@@ -249,7 +249,7 @@ class stream_c:
 
         print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
         self.initializing = False
-        self.initdata = None # free memory
+        self.initdata = [] # free memory
         ohlcvs = None
 
         tasks.registerTask( fetchCandleUpdates( self ) )
