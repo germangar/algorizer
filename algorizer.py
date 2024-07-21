@@ -115,23 +115,27 @@ def crossing( self, other ):
 
 
 class plot_c:
-    def __init__( self, name:str, source ):
+    def __init__( self, name:str, chart_name = None ):
         self.name = name
+        self.chartName = chart_name
+        self.source = None
         self.line = None
         self.initialized = False
 
-    def update( self, source, chart = None ):
-        if( chart == None ):
+    def update( self, source, stream, window = None ):
+        if( window == None ):
+            self.source = source
             return
             
         if( not isinstance(source, pd.Series) ):
-            source = pd.Series([source] * len(activeStream.df), index=activeStream.df.index)
+            source = pd.Series([source] * len(stream.df), index=stream.df.index)
         
         if( not self.initialized ):
-            if( len(source)<1 ): # pd.isna(source)
+            if( len(source)<1 ):
                 return
+            chart = window.bottomPanel if( self.chartName == 'panel' ) else window.chart
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( activeStream.df['timestamp'], unit='ms' ), self.name: source}) )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( stream.df['timestamp'], unit='ms' ), self.name: source}) )
             self.initialized = True
             return
         
@@ -141,28 +145,28 @@ class plot_c:
         
         # it's initalized so only update the new line
         newval = source.iloc[-1]
-        self.line.update( pd.Series( {'time': pd.to_datetime( activeStream.timestamp, unit='ms' ), 'value': newval } ) )
+        self.line.update( pd.Series( {'time': pd.to_datetime( stream.timestamp, unit='ms' ), 'value': newval } ) )
 
 
-registeredPlots:plot_c = []
+# registeredPlots:plot_c = []
 
-def plot( name, source, chart_name = None ):
-    if( window == None ):
-        return
-    plot = None
-    for thisPlot in registeredPlots:
-        if( name == thisPlot.name ):
-            plot = thisPlot
-            #print( 'found Plot' )
-            break
+# def plot( name, source, chart_name = None ):
+#     if( window == None ):
+#         return
+#     plot = None
+#     for thisPlot in registeredPlots:
+#         if( name == thisPlot.name ):
+#             plot = thisPlot
+#             #print( 'found Plot' )
+#             break
 
-    if( plot == None ):
-        plot = plot_c( name, source )
-        registeredPlots.append( plot )
+#     if( plot == None ):
+#         plot = plot_c( name, source )
+#         registeredPlots.append( plot )
 
-    chart = window.bottomPanel if( chart_name == 'panel' ) else window.chart
-    plot.update( source, chart )
-    return plot
+#     chart = window.bottomPanel if( chart_name == 'panel' ) else window.chart
+#     plot.update( source, activeStream, chart )
+#     return plot
 
 
 class markers_c:
@@ -189,7 +193,7 @@ class markers_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframe ):
+    def __init__( self, symbol, exchangeID:str, timeframe, max_amount = 5000 ):
         self.symbol = symbol # FIXME: add verification
         self.market = None
         self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
@@ -201,6 +205,7 @@ class stream_c:
 
         self.customSeries:customSeries_c = []
         self.markers:markers_c = []
+        self.registeredPlots:plot_c = []
 
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
@@ -212,6 +217,57 @@ class stream_c:
                     }) 
         except Exception as e:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
+        
+        #################################################
+
+        # the fetcher will be inside the stream
+        fetcher = candles_c( self.exchange.id, self.symbol )
+
+        #ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
+        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeStr, max_amount )
+        if( len(ohlcvs) == 0 ):
+            raise SystemExit( f'No candles available in {stream.exchange.id}. Aborting')
+        
+        print( "Creating dataframe" )
+
+        # take out the last row to jumpstart the customSeries later
+        last_ohlcv = ohlcvs[-1]
+        ohlcvs = ohlcvs[:-1]
+        self.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+
+        
+        #stream.df.drop( stream.df.tail(1).index, inplace=True )
+        print( "Calculating custom series" )
+        start_time = time.time()
+        self.parseCandleUpdate( [last_ohlcv] )
+        print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
+
+        ###############################################################################
+        # at this point we have the customSeries initialized for the whole dataframe
+        # move the dataframe to use it as source for the initialization with precomputed data
+        print( "Computing script logic" )
+
+        self.timestamp = 0
+        self.barindex = -1
+        self.initdata = self.df
+        self.shadowcopy = True
+
+        # start with a blank dataframe with only the first row copied from the precomputed dataframe
+        self.df = pd.DataFrame( pd.DataFrame(self.initdata.iloc[0]).T, columns=self.initdata.columns )
+        
+        # run the script logic
+        ohlcvs.append( last_ohlcv )
+        self.parseCandleUpdate( ohlcvs )
+        self.shadowcopy = False
+        ###############################################################################
+
+        print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
+        self.initializing = False
+        self.initdata = None # free memory
+        ohlcvs = None
+
+        tasks.registerTask( fetchCandleUpdates( self ) )
+
         
     def parseCandleUpdate( self, rows ):
         global activeStream
@@ -296,13 +352,31 @@ class stream_c:
     
     def createMarker( self, text:str, timestamp:int, chart_name:str = None ):
         self.markers.append( markers_c( text, timestamp, chart_name ) )
+
+    def plot( self, name, source, chart_name = None ):
+        plot = None
+        for thisPlot in self.registeredPlots:
+            if( name == thisPlot.name ):
+                plot = thisPlot
+                break
+
+        if( plot == None ):
+            plot = plot_c( name, chart_name )
+            self.registeredPlots.append( plot )
+
+        if( window == None ):
+            return
+        
+        plot.update( source, self, window )
+        return plot
         
 
 
 def createMarker( text:str, timestamp:int, chart_name:str = None ):
     activeStream.createMarker( text, timestamp, chart_name )
 
-    
+def plot( name, source, chart_name = None ):
+    activeStream.plot( name, source, chart_name )
 
 registeredStreams:stream_c = []
 activeStream:stream_c = None
@@ -952,60 +1026,15 @@ async def on_timeframe_selection(chart):
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m' )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m', 5000 )
     registeredStreams.append( stream )
 
-    # the fetcher will be inside the stream
-    fetcher = candles_c( stream.exchange.id, stream.symbol )
-
-    #ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
-    ohlcvs = fetcher.loadCacheAndFetchUpdate( stream.symbol, stream.timeframeStr, 10000 )
-    if( len(ohlcvs) == 0 ):
-        raise SystemExit( f'No candles available in {stream.exchange.id}. Aborting')
-
-    print( "Creating dataframe" )
-
-    # take out the last row to jumpstart the customSeries later
-    last_ohlcv = ohlcvs[-1]
-    ohlcvs = ohlcvs[:-1]
-    stream.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
-
     
-    #stream.df.drop( stream.df.tail(1).index, inplace=True )
-    print( "Calculating custom series" )
-    start_time = time.time()
-    stream.parseCandleUpdate( [last_ohlcv] )
-    print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
-
-    ###############################################################################
-    # at this point we have the customSeries initialized for the whole dataframe
-    # move the dataframe to use it as source for the initialization with precomputed data
-    print( "Computing script logic" )
-
-    stream.timestamp = 0
-    stream.barindex = -1
-    stream.initdata = stream.df
-    stream.shadowcopy = True
-
-    # start with a blank dataframe with only the first row copied from the precomputed dataframe
-    stream.df = pd.DataFrame( pd.DataFrame(stream.initdata.iloc[0]).T, columns=stream.initdata.columns )
-    
-    # run the script logic
-    stream.parseCandleUpdate( ohlcvs )
-    stream.shadowcopy = False
-    ###############################################################################
-
-    print( len(stream.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
-    stream.initializing = False
-    stream.initdata = None # free memory
-    ohlcvs = None
-
-    tasks.registerTask( fetchCandleUpdates( stream ) )
     tasks.registerTask( update_clock(stream) )
 
     window = createWindow( stream )
 
-    stream.parseCandleUpdate( [last_ohlcv] ) # jump-start the chart plots
+    #stream.parseCandleUpdate( [last_ohlcv] ) # jump-start the chart plots
     
     asyncio.run( tasks.runTasks() )
 

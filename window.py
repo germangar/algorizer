@@ -49,6 +49,8 @@ class window_c:
                 marker.chart = self.bottomPanel if marker.chartName == 'panel' else self.chart
             marker.refreshInChart()
 
+        
+
         tasks.registerTask( self.chart.show_async() )
         
 
@@ -74,3 +76,5 @@ async def on_button_press(chart):
     new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
     chart.topbar['my_button'].set(new_button_value)
     print(f'Turned something {new_button_value.lower()}.')
+
+
