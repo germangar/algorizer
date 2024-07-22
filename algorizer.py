@@ -318,7 +318,7 @@ class stream_c:
                     print( self.df )
 
 
-    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func ):
+    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, always_reset:bool = False ):
         name = generatedSeriesNameFormat( type, source, period )
         cseries = None
         # find if there's a item already created for this series
@@ -328,7 +328,7 @@ class stream_c:
                 # print( 'found', name )
                 break
         if cseries == None:
-            cseries = generatedSeries_c( type, source, period, func, self )
+            cseries = generatedSeries_c( type, source, period, func, always_reset, self )
             self.generatedSeries.append(cseries)
         cseries.update( source )
         return cseries
@@ -368,11 +368,36 @@ def plot( name, source, chart_name = None ):
 registeredStreams:stream_c = []
 activeStream:stream_c = None
 
-def generatedseries_calculate_rma(series: pd.Series, length: int) -> pd.Series:
-    # RMA needs to be recalculated in full every time
-    return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean()
 
-def generatedseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
+
+def generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.sma( series, period )
+
+def generatedseries_calculate_ema(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.ema( series, period )
+
+def generatedseries_calculate_dema(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.dema( series, period )
+
+def generatedseries_calculate_linreg(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.linreg( series, period )
+
+def generatedseries_calculate_rma(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
+    return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean() # RMA needs to be recalculated in full every time
+
+def generatedseries_calculate_stdev(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.stdev( series, period )
+
+def generatedseries_calculate_bias(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.bias( series, period )
+
+def generatedseries_calculate_cfo(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.cfo( series, period )
+
+def generatedseries_calculate_fwma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+    return pt.fwma( series, period )
+
+def generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
     if 1:
         return pt.mad( series, period )
     else:
@@ -387,12 +412,12 @@ def generatedseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
             deviations.append(deviation)
         return pd.Series(deviations, index=series.index).dropna()
 
-def generatedseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
     if 1:
-        return pt.willr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+        return pt.willr( df['high'], df['low'], df['close'], length=period )
     else:
         """
-        Calculate Williams %R for a given series using OHLC data from activeStream.df over a period.
+        Calculate Williams %R for a given series using OHLC data from df over a period.
 
         Args:
         - series: pd.Series, typically a placeholder, but required for compatibility with generatedSeries_c.
@@ -401,17 +426,10 @@ def generatedseries_calculate_williams_r(series: pd.Series, period: int) -> pd.S
         Returns:
         - pd.Series, the calculated Williams %R values.
         """
-        # global activeStream
-
-        # Ensure activeStream and its DataFrame are accessible
-        if 'activeStream' not in globals():
-            raise ValueError("activeStream is not defined in the global scope")
-
-        df = activeStream.df
 
         # Ensure the DataFrame has the required columns
-        if not all(col in df.columns for col in ['high', 'low', 'close']):
-            raise ValueError("The global DataFrame must contain 'high', 'low', and 'close' columns")
+        # if not all(col in df.columns for col in ['high', 'low', 'close']):
+        #     raise ValueError("The global DataFrame must contain 'high', 'low', and 'close' columns")
 
         if len(df) < period:
             return pd.Series([pd.NA] * len(df), index=df.index)  # Not enough data to calculate Williams %R
@@ -433,7 +451,7 @@ def generatedseries_calculate_williams_r(series: pd.Series, period: int) -> pd.S
 
         return pd.Series(williams_r_values, index=df.index)
 
-def generatedseries_calculate_rsi(series, period) -> pd.Series:
+def generatedseries_calculate_rsi(series, period, df:pd.DataFrame) -> pd.Series:
     deltas = series.diff()
     gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
     loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
@@ -442,11 +460,11 @@ def generatedseries_calculate_rsi(series, period) -> pd.Series:
     return rsi #.iloc[-1]  # Returning the last value of RSI
 
 
-def generatedseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-        return pt.true_range( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+        return pt.true_range( df['high'], df['low'], df['close'], length=period )
     else:
         """
         Calculate the True Range (TR) for a given series.
@@ -458,9 +476,9 @@ def generatedseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
         Returns:
         - pd.Series, the calculated True Range series.
         """
-        high = activeStream.df['high']
-        low = activeStream.df['low']
-        close = activeStream.df['close']
+        high = df['high']
+        low = df['low']
+        close = df['close']
 
         high_low = high - low
         high_close_prev = (high - close.shift()).abs()
@@ -469,14 +487,13 @@ def generatedseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
         tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
         return tr
 
-def generatedseries_calculate_atr(series, period) -> pd.Series:
-    if 1:
-        if len(series) < period:
-            return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-        return pt.atr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+def generatedseries_calculate_atr(series, period, df:pd.DataFrame) -> pd.Series:
+    if len(series) < period:
+        return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
+    return pt.atr( df['high'], df['low'], df['close'], length=period )
     
 
-def generatedseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
+def generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
     """
     Check if the series has been rising for the given length of time.
 
@@ -499,7 +516,7 @@ def generatedseries_calculate_rising(series: pd.Series, length: int) -> pd.Serie
 
     return is_rising
 
-def generatedseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
+def generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
     """
     Check if the series has been falling for the given length of time.
 
@@ -521,7 +538,7 @@ def generatedseries_calculate_falling(series: pd.Series, length: int) -> pd.Seri
     is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
     return is_falling
 
-def generatedseries_calculate_wma(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
@@ -541,7 +558,7 @@ def generatedseries_calculate_wma(series: pd.Series, period: int) -> pd.Series:
         wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
         return wma
 
-def generatedseries_calculate_hma(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
@@ -572,9 +589,7 @@ def generatedseries_calculate_hma(series: pd.Series, period: int) -> pd.Series:
         
         return hma
 
-
-
-def generatedseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
     """
     Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
 
@@ -612,29 +627,29 @@ def generatedseries_calculate_slope(series: pd.Series, period: int) -> pd.Series
 
         return slope_series
     
-def generatedseries_calculate_cci(series: pd.Series, period: int) -> pd.Series:
-    df = activeStream.df
+def generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFrame ) -> pd.Series:
     return pt.cci( df['high'], df['low'], df['close'], period )
 
 
-def generatedSeriesNameFormat( type, source:pd.Series, period ):
+def generatedSeriesNameFormat( type, source:pd.Series, period:int ):
     if( source.name == None ):
         raise SystemError( f"Generated Series has no valid name [{type}{period} {source.name}]")
     return f'{type}{period} {source.name}'
 
 class generatedSeries_c:
-    def __init__( self, type:str, source:pd.Series, period:int, func = None, stream:stream_c = None ):
+    def __init__( self, type:str, source:pd.Series, period:int, func = None, always_reset:bool = False, stream:stream_c = None ):
         self.name = generatedSeriesNameFormat( type, source, period )
         self.sourceName = source.name
         self.period = period
         self.func = func
         self.stream = stream
         self.timestamp = 0
-        self.alwaysReset = True if ( self.func == generatedseries_calculate_rma or self.func == pt.rma 
-                                    or self.func == generatedseries_calculate_hma  or self.func == pt.hma
-                                    or self.func == generatedseries_calculate_slope or self.func == pt.slope
-                                    or self.func == pt.dema
-                                    ) else False
+        self.alwaysReset = always_reset
+        # self.alwaysReset = True if ( self.func == generatedseries_calculate_rma or self.func == pt.rma 
+        #                             or self.func == generatedseries_calculate_hma  or self.func == pt.hma
+        #                             or self.func == generatedseries_calculate_slope or self.func == pt.slope
+        #                             or self.func == generatedseries_calculate_dema
+        #                             ) else False
         
 
         if( self.stream == None ):
@@ -655,7 +670,7 @@ class generatedSeries_c:
             if( self.stream.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.stream.df[self.name] = self.func(source, self.period).dropna()
+            self.stream.df[self.name] = self.func(source, self.period, self.stream.df).dropna()
             self.timestamp = self.stream.df['timestamp'].iloc[-1]
             if( self.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
@@ -688,7 +703,7 @@ class generatedSeries_c:
         # realtime updates
 
         # slice the required block of candles to calculate the current value of the generated series
-        newval = self.func(source[-self.period:], self.period).iloc[-1]
+        newval = self.func(source[-self.period:], self.period, self.stream.df).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = self.stream.timestamp
         
@@ -833,19 +848,19 @@ def rising( source:pd.Series, period:int ):
     return activeStream.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
 
 def calcSMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'sma', source, period, pt.sma )
+    return activeStream.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
 
 def calcEMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "ema", source, period, pt.ema )
+    return activeStream.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
 
 def calcDEMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "dema", source, period, pt.dema )
+    return activeStream.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
 
 def calcWMA( source:pd.Series, period:int ):
     return activeStream.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
 
 def calcHMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma )
+    return activeStream.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
 
 # def calcJMA( source:pd.Series, period:int ):
 #     return activeStream.calcGeneratedSeries( "jma", source, period, pt.jma )
@@ -854,7 +869,7 @@ def calcHMA( source:pd.Series, period:int ):
 #     return activeStream.calcGeneratedSeries( "kama", source, period, pt.kama )
 
 def calcLINREG( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "linreg", source, period, pt.linreg )
+    return activeStream.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
 
 def calcRSI( source:pd.Series, period:int ):
     return activeStream.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
@@ -863,10 +878,10 @@ def calcDEV( source:pd.Series, period:int ):
     return activeStream.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
 
 def calcSTDEV( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'stdev', source, period, pt.stdev )
+    return activeStream.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
 
 def calcRMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma )
+    return activeStream.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
 
 def calcWPR( source:pd.Series, period:int ):
     return activeStream.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
@@ -882,19 +897,19 @@ def calcATR( period:int ):
     return activeStream.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
 
 def calcSLOPE( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope )
+    return activeStream.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
 
 def calcBIAS( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'bias', source, period, pt.bias )
+    return activeStream.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
 
-def calcCCI( period:int ): # CCI uses high, low and close as multi-source
+def calcCCI( period:int ):
     return activeStream.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
 
 def calcCFO( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'cfo', source, period, pt.cfo )
+    return activeStream.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
 
 def calcFWMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'fwma', source, period, pt.fwma )
+    return activeStream.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
 
