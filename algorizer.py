@@ -1,7 +1,7 @@
 #lightweight-charts simple test
 
 import pandas as pd
-import pandas_ta as pta
+import pandas_ta as pt
 import math
 from lightweight_charts import Chart
 import asyncio
@@ -27,7 +27,7 @@ verbose = True
 
 
 def crossingUp( self, other ):
-    if isinstance( self, customSeries_c ):
+    if isinstance( self, generatedSeries_c ):
         return self.crossingUp( other )
     
     self_old = 0
@@ -44,7 +44,7 @@ def crossingUp( self, other ):
                 return False
             other_old = other.iloc[-2]
             self_new = other.iloc[-1]
-        elif isinstance( other, customSeries_c ):
+        elif isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0 or len(other.source) < 2 ):
                 return False
             other_old = other.value(1)
@@ -69,7 +69,7 @@ def crossingUp( self, other ):
     return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
 
 def crossingDown( self, other ):
-    if isinstance( self, customSeries_c ):
+    if isinstance( self, generatedSeries_c ):
         return self.crossingDown( other )
     
     self_old = 0
@@ -86,7 +86,7 @@ def crossingDown( self, other ):
                 return False
             other_old = other.iloc[-2]
             self_new = other.iloc[-1]
-        elif isinstance( other, customSeries_c ):
+        elif isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0 or len(other.source) < 2 ):
                 return False
             other_old = other.value(1)
@@ -189,7 +189,7 @@ class stream_c:
         self.initializing = True
         self.shadowcopy = False
 
-        self.customSeries:customSeries_c = []
+        self.generatedSeries:generatedSeries_c = []
         self.markers:markers_c = []
         self.registeredPlots:plot_c = []
 
@@ -216,20 +216,20 @@ class stream_c:
         
         print( "Creating dataframe" )
 
-        # take out the last row to jumpstart the customSeries later
+        # take out the last row to jumpstart the generatedSeries later
         last_ohlcv = ohlcvs[-1]
         ohlcvs = ohlcvs[:-1]
         self.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
         
         #stream.df.drop( stream.df.tail(1).index, inplace=True )
-        print( "Calculating custom series" )
+        print( "Calculating generated series" )
         start_time = time.time()
         self.parseCandleUpdate( [last_ohlcv] )
         print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
         ###############################################################################
-        # at this point we have the customSeries initialized for the whole dataframe
+        # at this point we have the generatedSeries initialized for the whole dataframe
         # move the dataframe to use it as source for the initialization with precomputed data
         print( "Computing script logic" )
 
@@ -293,7 +293,7 @@ class stream_c:
                 runCloseCandle( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
 
                 # if( not self.shadowcopy ):
-                #     self.updateAllCustomSeries() # update all calculated series regardless if they are called or not
+                #     self.updateAllGeneratedSeries() # update all calculated series regardless if they are called or not
 
                 # OPEN A NEW CANDLE
 
@@ -321,18 +321,18 @@ class stream_c:
                     print( self.df )
 
 
-    def calcCustomSeries( self, type:str, source:pd.Series, period:int, func ):
-        name = customSeriesNameFormat( type, source, period )
+    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func ):
+        name = generatedSeriesNameFormat( type, source, period )
         cseries = None
         # find if there's a item already created for this series
-        for cs in self.customSeries:
+        for cs in self.generatedSeries:
             if cs.name == name:
                 cseries = cs
                 # print( 'found', name )
                 break
         if cseries == None:
-            cseries = customSeries_c( type, source, period, func, self )
-            self.customSeries.append(cseries)
+            cseries = generatedSeries_c( type, source, period, func, self )
+            self.generatedSeries.append(cseries)
         cseries.update( source )
         return cseries
     
@@ -371,13 +371,13 @@ def plot( name, source, chart_name = None ):
 registeredStreams:stream_c = []
 activeStream:stream_c = None
 
-def customseries_calculate_rma(series: pd.Series, length: int) -> pd.Series:
+def generatedseries_calculate_rma(series: pd.Series, length: int) -> pd.Series:
     # RMA needs to be recalculated in full every time
     return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean()
 
-def customseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
     if 1:
-        return pta.mad( series, period )
+        return pt.mad( series, period )
     else:
         # Calculate the average deviation over a given rolling window in a pandas Series.
         # Initialize a list to hold the deviation values
@@ -390,15 +390,15 @@ def customseries_calculate_dev(series: pd.Series, period: int) -> pd.Series:
             deviations.append(deviation)
         return pd.Series(deviations, index=series.index).dropna()
 
-def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Series:
     if 1:
-        return pta.willr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+        return pt.willr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
     else:
         """
         Calculate Williams %R for a given series using OHLC data from activeStream.df over a period.
 
         Args:
-        - series: pd.Series, typically a placeholder, but required for compatibility with customSeries_c.
+        - series: pd.Series, typically a placeholder, but required for compatibility with generatedSeries_c.
         - period: int, the period/window for the Williams %R calculation.
 
         Returns:
@@ -436,7 +436,7 @@ def customseries_calculate_williams_r(series: pd.Series, period: int) -> pd.Seri
 
         return pd.Series(williams_r_values, index=df.index)
 
-def customseries_calculate_rsi(series, period) -> pd.Series:
+def generatedseries_calculate_rsi(series, period) -> pd.Series:
     deltas = series.diff()
     gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
     loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
@@ -445,17 +445,17 @@ def customseries_calculate_rsi(series, period) -> pd.Series:
     return rsi #.iloc[-1]  # Returning the last value of RSI
 
 
-def customseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-        return pta.true_range( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+        return pt.true_range( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
     else:
         """
         Calculate the True Range (TR) for a given series.
 
         Args:
-        - series: pd.Series, the input series (only used to align with customSeries_c interface).
+        - series: pd.Series, the input series (only used to align with generatedSeries_c interface).
         - period: int, the period for the True Range calculation.
 
         Returns:
@@ -472,14 +472,14 @@ def customseries_calculate_tr(series: pd.Series, period: int) -> pd.Series:
         tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
         return tr
 
-def customseries_calculate_atr(series, period) -> pd.Series:
+def generatedseries_calculate_atr(series, period) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-        return pta.atr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
+        return pt.atr( activeStream.df['high'], activeStream.df['low'], activeStream.df['close'], length=period )
     
 
-def customseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
+def generatedseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
     """
     Check if the series has been rising for the given length of time.
 
@@ -502,7 +502,7 @@ def customseries_calculate_rising(series: pd.Series, length: int) -> pd.Series:
 
     return is_rising
 
-def customseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
+def generatedseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
     """
     Check if the series has been falling for the given length of time.
 
@@ -524,11 +524,11 @@ def customseries_calculate_falling(series: pd.Series, length: int) -> pd.Series:
     is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
     return is_falling
 
-def customseries_calculate_wma(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_wma(series: pd.Series, period: int) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-        return pta.wma( series, period )
+        return pt.wma( series, period )
     else:
         """
         Calculate the Weighted Moving Average (WMA) for a given series and length.
@@ -544,11 +544,11 @@ def customseries_calculate_wma(series: pd.Series, period: int) -> pd.Series:
         wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
         return wma
 
-def customseries_calculate_hma(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_hma(series: pd.Series, period: int) -> pd.Series:
     if 1:
         if len(series) < period:
             return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-        return pta.hma( series, period )
+        return pt.hma( series, period )
     else:
         """
         Calculate the Hull Moving Average (HMA) for a given series and length.
@@ -566,18 +566,18 @@ def customseries_calculate_hma(series: pd.Series, period: int) -> pd.Series:
         half_length = int(period / 2)
         sqrt_length = int(period ** 0.5)
         
-        wma_half_length = pta.wma(series, half_length)
-        wma_full_length = pta.wma(series, period)
+        wma_half_length = pt.wma(series, half_length)
+        wma_full_length = pt.wma(series, period)
         
         diff_wma = 2 * wma_half_length - wma_full_length
         
-        hma = pta.wma(diff_wma, sqrt_length)
+        hma = pt.wma(diff_wma, sqrt_length)
         
         return hma
 
 
 
-def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
     """
     Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
 
@@ -592,7 +592,7 @@ def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
         return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
     
     if 1: 
-        return pta.slope( series, period )
+        return pt.slope( series, period )
     else:
         # this one doesn't fail on single candle updates but it's slower than recalculating it all using pandas_ta
         def slope_calc(y):
@@ -615,42 +615,42 @@ def customseries_calculate_slope(series: pd.Series, period: int) -> pd.Series:
 
         return slope_series
     
-def customseries_calculate_cci(series: pd.Series, period: int) -> pd.Series:
+def generatedseries_calculate_cci(series: pd.Series, period: int) -> pd.Series:
     df = activeStream.df
-    return pta.cci( df['high'], df['low'], df['close'], period )
+    return pt.cci( df['high'], df['low'], df['close'], period )
 
 
-def customSeriesNameFormat( type, source:pd.Series, period ):
+def generatedSeriesNameFormat( type, source:pd.Series, period ):
     if( source.name == None ):
-        raise SystemError( f"Custom Series has no valid name [{type}{period} {source.name}]")
+        raise SystemError( f"Generated Series has no valid name [{type}{period} {source.name}]")
     return f'{type}{period} {source.name}'
 
-class customSeries_c:
+class generatedSeries_c:
     def __init__( self, type:str, source:pd.Series, period:int, func = None, stream:stream_c = None ):
-        self.name = customSeriesNameFormat( type, source, period )
+        self.name = generatedSeriesNameFormat( type, source, period )
         self.sourceName = source.name
         self.period = period
         self.func = func
         self.stream = stream
         self.timestamp = 0
-        self.alwaysReset = True if ( self.func == customseries_calculate_rma or self.func == pta.rma 
-                                    or self.func == customseries_calculate_hma  or self.func == pta.hma
-                                    or self.func == customseries_calculate_slope or self.func == pta.slope
-                                    or self.func == pta.dema
+        self.alwaysReset = True if ( self.func == generatedseries_calculate_rma or self.func == pt.rma 
+                                    or self.func == generatedseries_calculate_hma  or self.func == pt.hma
+                                    or self.func == generatedseries_calculate_slope or self.func == pt.slope
+                                    or self.func == pt.dema
                                     ) else False
         
 
         if( self.stream == None ):
-            raise SystemError( f"Custom Series has no assigned stream [{self.name}]")
+            raise SystemError( f"Generated Series has no assigned stream [{self.name}]")
         
         if( self.stream.shadowcopy ):
             raise SystemError( f'Tried to create series [{self.name}] while shadowcopying.' )
 
         if( self.func == None ):
-            raise SystemError( f"Custom Series without a func [{self.name}]")
+            raise SystemError( f"Generated Series without a func [{self.name}]")
 
         if( self.period < 1 ):
-            raise SystemError( f"Custom Series  with invalid period [{period}]")
+            raise SystemError( f"Generated Series  with invalid period [{period}]")
         
 
     def initialize( self, source:pd.Series ):
@@ -683,14 +683,14 @@ class customSeries_c:
         # this happens when making the shadow copy
         if( not pd.isna( df[self.name].iloc[-1] ) ):
             return
-            raise ValueError( f"customSeries {self.name} had a value with a outdated timestamp" )
+            raise ValueError( f"generatedSeries {self.name} had a value with a outdated timestamp" )
         
         if( len(self.stream.df) < self.period ):
             return
         
         # realtime updates
 
-        # slice the required block of candles to calculate the current value of the custom series
+        # slice the required block of candles to calculate the current value of the generated series
         newval = self.func(source[-self.period:], self.period).iloc[-1]
         df.loc[df.index[-1], self.name] = newval
         self.timestamp = self.stream.timestamp
@@ -706,7 +706,7 @@ class customSeries_c:
         df = self.stream.df
         if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
             return False
-        if isinstance( other, customSeries_c ):
+        if isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
                 return False
             return ( self.value(1) <= other.value(1) and self.value() >= other.value() and self.value() != self.value(1) )
@@ -727,7 +727,7 @@ class customSeries_c:
         df = self.stream.df
         if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
             return False
-        if isinstance( other, customSeries_c ):
+        if isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
                 return False
             return ( self.value(1) >= other.value(1) and self.value() <= other.value() and self.value() != self.value(1) )
@@ -788,7 +788,7 @@ class customSeries_c:
 
 def calcIndexWhenTrue( source ):
     if( not isinstance(source, pd.Series ) ):
-        if( isinstance( source, customSeries_c) ):
+        if( isinstance( source, generatedSeries_c) ):
             source = source.series()
         else:
             raise ValueError( "calcIndexWhenTrue must be called with a series" )
@@ -804,7 +804,7 @@ def calcBarsSince( source ):
 ''
 def calcIndexWhenFalse( source ):
     if( not isinstance(source, pd.Series ) ):
-        if( isinstance( source, customSeries_c) ):
+        if( isinstance( source, generatedSeries_c) ):
             source = source.series()
         else:
             raise ValueError( "calcIndexWhenFalse must be called with a series" )
@@ -830,74 +830,74 @@ def calcBarsWhileTrue( source ):
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
 def falling( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'falling', source, period, customseries_calculate_falling )
+    return activeStream.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
 
 def rising( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'rising', source, period, customseries_calculate_rising )
+    return activeStream.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
 
 def calcSMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'sma', source, period, pta.sma )
+    return activeStream.calcGeneratedSeries( 'sma', source, period, pt.sma )
 
 def calcEMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "ema", source, period, pta.ema )
+    return activeStream.calcGeneratedSeries( "ema", source, period, pt.ema )
 
 def calcDEMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "dema", source, period, pta.dema )
+    return activeStream.calcGeneratedSeries( "dema", source, period, pt.dema )
 
 def calcWMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "wma", source, period, customseries_calculate_wma )
+    return activeStream.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
 
 def calcHMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "hma", source, period, customseries_calculate_hma )
+    return activeStream.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma )
 
 # def calcJMA( source:pd.Series, period:int ):
-#     return activeStream.calcCustomSeries( "jma", source, period, pta.jma )
+#     return activeStream.calcGeneratedSeries( "jma", source, period, pt.jma )
 
 # def calcKAMA( source:pd.Series, period:int ):
-#     return activeStream.calcCustomSeries( "kama", source, period, pta.kama )
+#     return activeStream.calcGeneratedSeries( "kama", source, period, pt.kama )
 
 def calcLINREG( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( "linreg", source, period, pta.linreg )
+    return activeStream.calcGeneratedSeries( "linreg", source, period, pt.linreg )
 
 def calcRSI( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'rsi', source, period, customseries_calculate_rsi )
+    return activeStream.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
 
 def calcDEV( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'dev', source, period, customseries_calculate_dev )
+    return activeStream.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
 
 def calcSTDEV( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'stdev', source, period, pta.stdev )
+    return activeStream.calcGeneratedSeries( 'stdev', source, period, pt.stdev )
 
 def calcRMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'rma', source, period, customseries_calculate_rma )
+    return activeStream.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma )
 
 def calcWPR( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'wpr', source, period, customseries_calculate_williams_r )
+    return activeStream.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
 
-def calcATR2( period:int ): # The other one using pta is much faster
-    tr = activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
-    return activeStream.calcCustomSeries( 'atr', tr.series(), period, customseries_calculate_rma )
+def calcATR2( period:int ): # The other one using pt is much faster
+    tr = activeStream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
+    return activeStream.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
 
 def calcTR( period:int ):
-    return activeStream.calcCustomSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, customseries_calculate_tr )
+    return activeStream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
 
 def calcATR( period:int ):
-    return activeStream.calcCustomSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, customseries_calculate_atr )
+    return activeStream.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
 
 def calcSLOPE( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'slope', source, period, customseries_calculate_slope )
+    return activeStream.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope )
 
 def calcBIAS( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'bias', source, period, pta.bias )
+    return activeStream.calcGeneratedSeries( 'bias', source, period, pt.bias )
 
 def calcCCI( period:int ): # CCI uses high, low and close as multi-source
-    return activeStream.calcCustomSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, customseries_calculate_cci )
+    return activeStream.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
 
 def calcCFO( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'cfo', source, period, pta.cfo )
+    return activeStream.calcGeneratedSeries( 'cfo', source, period, pt.cfo )
 
 def calcFWMA( source:pd.Series, period:int ):
-    return activeStream.calcCustomSeries( 'fwma', source, period, pta.fwma )
+    return activeStream.calcGeneratedSeries( 'fwma', source, period, pt.fwma )
 
 
 
