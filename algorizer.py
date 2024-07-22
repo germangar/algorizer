@@ -228,7 +228,7 @@ class stream_c:
 
         print( "Computing script logic" )
         # at this point we have the generatedSeries initialized for the whole dataframe
-        # move the dataframe to use it as source for running the logic with precomputed series.
+        # move the dataframe to use it as source for running the script logic.
         # Start with a new dataframe with only the first row copied from the precomputed dataframe.
         # The precomputed data will be (shadow)copied into the new dataframe as we progress
         # through the bars.
