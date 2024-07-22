@@ -155,6 +155,9 @@ class plot_c:
         self.line.update( pd.Series( {'time': pd.to_datetime( stream.timestamp, unit='ms' ), 'value': newval } ) )
 
 
+def plot( name, source, chart_name = None ):
+    activeStream.plot( name, source, chart_name )
+
 class markers_c:
     def __init__( self, text:str, timestamp:int, chart_name:str = None ):
         self.timestamp = timestamp
@@ -189,9 +192,9 @@ class stream_c:
         self.initializing = True
         self.shadowcopy = False
 
-        self.generatedSeries:generatedSeries_c = []
+        self.generatedSeries: dict[str, generatedSeries_c] = {}
+        self.registeredPlots: dict[str, plot_c] = {}
         self.markers:markers_c = []
-        self.registeredPlots:plot_c = []
 
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
@@ -320,55 +323,44 @@ class stream_c:
 
     def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, always_reset:bool = False ):
         name = generatedSeriesNameFormat( type, source, period )
-        cseries = None
-        # find if there's a item already created for this series
-        for cs in self.generatedSeries:
-            if cs.name == name:
-                cseries = cs
-                # print( 'found', name )
-                break
-        if cseries == None:
-            cseries = generatedSeries_c( type, source, period, func, always_reset, self )
-            self.generatedSeries.append(cseries)
-        cseries.update( source )
-        return cseries
+
+        gs = self.generatedSeries.get( name )
+        if( gs == None ):
+            gs = generatedSeries_c( type, source, period, func, always_reset, self )
+            self.generatedSeries[name] = gs
+
+        gs.update( source )
+        return gs
     
-    def createMarker( self, text:str, timestamp:int, chart_name:str = None ):
+    def createMarker( self, text:str = '', timestamp:int = -1, chart_name:str = None ):
         if timestamp == -1:
             timestamp = self.timestamp
         self.markers.append( markers_c( text, timestamp, chart_name ) )
 
     def plot( self, name, source, chart_name = None ):
-        plot = None
-        for p in self.registeredPlots:
-            if( name == p.name ):
-                plot = p
-                break
+        plot = self.registeredPlots.get( name )
 
         if( plot == None ):
             plot = plot_c( name, chart_name )
-            self.registeredPlots.append( plot )
-
+            self.registeredPlots[name] = plot
         
         plot.update( source, self, window )
         return plot
     
     def jumpstartPlots( self, window ):
-        for plot in self.registeredPlots:
+        for plot in self.registeredPlots.values():
             if not plot.initialized:
                 plot.update( plot.source, self, window )
 
+
         
-
-
-def createMarker( text:str = '', timestamp:int = -1, chart_name:str = None ):
-    activeStream.createMarker( text, timestamp, chart_name )
-
-def plot( name, source, chart_name = None ):
-    activeStream.plot( name, source, chart_name )
-
 registeredStreams:stream_c = []
 activeStream:stream_c = None
+
+def registerStream( symbol:str, exchange_name:str, timeframeStr:str, candle_amount:int ):
+    stream = stream_c( symbol, exchange_name, timeframeStr, candle_amount )
+    registeredStreams.append( stream )
+    return stream
 
 
 
@@ -922,7 +914,8 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     ema = calcEMA( close, 4 )
     ema.plot()
 
-    calcLINREG( close, 300 ).plot()
+    lr = calcLINREG( close, 300 )
+    lr.plot()
 
     # rsi = calcRSI( close, 14 )
     # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
@@ -962,14 +955,14 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # calcCCI( 20 )
 
     # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
-    # plot( slope1000.name, slope1000.series(), window.bottomPanel )
+    # plot( slope1000.name, slope1000.series(), 'panel' )
 
 
     if( sma.crossingUp(close) ):
-        createMarker( '🔷' )
+        stream.createMarker( '🔷' )
 
-    if crossingDown( sma, ema ):
-        createMarker( '🔺' )
+    if crossingDown( sma, lr ):
+        stream.createMarker( '🔺' )
 
     # plot( "lazyline", 30, window.bottomPanel )
 
@@ -1022,8 +1015,7 @@ async def on_timeframe_selection(chart):
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '5m', 10000 )
-    registeredStreams.append( stream )
+    stream = registerStream( 'LDO/USDT:USDT', 'bitmart', '5m', 10000 )
 
     
     tasks.registerTask( update_clock(stream) )
