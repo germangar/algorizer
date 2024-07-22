@@ -23,7 +23,7 @@ import strategy
 
 window = None
 SHOW_VOLUME = False
-verbose = True
+verbose = False
 
 
 def crossingUp( self, other ):
@@ -667,23 +667,19 @@ class generatedSeries_c:
     def update( self, source:pd.Series ):
         if( self.stream.shadowcopy ):
             return
-        
-        df = self.stream.df
 
         # has this row already been updated?
-        if( self.timestamp >= df['timestamp'].iloc[-1] ):
+        if( self.timestamp >= self.stream.df['timestamp'].iloc[-1] ):
             return
 
-        # if non existant try to create new
-        # the rma needs to be recalculated in full for every new candle
+        # if non existant try to create new. A few need to be made new every time
         if( self.timestamp == 0 or self.alwaysReset ):
             self.initialize( source )
             return
         
         # this happens when making the shadow copy
-        if( not pd.isna( df[self.name].iloc[-1] ) ):
-            return
-            raise ValueError( f"generatedSeries {self.name} had a value with a outdated timestamp" )
+        # if( not pd.isna( self.stream.df[self.name].iloc[-1] ) ):
+        #     return
         
         if( len(self.stream.df) < self.period ):
             return
@@ -692,7 +688,7 @@ class generatedSeries_c:
 
         # slice the required block of candles to calculate the current value of the generated series
         newval = self.func(source[-self.period:], self.period, self.stream.df).iloc[-1]
-        df.loc[df.index[-1], self.name] = newval
+        self.stream.df.loc[self.stream.df.index[-1], self.name] = newval
         self.timestamp = self.stream.timestamp
         
     def plot( self, chart = None ):
@@ -1015,7 +1011,7 @@ async def on_timeframe_selection(chart):
 if __name__ == '__main__':
 
     # WIP stream
-    stream = registerStream( 'LDO/USDT:USDT', 'bitmart', '5m', 10000 )
+    stream = registerStream( 'LDO/USDT:USDT', 'bitmart', '1m', 10000 )
 
     
     tasks.registerTask( update_clock(stream) )
