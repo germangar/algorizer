@@ -785,7 +785,7 @@ class generatedSeries_c:
     
 
 
-def calcIndexWhenTrue( source ):
+def findIndexWhenTrue( source ):
     if( not isinstance(source, pd.Series ) ):
         if( isinstance( source, generatedSeries_c) ):
             source = source.series()
@@ -796,13 +796,13 @@ def calcIndexWhenTrue( source ):
 
 
 def calcBarsSince( source ):
-    index_when_true = calcIndexWhenTrue( source )
+    index_when_true = findIndexWhenTrue( source )
     if( index_when_true == None ):
         return None
     return activeStream.barindex - index_when_true
 
 
-def calcIndexWhenFalse( source ):
+def findIndexWhenFalse( source ):
     if( not isinstance(source, pd.Series ) ):
         if( isinstance( source, generatedSeries_c) ):
             source = source.series()
@@ -822,7 +822,7 @@ def calcIndexWhenFalse( source ):
 
 
 def calcBarsWhileTrue( source ):
-    index_when_false = calcIndexWhenFalse( source )
+    index_when_false = findIndexWhenFalse( source )
     if( index_when_false == None ):
         return None
     return activeStream.barindex - index_when_false
