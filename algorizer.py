@@ -217,32 +217,29 @@ class stream_c:
         print( "Creating dataframe" )
 
         # take out the last row to jumpstart the generatedSeries later
-        last_ohlcv = ohlcvs[-1]
-        ohlcvs = ohlcvs[:-1]
-        self.df = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+        self.df = pd.DataFrame( ohlcvs[:-1], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
 
-        
-        #stream.df.drop( stream.df.tail(1).index, inplace=True )
         print( "Calculating generated series" )
+
         start_time = time.time()
-        self.parseCandleUpdate( [last_ohlcv] )
+        self.parseCandleUpdate( [ohlcvs[-1]] ) # de the jump-starting
         print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
-        ###############################################################################
-        # at this point we have the generatedSeries initialized for the whole dataframe
-        # move the dataframe to use it as source for the initialization with precomputed data
+
         print( "Computing script logic" )
-
-        self.timestamp = 0
-        self.barindex = -1
+        # at this point we have the generatedSeries initialized for the whole dataframe
+        # move the dataframe to use it as source for running the logic with precomputed series.
+        # Start with a new dataframe with only the first row copied from the precomputed dataframe.
+        # The precomputed data will be (shadow)copied into the new dataframe as we progress
+        # through the bars.
+        ###############################################################################
         self.initdata = self.df
-        self.shadowcopy = True
-
-        # start with a blank dataframe with only the first row copied from the precomputed dataframe
         self.df = pd.DataFrame( pd.DataFrame(self.initdata.iloc[0]).T, columns=self.initdata.columns )
         
-        # run the script logic
-        ohlcvs.append( last_ohlcv )
+        # run the script logic accross all the rows
+        self.shadowcopy = True
+        self.timestamp = 0
+        self.barindex = -1
         self.parseCandleUpdate( ohlcvs )
         self.shadowcopy = False
         ###############################################################################
@@ -1014,7 +1011,7 @@ async def on_timeframe_selection(chart):
 if __name__ == '__main__':
 
     # WIP stream
-    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '1m', 5000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitmart', '5m', 10000 )
     registeredStreams.append( stream )
 
     
