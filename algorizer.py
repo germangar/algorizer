@@ -334,6 +334,8 @@ class stream_c:
         return cseries
     
     def createMarker( self, text:str, timestamp:int, chart_name:str = None ):
+        if timestamp == -1:
+            timestamp = self.timestamp
         self.markers.append( markers_c( text, timestamp, chart_name ) )
 
     def plot( self, name, source, chart_name = None ):
@@ -359,7 +361,7 @@ class stream_c:
         
 
 
-def createMarker( text:str, timestamp:int, chart_name:str = None ):
+def createMarker( text:str = '', timestamp:int = -1, chart_name:str = None ):
     activeStream.createMarker( text, timestamp, chart_name )
 
 def plot( name, source, chart_name = None ):
@@ -383,7 +385,7 @@ def generatedseries_calculate_linreg(series: pd.Series, period: int, df:pd.DataF
     return pt.linreg( series, period )
 
 def generatedseries_calculate_rma(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
-    return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean() # RMA needs to be recalculated in full every time
+    return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean()
 
 def generatedseries_calculate_stdev(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
     return pt.stdev( series, period )
@@ -645,12 +647,6 @@ class generatedSeries_c:
         self.stream = stream
         self.timestamp = 0
         self.alwaysReset = always_reset
-        # self.alwaysReset = True if ( self.func == generatedseries_calculate_rma or self.func == pt.rma 
-        #                             or self.func == generatedseries_calculate_hma  or self.func == pt.hma
-        #                             or self.func == generatedseries_calculate_slope or self.func == pt.slope
-        #                             or self.func == generatedseries_calculate_dema
-        #                             ) else False
-        
 
         if( self.stream == None ):
             raise SystemError( f"Generated Series has no assigned stream [{self.name}]")
@@ -797,7 +793,6 @@ class generatedSeries_c:
     
 
 
-
 def calcIndexWhenTrue( source ):
     if( not isinstance(source, pd.Series ) ):
         if( isinstance( source, generatedSeries_c) ):
@@ -807,13 +802,14 @@ def calcIndexWhenTrue( source ):
     boolean_source = source.astype(bool) if source.dtype != bool else source
     return boolean_source[::-1].idxmax() if source.any() else None
 
+
 def calcBarsSince( source ):
     index_when_true = calcIndexWhenTrue( source )
     if( index_when_true == None ):
         return None
     return activeStream.barindex - index_when_true
 
-''
+
 def calcIndexWhenFalse( source ):
     if( not isinstance(source, pd.Series ) ):
         if( isinstance( source, generatedSeries_c) ):
@@ -970,10 +966,10 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
 
     if( sma.crossingUp(close) ):
-        createMarker( '🔷', stream.timestamp )
+        createMarker( '🔷' )
 
     if crossingDown( sma, ema ):
-        createMarker( '🔺', stream.timestamp )
+        createMarker( '🔺' )
 
     # plot( "lazyline", 30, window.bottomPanel )
 
