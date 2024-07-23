@@ -200,10 +200,10 @@ class stream_c:
         self.initdata:pd.DataFrame = []
 
         # Update the cache
-        fetcher = candles_c( self.exchange.id, self.symbol )
+        fetcher = candles_c( exchangeID, self.symbol )
         ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeStr, max_amount )
         if( len(ohlcvs) == 0 ):
-            raise SystemExit( f'No candles available in {stream.exchange.id}. Aborting')
+            raise SystemExit( f'No candles available in {exchangeID}. Aborting')
         
         #################################################
 
