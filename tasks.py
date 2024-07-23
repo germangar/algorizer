@@ -7,6 +7,11 @@ def registerTask( task ):
     pendingTasks.append( task )
 
 async def dummy():
+    # while True:
+    #     for task in asyncio.all_tasks():
+    #         if not task.done():
+    #             print(f"Task: {task.get_name()}, Status: {task._state}")
+    #     await asyncio.sleep(3)
     return
 
 async def watch_for_new_tasks(tasks):

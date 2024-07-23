@@ -199,6 +199,15 @@ class stream_c:
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
 
+        # Update the cache
+        fetcher = candles_c( self.exchange.id, self.symbol )
+        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeStr, max_amount )
+        if( len(ohlcvs) == 0 ):
+            raise SystemExit( f'No candles available in {stream.exchange.id}. Aborting')
+        
+        #################################################
+
+        # connect to ccxt.pro (FIXME? This is probably redundant with the fetcher)
         try:
             self.exchange = getattr(ccxt, exchangeID)({
                     "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
@@ -208,14 +217,6 @@ class stream_c:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
         
         #################################################
-
-        # the fetcher will be inside the stream
-        fetcher = candles_c( self.exchange.id, self.symbol )
-
-        #ohlcvs = fetcher.fetchAmount( stream.symbol, stream.timeframeStr, amount=10000 )
-        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeStr, max_amount )
-        if( len(ohlcvs) == 0 ):
-            raise SystemExit( f'No candles available in {stream.exchange.id}. Aborting')
         
         print( "Creating dataframe" )
 
@@ -252,6 +253,7 @@ class stream_c:
         self.initdata = [] # free memory
         ohlcvs = None
 
+        # I think I should rewrite fetchCandleUpdates to build the rest of timeframes
         tasks.registerTask( fetchCandleUpdates( self ) )
 
         
@@ -278,11 +280,12 @@ class stream_c:
 
                 #update the chart
                 if( window != None ):
-                    window.updateChart()
+                    if( window.stream == self ):
+                        window.updateChart()
                     
             else:
                 if( not self.initializing ):
-                    print( 'NEW CANDLE', newrow )
+                    print( f'NEW {stream.timeframeStr} CANDLE', newrow )
 
                 # CLOSE REALTIME CANDLE
 
@@ -312,7 +315,8 @@ class stream_c:
 
                 # update the chart
                 if( window != None ):
-                    window.updateChart()
+                    if( window.stream == self ):
+                        window.updateChart()
 
                 if( self.shadowcopy and new_row_index % 5000 == 0 ):
                     print( new_row_index, "candles processed." )
@@ -898,7 +902,6 @@ def calcFWMA( source:pd.Series, period:int ):
 
 
 def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    barindex = stream.barindex
 
     ###########################
     # strategy code goes here #
@@ -1010,16 +1013,12 @@ async def on_timeframe_selection(chart):
 
 if __name__ == '__main__':
 
-    # WIP stream
     stream = registerStream( 'LDO/USDT:USDT', 'bitmart', '1m', 10000 )
 
-    
     tasks.registerTask( update_clock(stream) )
 
     window = createWindow( stream )
 
-    #stream.parseCandleUpdate( [last_ohlcv] ) # jump-start the chart plots
-    
     asyncio.run( tasks.runTasks() )
 
 
