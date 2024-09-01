@@ -1013,7 +1013,7 @@ async def on_timeframe_selection(chart):
 
 if __name__ == '__main__':
 
-    stream = registerStream( 'LDO/USDT:USDT', 'bitmart', '1m', 10000 )
+    stream = registerStream( 'LDO/USDT:USDT', 'bitget', '1m', 10000 )
 
     tasks.registerTask( update_clock(stream) )
 

@@ -38,45 +38,65 @@ def stringToValue( arg )->float:
     else:
         value = float(arg)
     return value
+
+
+
+timeframeNames = [ '1m', '5m', '15m', '30m', '45m', '1h', '2h', '3h', '4h', '1d', '1w' ]
+
+
+# ccxt.bitget.parse_timeframe(timeframe) * 1000
             
 def timeframeInt( timeframeName )->int:
+    '''Returns timeframe as integer in minutes'''
     if( type(timeframeName) != str ):
-        SystemError( "timeframeNameToMinutes: Timeframe was not a string" )
+        raise SystemError( "timeframeInt: Timeframe was not a string" )
 
-    if( timeframeName[-1:].lower()  == "m" ):
-        if( stringToValue(timeframeName[:-1]) != None ):
-            return int( stringToValue( timeframeName[:-1] ) )
-    elif( timeframeName[-1:].lower()  == "h" ):
-        value = stringToValue( timeframeName[:-1] )
-        if( value != None ):
+    if( timeframeName not in timeframeNames ):
+        raise SystemError( f"timeframeInt: {timeframeName} is not a valid timeframe name" )
+
+    scale = timeframeName[-1:].lower()
+    value = stringToValue( timeframeName[:-1] )
+    if( value != None ):
+        if( scale  == "m" ):
+            return int( value )
+        elif( scale  == "h" ):
             return int( value * 60 )
-    elif( timeframeName[-1:].lower()  == "d" ):
-        value = stringToValue( timeframeName[:-1] )
-        if( value != None ):
+        elif( scale  == "d" ):
             return int( value * 60 * 24 )
-    elif( timeframeName[-1:].lower()  == "w" ):
-        value = stringToValue( timeframeName[:-1] )
-        if( value != None ):
+        elif( scale  == "w" ):
             return int( value * 60 * 24 * 7 )
         
     # fall through if unsucessful
     SystemError( "timeframeNameToMinutes: Invalid timeframe string:", timeframeName )
 
+def timeframeMsec( timeframeName )->int:
+    return int( timeframeInt( timeframeName ) * 60 * 1000 )
+
+def timeframeSec( timeframeName )->int:
+    return int( timeframeInt( timeframeName ) * 60 )
+
 def timeframeString( timeframe )->str:
     if( type(timeframe) != int ):
+        if( timeframe in timeframeNames ):
+            return timeframe
         SystemError( "timeframeNameToMinutes: Timeframe was not an integer" )
+
+    name = 'invalid'
     
     if( timeframe < 60 and timeframe >= 1 ):
-        return f'{timeframe}m'
+        name =  f'{timeframe}m'
     elif( timeframe < 1440 ):
-        return f'{int(timeframe/60)}h'
+        name =  f'{int(timeframe/60)}h'
     elif( timeframe < 10080 ):
-        return f'{int(timeframe/1440)}d'
+        name =  f'{int(timeframe/1440)}d'
     elif( timeframe == 10080 ):
-        return f'{int(timeframe/10080)}w'
+        name =  f'{int(timeframe/10080)}w'
     
+    if( name not in timeframeNames ):
     # fall through if unsucessful
-    SystemError( "timeframeNameToMinutes: Unsupported timeframe:", timeframe )
+        raise SystemError( "timeframeString: Unsupported timeframe:", timeframe )
+    
+    return name
 
 def replaceValueByTimestamp( df, timestamp, key:str, value ):
     if( key == 'open' or key == 'high' or key == 'low' or key == 'close' ):
