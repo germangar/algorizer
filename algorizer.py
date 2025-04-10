@@ -158,6 +158,7 @@ class plot_c:
 def plot( name, source, chart_name = None ):
     activeStream.plot( name, source, chart_name )
 
+'''
 class markers_c:
     def __init__( self, text:str, timestamp:int, chart_name:str = None ):
         self.timestamp = timestamp
@@ -179,12 +180,12 @@ class markers_c:
         if( self.chart ):
             self.remove()
             self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
+'''
 
 
 class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframe, max_amount = 5000 ):
         self.symbol = symbol # FIXME: add verification
-        self.market = None
         self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
         self.timeframeStr = tools.timeframeString( self.timeframe )
         self.barindex = -1
@@ -194,7 +195,9 @@ class stream_c:
 
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
+        '''
         self.markers:markers_c = []
+        '''
 
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
@@ -204,7 +207,7 @@ class stream_c:
         ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeStr, max_amount )
         if( len(ohlcvs) == 0 ):
             raise SystemExit( f'No candles available in {exchangeID}. Aborting')
-        
+
         #################################################
 
         # connect to ccxt.pro (FIXME? This is probably redundant with the fetcher)
@@ -217,6 +220,16 @@ class stream_c:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
         
         #################################################
+        
+        
+        self.initDataframe( ohlcvs )
+
+        self.initializing = False
+        # I think I should rewrite fetchCandleUpdates to build the rest of timeframes
+        tasks.registerTask( fetchCandleUpdates( self ) )
+
+
+    def initDataframe( self, ohlcvs ):
         
         print( "Creating dataframe" )
 
@@ -249,12 +262,10 @@ class stream_c:
         ###############################################################################
 
         print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
-        self.initializing = False
         self.initdata = [] # free memory
         ohlcvs = None
 
-        # I think I should rewrite fetchCandleUpdates to build the rest of timeframes
-        tasks.registerTask( fetchCandleUpdates( self ) )
+        
 
         
     def parseCandleUpdate( self, rows ):
@@ -286,6 +297,7 @@ class stream_c:
             else:
                 if( not self.initializing ):
                     print( f'NEW {stream.timeframeStr} CANDLE', newrow )
+                    print( f'Next timestamp {newrow[0] + tools.timeframeMsec(self.timeframeStr)}' )
 
                 # CLOSE REALTIME CANDLE
 
@@ -336,10 +348,12 @@ class stream_c:
         gs.update( source )
         return gs
     
+    '''
     def createMarker( self, text:str = '', timestamp:int = -1, chart_name:str = None ):
         if timestamp == -1:
             timestamp = self.timestamp
         self.markers.append( markers_c( text, timestamp, chart_name ) )
+    '''
 
     def plot( self, name, source, chart_name = None ):
         plot = self.registeredPlots.get( name )
@@ -956,13 +970,13 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
     # plot( slope1000.name, slope1000.series(), 'panel' )
 
-
+    '''
     if( sma.crossingUp(close) ):
         stream.createMarker( '🔷' )
 
     if crossingDown( sma, lr ):
         stream.createMarker( '🔺' )
-
+    '''
     # plot( "lazyline", 30, window.bottomPanel )
 
 
@@ -996,6 +1010,8 @@ async def fetchCandleUpdates( stream:stream_c ):
 
     await exchange.close()
 
+async def on_timeframe_selection(chart):
+    print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
 
 from datetime import datetime
 async def update_clock(stream):
@@ -1006,16 +1022,23 @@ async def update_clock(stream):
         window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
 
 
-async def on_timeframe_selection(chart):
-    print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
+import aioconsole
+async def cli_task(stream):
+    while True:
+        command = await aioconsole.ainput()  # <-- Use aioconsole for non-blocking input
 
-
+        if command.lower() == 'chart':
+            print( 'opening chart' )
+            window = createWindow( stream )
+        
+        await asyncio.sleep(0.05)
 
 if __name__ == '__main__':
 
     stream = registerStream( 'LDO/USDT:USDT', 'bitget', '1m', 4000 )
 
-    tasks.registerTask( update_clock(stream) )
+    # tasks.registerTask( update_clock(stream) )
+    tasks.registerTask( cli_task(stream) )
 
     window = createWindow( stream )
 
