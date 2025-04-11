@@ -35,7 +35,7 @@ class window_c:
         # bottom panel
         self.bottomPanel = bottomPanel = chart.create_subchart( position='bottom', width=1.0, height=0.2, sync=chart.id )
         if( self.bottomPanel == None ): raise SystemError( "Failed to create bottomPanel" )
-        bottomPanel.legend( visible=True, ohlc=False, percent=False, font_size=18 )
+        bottomPanel.legend( visible=True, ohlc=False, percent=False, lines = False, font_size=18 ) # lines info crash the script when enabled
         bottomPanel.time_scale( visible=True, time_visible=True )
         bottomPanel.crosshair( horz_visible=False )
         bottomPanel.price_line( label_visible=False, line_visible=False )
@@ -67,6 +67,7 @@ class window_c:
 
         self.chart.update( pd.Series(data_dict) )
         if( self.bottomPanel != None ):
+            self.bottomPanel.legend( lines = False ) # It crashes if lines are enabled
             self.bottomPanel.update( pd.Series(data_dict) )
 
 
