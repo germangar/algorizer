@@ -272,14 +272,12 @@ class stream_c:
 
 
     
-    def parseCandleUpdate(self, rows):
+    def parseCandleUpdate( self, rows ):
         global activeStream
         activeStream = self
 
         for newrow in rows.itertuples(index=False):
             newTimestamp = int(newrow.timestamp)
-            # if newTimestamp is None:
-            #     break
 
             oldTimestamp = int(self.df.iloc[-1]['timestamp']) if len(self.df) > 1 else 0
             if oldTimestamp > newTimestamp:  # the server has sent a bunch of older candles
@@ -299,15 +297,15 @@ class stream_c:
 
             else:
                 if not self.initializing:
-                    print(f'NEW {stream.timeframeStr} CANDLE', newrow)
-                    print(f'Next timestamp {newrow.timestamp + tools.timeframeMsec(self.timeframeStr)}')
+                    print( f'NEW {stream.timeframeStr} CANDLE', newrow )
+                    print( f'Next timestamp {newrow.timestamp + tools.timeframeMsec(self.timeframeStr)}' )
 
                 # CLOSE REALTIME CANDLE
                 self.barindex = self.df.iloc[-1].name
                 self.timestamp = self.df['timestamp'].iloc[-1]
                 new_row_index = self.barindex + 1
 
-                runCloseCandle(self, self.df['open'], self.df['high'], self.df['low'], self.df['close'])
+                runCloseCandle( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
 
                 # if( not self.shadowcopy ):
                 #     self.updateAllGeneratedSeries() # update all calculated series regardless if they are called or not
@@ -316,8 +314,7 @@ class stream_c:
                 if self.shadowcopy:
                     # row_to_append = self.initdata.iloc[new_row_index].to_frame().T
                     # self.df = pd.concat( [self.df, row_to_append], ignore_index=True )
-                    # self.df = pd.concat( [self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True )
-                    self.df = pd.concat([self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True)
+                    self.df = pd.concat( [self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True )
                 else:
                     self.df.loc[new_row_index, 'timestamp'] = newTimestamp
                     self.df.loc[new_row_index, 'open'] = newrow.open
@@ -332,10 +329,10 @@ class stream_c:
                         window.updateChart()
 
                 if self.shadowcopy and new_row_index % 5000 == 0:
-                    print(new_row_index, "candles processed.")
+                    print( new_row_index, "candles processed." )
 
                 if not self.shadowcopy and verbose:
-                    print(self.df)
+                    print( self.df )
 
 
 
@@ -1011,8 +1008,7 @@ async def fetchCandleUpdates( stream:stream_c ):
         if( len(response) > maxRows ):
             response = response[len(response)-maxRows:]
 
-        pprint( response )
-        #stream.parseCandleUpdate( response )
+        #pprint( response )
         if( len(response) ):
             stream.parseCandleUpdate( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
         
