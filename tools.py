@@ -41,33 +41,75 @@ def stringToValue( arg )->float:
 
 
 
-timeframeNames = [ '1m', '5m', '15m', '30m', '45m', '1h', '2h', '3h', '4h', '1d', '1w' ]
+''' # CCXT timeframe conventions
+def parse_timeframe(timeframe):
+        amount = int(timeframe[0:-1])
+        unit = timeframe[-1]
+        if 'y' == unit:
+            scale = 60 * 60 * 24 * 365
+        elif 'M' == unit:
+            scale = 60 * 60 * 24 * 30
+        elif 'w' == unit:
+            scale = 60 * 60 * 24 * 7
+        elif 'd' == unit:
+            scale = 60 * 60 * 24
+        elif 'h' == unit:
+            scale = 60 * 60
+        elif 'm' == unit:
+            scale = 60
+        elif 's' == unit:
+            scale = 1
+        else:
+            raise NotSupported('timeframe unit {} is not supported'.format(unit))
+        return amount * scale
+'''
+
+
+timeframeSufffixes = [ 'm', 'h', 'd', 'w', 'M', 'y' ]
+
+def validateTimeframeName( timeframeName ):
+        if not isinstance( timeframeName, str ):
+            print( "validateTimeframeName: Timeframe was not a string" )
+            return False
+
+        amount = stringToValue( timeframeName[:-1] )
+        if( amount == None ):
+            print( f"validateTimeframeName: Timeframe string didn't produce a value '{timeframeName}'" )
+            return False
+
+        unit = timeframeName[-1]
+
+        if unit not in timeframeSufffixes:
+            print( f"validateTimeframeName: Unknown timeframe suffix '{timeframeName}'. Valid suffixes:" )
+            print( timeframeSufffixes )
+            return False
+        
+        return True
 
 
 # ccxt.bitget.parse_timeframe(timeframe) * 1000
             
 def timeframeInt( timeframeName )->int:
     '''Returns timeframe as integer in minutes'''
-    if( type(timeframeName) != str ):
-        raise SystemError( "timeframeInt: Timeframe was not a string" )
-
-    if( timeframeName not in timeframeNames ):
+    if( not validateTimeframeName(timeframeName) ):
         raise SystemError( f"timeframeInt: {timeframeName} is not a valid timeframe name" )
+    
+    amount = int(timeframeName[0:-1])
+    unit = timeframeName[-1]
+    if 'y' == unit:
+        scale = 60 * 24 * 365
+    elif 'M' == unit:
+        scale = 60 * 24 * 30
+    elif 'w' == unit:
+        scale = 60 * 24 * 7
+    elif 'd' == unit:
+        scale = 60 * 24
+    elif 'h' == unit:
+        scale = 60
+    elif 'm' == unit:
+        scale = 1
 
-    scale = timeframeName[-1:].lower()
-    value = stringToValue( timeframeName[:-1] )
-    if( value != None ):
-        if( scale  == "m" ):
-            return int( value )
-        elif( scale  == "h" ):
-            return int( value * 60 )
-        elif( scale  == "d" ):
-            return int( value * 60 * 24 )
-        elif( scale  == "w" ):
-            return int( value * 60 * 24 * 7 )
-        
-    # fall through if unsucessful
-    SystemError( "timeframeNameToMinutes: Invalid timeframe string:", timeframeName )
+    return int( amount * scale )
 
 def timeframeMsec( timeframeName )->int:
     return int( timeframeInt( timeframeName ) * 60 * 1000 )
@@ -77,9 +119,9 @@ def timeframeSec( timeframeName )->int:
 
 def timeframeString( timeframe )->str:
     if( type(timeframe) != int ):
-        if( timeframe in timeframeNames ):
+        if( validateTimeframeName(timeframe) ):
             return timeframe
-        SystemError( "timeframeNameToMinutes: Timeframe was not an integer" )
+        SystemError( f"timeframeNameToMinutes: Timeframe was not an integer nor a valid format: {timeframe}" )
 
     name = 'invalid'
     
@@ -89,12 +131,10 @@ def timeframeString( timeframe )->str:
         name =  f'{int(timeframe/60)}h'
     elif( timeframe < 10080 ):
         name =  f'{int(timeframe/1440)}d'
-    elif( timeframe == 10080 ):
+    elif( timeframe < 604800 ):
         name =  f'{int(timeframe/10080)}w'
-    
-    if( name not in timeframeNames ):
-    # fall through if unsucessful
-        raise SystemError( "timeframeString: Unsupported timeframe:", timeframe )
+    elif( timeframe < 2592000 ):
+        name =  f'{int(timeframe/604800)}M'
     
     return name
 

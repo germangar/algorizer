@@ -183,6 +183,44 @@ class markers_c:
 '''
 
 
+def resample_ohlcv(df, target_timeframe):
+    """
+    Resample OHLCV dataframe to a higher timeframe.
+    Accepts target_timeframe as number of minutes (e.g., 15, 60, 1440).
+    Keeps timestamp in milliseconds, no datetime column is returned.
+    """
+
+    def map_minutes_to_pandas_freq(minutes: int) -> str:
+        if minutes % 1440 == 0:
+            return f"{minutes // 1440}D"
+        elif minutes % 60 == 0:
+            return f"{minutes // 60}H"
+        else:
+            return f"{minutes}T"
+
+    # If target_timeframe is a string like '15', convert to int
+    if isinstance(target_timeframe, str):
+        if( target_timeframe[-1:].lower() == 'm' ):
+            target_timeframe = tools.timeframeInt(target_timeframe)
+        target_timeframe = int(target_timeframe)
+
+    pandas_freq = map_minutes_to_pandas_freq(target_timeframe)
+
+    df = df.copy()
+    df.index = pd.to_datetime(df['timestamp'], unit='ms')
+
+    resampled = df.resample(pandas_freq, label='left', closed='left').agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
+    }).dropna()
+
+    resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
+    return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+
+
 class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframe, max_amount = 5000 ):
         self.symbol = symbol # FIXME: add verification
@@ -208,6 +246,20 @@ class stream_c:
         if( len(ohlcvs) == 0 ):
             raise SystemExit( f'No candles available in {exchangeID}. Aborting')
         ohlcvDF = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+
+
+        ######################################################
+        #   RESAMPLING TEST
+        ######################################################
+        ohlcvDV_5m = resample_ohlcv(ohlcvDF, '5m')
+        pprint( ohlcvDV_5m )
+        # timeframe = '5m'
+        # self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
+        # self.timeframeStr = tools.timeframeString( self.timeframe )
+        # ohlcvDF = ohlcvDV_5m
+        ######################################################
+        ######################################################
+
 
         #################################################
 
