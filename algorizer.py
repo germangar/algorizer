@@ -155,8 +155,8 @@ class plot_c:
         self.line.update( pd.Series( {'time': pd.to_datetime( stream.timestamp, unit='ms' ), 'value': newval } ) )
 
 
-def plot( name, source, chart_name = None ):
-    activeStream.plot( name, source, chart_name )
+def plot( stream, name, source, chart_name = None ):
+    stream.plot( name, source, chart_name )
 
 '''
 class markers_c:
@@ -219,6 +219,7 @@ def resample_ohlcv(df, target_timeframe):
 
     resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
     return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+
 
 
 class stream_c:
@@ -325,8 +326,6 @@ class stream_c:
 
     
     def parseCandleUpdate( self, rows ):
-        global activeStream
-        activeStream = self
 
         for newrow in rows.itertuples(index=False):
             newTimestamp = int(newrow.timestamp)
@@ -422,14 +421,6 @@ class stream_c:
                 plot.update( plot.source, self, window )
 
 
-        
-registeredStreams:stream_c = []
-activeStream:stream_c = None
-
-def registerStream( symbol:str, exchange_name:str, timeframeStr:str, candle_amount:int ):
-    stream = stream_c( symbol, exchange_name, timeframeStr, candle_amount )
-    registeredStreams.append( stream )
-    return stream
 
 
 
@@ -762,7 +753,7 @@ class generatedSeries_c:
         
     def plot( self, chart = None ):
         if( self.timestamp > 0 ):
-            plot( self.name, self.series(), chart )
+            plot( self.stream, self.name, self.series(), chart )
     
     def series( self ):
         return self.stream.df[self.name]
@@ -860,11 +851,12 @@ def findIndexWhenTrue( source ):
     return boolean_source[::-1].idxmax() if source.any() else None
 
 
-def calcBarsSince( source ):
+def calcBarsSince( barindex, source ):
     index_when_true = findIndexWhenTrue( source )
     if( index_when_true == None ):
         return None
-    return activeStream.barindex - index_when_true
+    return barindex - index_when_true
+    # return activeStream.barindex - index_when_true
 
 
 def findIndexWhenFalse( source ):
@@ -886,83 +878,84 @@ def findIndexWhenFalse( source ):
         return 0  # Return 0 if the series is empty or has no True values''
 
 
-def calcBarsWhileTrue( source ):
+def calcBarsWhileTrue( barindex, source ):
     index_when_false = findIndexWhenFalse( source )
     if( index_when_false == None ):
         return None
-    return activeStream.barindex - index_when_false
+    return barindex - index_when_false
+    # return activeStream.barindex - index_when_false
 
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
-def falling( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
+def falling( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
 
-def rising( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
+def rising(stream:stream_c,  source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
 
-def calcSMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
+def calcSMA( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
 
-def calcEMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
+def calcEMA( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
 
-def calcDEMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
+def calcDEMA( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
 
-def calcWMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
+def calcWMA( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
 
-def calcHMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
+def calcHMA( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
 
-# def calcJMA( source:pd.Series, period:int ):
-#     return activeStream.calcGeneratedSeries( "jma", source, period, pt.jma )
+# def calcJMA( stream:stream_c, source:pd.Series, period:int ):
+#     return stream.calcGeneratedSeries( "jma", source, period, pt.jma )
 
-# def calcKAMA( source:pd.Series, period:int ):
-#     return activeStream.calcGeneratedSeries( "kama", source, period, pt.kama )
+# def calcKAMA( stream:stream_c, source:pd.Series, period:int ):
+#     return stream.calcGeneratedSeries( "kama", source, period, pt.kama )
 
-def calcLINREG( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
+def calcLINREG( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
 
-def calcRSI( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
+def calcRSI( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
 
-def calcDEV( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
+def calcDEV( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
 
-def calcSTDEV( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
+def calcSTDEV( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
 
-def calcRMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
+def calcRMA( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
 
-def calcWPR( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
+def calcWPR( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
 
-def calcATR2( period:int ): # The other one using pt is much faster
-    tr = activeStream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
-    return activeStream.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
+def calcATR2( stream:stream_c, period:int ): # The other one using pt is much faster
+    tr = stream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
+    return stream.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
 
-def calcTR( period:int ):
-    return activeStream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
+def calcTR( stream:stream_c, period:int ):
+    return stream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
 
-def calcATR( period:int ):
-    return activeStream.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
+def calcATR( stream:stream_c, period:int ):
+    return stream.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
 
-def calcSLOPE( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
+def calcSLOPE( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
 
-def calcBIAS( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
+def calcBIAS( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
 
-def calcCCI( period:int ):
-    return activeStream.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
+def calcCCI( stream:stream_c, period:int ):
+    return stream.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
 
-def calcCFO( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
+def calcCFO( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
 
-def calcFWMA( source:pd.Series, period:int ):
-    return activeStream.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
+def calcFWMA( stream:stream_c, source:pd.Series, period:int ):
+    return stream.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
 
@@ -974,63 +967,63 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     # plot( "lazyline", 0, 'panel' )
 
-    sma = calcSMA( close, 350 )
+    sma = calcSMA( stream, close, 350 )
     sma.plot()
 
-    ema = calcEMA( close, 4 )
+    ema = calcEMA( stream, close, 4 )
     ema.plot()
 
-    lr = calcLINREG( close, 300 )
+    lr = calcLINREG( stream, close, 300 )
     lr.plot()
 
-    rsi = calcRSI( close, 14 )
-    rsiplot = plot( rsi.name, rsi.series(), 'panel' )
+    rsi = calcRSI( stream, close, 14 )
+    rsiplot = plot( stream, rsi.name, rsi.series(), 'panel' )
 
     # FIXME: It crashes when calling to plot the same series
-    # atr = calcATR( 14 )
-    # plot( atr.name, atr.series(), 'panel' )
+    # atr = calcATR( stream, 14 )
+    # plot( stream, atr.name, atr.series(), 'panel' )
 
     # calcTR(14).plot('panel')
 
     
 
-    # # sma_rising = rising( sma.name, 10 )
+    # # sma_rising = rising( stream, sma.name, 10 )
 
-    # cfo = calcCFO( close, 20 )
+    # cfo = calcCFO( stream, close, 20 )
     # cfo.plot(window.bottomPanel)
 
-    # dev = calcDEV( close, 30 )
-    # # plot( dev.name, dev.series(), window.bottomPanel )
+    # dev = calcDEV( stream, close, 30 )
+    # # plot( stream, dev.name, dev.series(), window.bottomPanel )
 
-    # rma = calcRMA( close, 90 )
+    # rma = calcRMA( stream, close, 90 )
     # rma.plot()
 
-    stdev = calcSTDEV( close, 350 )
+    stdev = calcSTDEV( stream, close, 350 )
 
-    # willr = calcWPR( close, 32 ).plot('panel')
-    # calcBIAS( close, 32 ).plot(window.bottomPanel)
+    # willr = calcWPR( stream, close, 32 ).plot('panel')
+    # calcBIAS( stream, close, 32 ).plot(window.bottomPanel)
 
-    # hma = calcHMA( close, 150 )
+    # hma = calcHMA( stream, close, 150 )
     # hma.plot()
-    # r = rising( hma.series(), 10 )
-    # f = falling( hma.series(), 10 )
-    # if( not activeStream.initializing ):
+    # r = rising( stream, hma.series(), 10 )
+    # f = falling( stream, hma.series(), 10 )
+    # if( not stream.initializing ):
     #     print( (hma.series() > 1.7) )
 
 
-    # calcBarsSince( r )
+    # calcBarsSince( stream.barindex, r )
     # calcBarsWhileTrue( hma.series() > 1.7 )
 
-    # calcCCI( 20 )
+    # calcCCI( stream, 20 )
 
-    # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
-    # plot( slope1000.name, slope1000.series(), 'panel' )
+    # slope1000 = calcSMA( stream, calcSLOPE( stream, close, 200 ).series() * 500000, 14 )
+    # plot( stream, slope1000.name, slope1000.series(), 'panel' )
 
     '''
-    if( sma.crossingUp(close) ):
+    if( sma.crossingUp(stream, close) ):
         stream.createMarker( '🔷' )
 
-    if crossingDown( sma, lr ):
+    if crossingDown( stream, sma, lr ):
         stream.createMarker( '🔺' )
     '''
     
@@ -1093,7 +1086,7 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = registerStream( 'LDO/USDT:USDT', 'bitget', '1m', 4000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '1m', 4000 )
 
     # tasks.registerTask( update_clock(stream) )
     tasks.registerTask( cli_task(stream) )
