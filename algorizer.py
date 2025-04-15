@@ -122,27 +122,27 @@ class plot_c:
         self.line = None
         self.initialized = False
 
-    def update( self, source, stream, window = None ):
+    def update( self, source, timeframe, window = None ):
 
         if( window == None ): 
             # make a backup of the source series only on the last bar of the initialization
             # which will be used to jump-start the plots at opening the chart
-            if( stream.shadowcopy ):
+            if( timeframe.shadowcopy ):
                 if( not isinstance(source, pd.Series) ):
-                    source = pd.Series([source] * len(stream.df), index=stream.df.index)
-                if( len( stream.initdata ) <= len(stream.df) + 1 ): 
+                    source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
+                if( len( timeframe.initdata ) <= len(timeframe.df) + 1 ): 
                     self.source = source
             return
         
         if( not isinstance(source, pd.Series) ):
-            source = pd.Series([source] * len(stream.df), index=stream.df.index)
+            source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
         
         if( not self.initialized ):
             if( len(source)<1 ):
                 return
             chart = window.bottomPanel if( self.chartName == 'panel' ) else window.chart
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( stream.df['timestamp'], unit='ms' ), self.name: source}) )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: source}) )
             self.initialized = True
             return
         
@@ -152,11 +152,11 @@ class plot_c:
         
         # it's initalized so only update the new line
         newval = source.iloc[-1]
-        self.line.update( pd.Series( {'time': pd.to_datetime( stream.timestamp, unit='ms' ), 'value': newval } ) )
+        self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 
 
-def plot( stream, name, source, chart_name = None ):
-    stream.plot( name, source, chart_name )
+def plot( timeframe, name, source, chart_name = None ):
+    timeframe.plot( name, source, chart_name )
 
 '''
 class markers_c:
@@ -221,67 +221,22 @@ def resample_ohlcv(df, target_timeframe):
     return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
 
-
-class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframe, max_amount = 5000 ):
-        self.symbol = symbol # FIXME: add verification
-        self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
-        self.timeframeStr = tools.timeframeString( self.timeframe )
+class timeframe_c:
+    def __init__( self, stream, timeframeStr ):
+        self.stream = stream
+        print( "TIMEFRAME:", timeframeStr )
+        self.timeframeStr = tools.timeframeString( timeframeStr )
+        self.timeframe = tools.timeframeInt(self.timeframeStr) # in minutes
+        self.callback = None
         self.barindex = -1
         self.timestamp = 0
-        self.initializing = True
+        #self.initializing = True
         self.shadowcopy = False
-
-        self.generatedSeries: dict[str, generatedSeries_c] = {}
-        self.registeredPlots: dict[str, plot_c] = {}
-        '''
-        self.markers:markers_c = []
-        '''
 
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
-
-        # Update the cache
-        fetcher = candles_c( exchangeID, self.symbol )
-        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeStr, max_amount )
-        if( len(ohlcvs) == 0 ):
-            raise SystemExit( f'No candles available in {exchangeID}. Aborting')
-        ohlcvDF = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
-
-
-        ######################################################
-        #   RESAMPLING TEST
-        ######################################################
-        ohlcvDV_5m = resample_ohlcv(ohlcvDF, '5m')
-        pprint( ohlcvDV_5m )
-        # timeframe = '5m'
-        # self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
-        # self.timeframeStr = tools.timeframeString( self.timeframe )
-        # ohlcvDF = ohlcvDV_5m
-        ######################################################
-        ######################################################
-
-
-        #################################################
-
-        # connect to ccxt.pro (FIXME? This is probably redundant with the fetcher)
-        try:
-            self.exchange = getattr(ccxt, exchangeID)({
-                    "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
-                    "enableRateLimit": False
-                    }) 
-        except Exception as e:
-            raise SystemExit( "Couldn't initialize exchange:", exchangeID )
-        
-        #################################################
-        
-        
-        self.initDataframe( ohlcvDF )
-
-        self.initializing = False
-        # I think I should rewrite fetchCandleUpdates to build the rest of timeframes
-        tasks.registerTask( fetchCandleUpdates( self ) )
-
+        self.generatedSeries: dict[str, generatedSeries_c] = {}
+        self.registeredPlots: dict[str, plot_c] = {}
 
     def initDataframe( self, ohlcvDF ):
         
@@ -321,10 +276,7 @@ class stream_c:
 
         print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
         self.initdata = [] # free memory
-        ohlcvs = None
 
-
-    
     def parseCandleUpdate( self, rows ):
 
         for newrow in rows.itertuples(index=False):
@@ -343,12 +295,12 @@ class stream_c:
                 self.df.loc[self.df.index[-1], 'volume'] = newrow.volume
 
                 # update the chart
-                if window is not None and window.stream == self:
+                if window is not None and window.stream == self.stream:
                     window.updateChart()
 
             else:
-                if not self.initializing:
-                    print( f'NEW {stream.timeframeStr} CANDLE', newrow )
+                if not self.stream.initializing:
+                    print( f'NEW {self.timeframeStr} CANDLE', newrow )
                     print( f'Next timestamp {newrow.timestamp + tools.timeframeMsec(self.timeframeStr)}' )
 
                 # CLOSE REALTIME CANDLE
@@ -376,7 +328,7 @@ class stream_c:
 
                 # update the chart
                 if( window != None ):
-                    if( window.stream == self ):
+                    if( window.stream == self.stream ):
                         window.updateChart()
 
                 if self.shadowcopy and new_row_index % 5000 == 0:
@@ -384,7 +336,6 @@ class stream_c:
 
                 if not self.shadowcopy and verbose:
                     print( self.df )
-
 
 
     def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, always_reset:bool = False ):
@@ -419,7 +370,69 @@ class stream_c:
         for plot in self.registeredPlots.values():
             if not plot.initialized:
                 plot.update( plot.source, self, window )
+    
 
+
+class stream_c:
+    def __init__( self, symbol, exchangeID:str, timeframe, max_amount = 5000 ):
+        self.symbol = symbol # FIXME: add verification
+        self.initializing = True
+        self.timeframeFetch  = tools.timeframeString( timeframe )
+
+        '''
+        self.markers:markers_c = []
+        '''
+
+
+        # Update the cache
+        fetcher = candles_c( exchangeID, self.symbol )
+        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount )
+        if( len(ohlcvs) == 0 ):
+            raise SystemExit( f'No candles available in {exchangeID}. Aborting')
+        ohlcvDF = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
+
+
+        #################################################
+        # TEMPORARY FINISH ME
+        ############################################
+        # timeframe
+        self.timeframe = timeframe_c( self, self.timeframeFetch )
+        self.timeframe.callback = self.timeframe.parseCandleUpdate
+        self.timeframe.barindex = -1
+        self.timeframe.timestamp = 0
+        self.timeframe.shadowcopy = False
+
+        self.timeframe.initDataframe( ohlcvDF )
+
+
+        ######################################################
+        #   RESAMPLING TEST
+        ######################################################
+        ohlcvDV_5m = resample_ohlcv(ohlcvDF, '5m')
+        pprint( ohlcvDV_5m )
+        # timeframe = '5m'
+        # self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
+        # self.timeframeStr = tools.timeframeString( self.timeframe )
+        # ohlcvDF = ohlcvDV_5m
+        ######################################################
+        ######################################################
+
+        self.initializing = False
+
+        #################################################
+
+        # connect to ccxt.pro (FIXME? This is probably redundant with the fetcher)
+        try:
+            self.exchange = getattr(ccxt, exchangeID)({
+                    "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
+                    "enableRateLimit": False
+                    }) 
+        except Exception as e:
+            raise SystemExit( "Couldn't initialize exchange:", exchangeID )
+        
+        
+        # I think I should rewrite fetchCandleUpdates to build the rest of timeframes
+        tasks.registerTask( fetchCandleUpdates( self ) )
 
 
 
@@ -691,19 +704,19 @@ def generatedSeriesNameFormat( type, source:pd.Series, period:int ):
     return f'{type}{period} {source.name}'
 
 class generatedSeries_c:
-    def __init__( self, type:str, source:pd.Series, period:int, func = None, always_reset:bool = False, stream:stream_c = None ):
+    def __init__( self, type:str, source:pd.Series, period:int, func = None, always_reset:bool = False, timeframe:timeframe_c = None ):
         self.name = generatedSeriesNameFormat( type, source, period )
         self.sourceName = source.name
         self.period = period
         self.func = func
-        self.stream = stream
+        self.timeframe = timeframe
         self.timestamp = 0
         self.alwaysReset = always_reset
 
-        if( self.stream == None ):
-            raise SystemError( f"Generated Series has no assigned stream [{self.name}]")
+        if( self.timeframe == None ):
+            raise SystemError( f"Generated Series has no assigned timeframe [{self.name}]")
         
-        if( self.stream.shadowcopy ):
+        if( self.timeframe.shadowcopy ):
             raise SystemError( f'Tried to create series [{self.name}] while shadowcopying.' )
 
         if( self.func == None ):
@@ -714,22 +727,22 @@ class generatedSeries_c:
         
 
     def initialize( self, source:pd.Series ):
-        if( len(source) >= self.period and ( not self.name in self.stream.df.columns or self.alwaysReset ) ):
-            if( self.stream.shadowcopy ):
+        if( len(source) >= self.period and ( not self.name in self.timeframe.df.columns or self.alwaysReset ) ):
+            if( self.timeframe.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.stream.df[self.name] = self.func(source, self.period, self.stream.df).dropna()
-            self.timestamp = self.stream.df['timestamp'].iloc[-1]
-            if( self.stream.initializing ):
+            self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df).dropna()
+            self.timestamp = self.timeframe.df['timestamp'].iloc[-1]
+            if( self.timeframe.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
 
     def update( self, source:pd.Series ):
-        if( self.stream.shadowcopy ):
+        if( self.timeframe.shadowcopy ):
             return
 
         # has this row already been updated?
-        if( self.timestamp >= self.stream.df['timestamp'].iloc[-1] ):
+        if( self.timestamp >= self.timeframe.df['timestamp'].iloc[-1] ):
             return
 
         # if non existant try to create new. A few need to be made new every time
@@ -741,25 +754,25 @@ class generatedSeries_c:
         # if( not pd.isna( self.stream.df[self.name].iloc[-1] ) ):
         #     return
         
-        if( len(self.stream.df) < self.period ):
+        if( len(self.timeframe.df) < self.period ):
             return
         
         # realtime updates
 
         # slice the required block of candles to calculate the current value of the generated series
-        newval = self.func(source[-self.period:], self.period, self.stream.df).iloc[-1]
-        self.stream.df.loc[self.stream.df.index[-1], self.name] = newval
-        self.timestamp = self.stream.timestamp
+        newval = self.func(source[-self.period:], self.period, self.timeframe.df).iloc[-1]
+        self.timeframe.df.loc[self.timeframe.df.index[-1], self.name] = newval
+        self.timestamp = self.timeframe.timestamp
         
     def plot( self, chart = None ):
         if( self.timestamp > 0 ):
-            plot( self.stream, self.name, self.series(), chart )
+            self.timeframe.plot( self.name, self.series(), chart )
     
     def series( self ):
-        return self.stream.df[self.name]
+        return self.timeframe.df[self.name]
     
     def crossingUp( self, other ):
-        df = self.stream.df
+        df = self.timeframe.df
         if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
@@ -780,7 +793,7 @@ class generatedSeries_c:
             return ( self.value(1) <= float(other) and self.value() >= float(other) and self.value() != self.value(1) )
     
     def crossingDown( self, other ):
-        df = self.stream.df
+        df = self.timeframe.df
         if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
@@ -804,7 +817,7 @@ class generatedSeries_c:
         return self.crossingUp(other) or self.crossingDown(other)
     
     def value( self, backindex = 0 ):
-        df = self.stream.df
+        df = self.timeframe.df
         if( backindex < 0 or backindex + 1 > len(df) ):
             return None
             #raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
@@ -813,7 +826,7 @@ class generatedSeries_c:
         return df[self.name].iloc[-(backindex + 1)]
     
     def bool( self, backindex = 0 ):
-        df = self.stream.df
+        df = self.timeframe.df
         if( backindex < 0 or backindex + 1 > len(df) ):
             return None
             #raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
@@ -822,7 +835,7 @@ class generatedSeries_c:
         return df[self.name].iloc[-(backindex + 1)] != 0
         
     def loc( self, index = 0 ):
-        df = self.stream.df
+        df = self.timeframe.df
         if( self.timestamp == 0 ):
             print( f"Warning: {self.name} has not yet produced any value")
             return 0 # let's do this just to avoid crashes
@@ -832,7 +845,7 @@ class generatedSeries_c:
         return df[self.name].loc[index]
     
     def iloc( self, index = -1 ):
-        df = self.stream.df
+        df = self.timeframe.df
         if( self.timestamp == 0 ):
             print( f"Warning: {self.name} has not yet produced any value")
             return 0 # let's do this just to avoid crashes
@@ -887,79 +900,79 @@ def calcBarsWhileTrue( barindex, source ):
 
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
-def falling( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
+def falling( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
 
-def rising(stream:stream_c,  source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
+def rising( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
 
-def calcSMA( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
+def calcSMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
 
-def calcEMA( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
+def calcEMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
 
-def calcDEMA( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
+def calcDEMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
 
-def calcWMA( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
+def calcWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
 
-def calcHMA( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
+def calcHMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
 
-# def calcJMA( stream:stream_c, source:pd.Series, period:int ):
-#     return stream.calcGeneratedSeries( "jma", source, period, pt.jma )
+# def calcJMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+#     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
 
-# def calcKAMA( stream:stream_c, source:pd.Series, period:int ):
-#     return stream.calcGeneratedSeries( "kama", source, period, pt.kama )
+# def calcKAMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+#     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
 
-def calcLINREG( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
+def calcLINREG( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
 
-def calcRSI( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
+def calcRSI( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
 
-def calcDEV( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
+def calcDEV( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
 
-def calcSTDEV( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
+def calcSTDEV( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
 
-def calcRMA( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
+def calcRMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
 
-def calcWPR( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
+def calcWPR( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
 
-def calcATR2( stream:stream_c, period:int ): # The other one using pt is much faster
-    tr = stream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
-    return stream.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
+def calcATR2( timeframe:timeframe_c, period:int ): # The other one using pt is much faster
+    tr = timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
+    return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
 
-def calcTR( stream:stream_c, period:int ):
-    return stream.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
+def calcTR( timeframe:timeframe_c, period:int ):
+    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
 
-def calcATR( stream:stream_c, period:int ):
-    return stream.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
+def calcATR( timeframe:timeframe_c, period:int ):
+    return timeframe.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
 
-def calcSLOPE( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
+def calcSLOPE( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
 
-def calcBIAS( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
+def calcBIAS( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
 
-def calcCCI( stream:stream_c, period:int ):
-    return stream.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
+def calcCCI( timeframe:timeframe_c, period:int ):
+    return timeframe.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
 
-def calcCFO( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
+def calcCFO( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
 
-def calcFWMA( stream:stream_c, source:pd.Series, period:int ):
-    return stream.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
+def calcFWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+    return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
 
-def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+def runCloseCandle( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
 
     ###########################
     # strategy code goes here #
@@ -967,17 +980,17 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
 
     # plot( "lazyline", 0, 'panel' )
 
-    sma = calcSMA( stream, close, 350 )
+    sma = calcSMA( timeframe, close, 350 )
     sma.plot()
 
-    ema = calcEMA( stream, close, 4 )
+    ema = calcEMA( timeframe, close, 4 )
     ema.plot()
 
-    lr = calcLINREG( stream, close, 300 )
+    lr = calcLINREG( timeframe, close, 300 )
     lr.plot()
 
-    rsi = calcRSI( stream, close, 14 )
-    rsiplot = plot( stream, rsi.name, rsi.series(), 'panel' )
+    rsi = calcRSI( timeframe, close, 14 )
+    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
 
     # FIXME: It crashes when calling to plot the same series
     # atr = calcATR( stream, 14 )
@@ -998,7 +1011,7 @@ def runCloseCandle( stream:stream_c, open:pd.Series, high:pd.Series, low:pd.Seri
     # rma = calcRMA( stream, close, 90 )
     # rma.plot()
 
-    stdev = calcSTDEV( stream, close, 350 )
+    stdev = calcSTDEV( timeframe, close, 350 )
 
     # willr = calcWPR( stream, close, 32 ).plot('panel')
     # calcBIAS( stream, close, 32 ).plot(window.bottomPanel)
@@ -1038,7 +1051,7 @@ async def fetchCandleUpdates( stream:stream_c ):
     maxRows = 10
     while True:
         try:
-            response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeStr, limit = maxRows )
+            response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeFetch, limit = maxRows )
             #print(response)
 
         except Exception as e:
@@ -1055,7 +1068,7 @@ async def fetchCandleUpdates( stream:stream_c ):
 
         #pprint( response )
         if( len(response) ):
-            stream.parseCandleUpdate( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
+            stream.timeframe.parseCandleUpdate( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
         
         await asyncio.sleep(0.005)
 

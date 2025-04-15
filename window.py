@@ -20,15 +20,15 @@ class window_c:
         
         self.chart = chart = Chart( inner_height=0.8, toolbox = False )
         if( self.chart == None ): raise SystemError( "Failed to create chart" )
-        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' )
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframe.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.timeframe.df)}' )
         chart.time_scale( visible=False )
         chart.layout( font_size=14 )
         chart.precision( self.precision )
         chart.topbar.button('my_button', 'Off', func=on_button_press)
 
-        tmpdf = pd.DataFrame( { 'time':pd.to_datetime( stream.df['timestamp'], unit='ms' ), 'open':stream.df['open'], 'high':stream.df['high'], 'low':stream.df['low'], 'close':stream.df['close']} )
+        tmpdf = pd.DataFrame( { 'time':pd.to_datetime( stream.timeframe.df['timestamp'], unit='ms' ), 'open':stream.timeframe.df['open'], 'high':stream.timeframe.df['high'], 'low':stream.timeframe.df['low'], 'close':stream.timeframe.df['close']} )
         if( SHOW_VOLUME ):
-            tmpdf['volume'] = stream.df['volume']
+            tmpdf['volume'] = stream.timeframe.df['volume']
 
         chart.set( tmpdf )
 
@@ -51,7 +51,7 @@ class window_c:
             marker.refreshInChart()
         '''
 
-        self.stream.jumpstartPlots( self )
+        self.stream.timeframe.jumpstartPlots( self )
 
         tasks.registerTask( self.chart.show_async() )
         
@@ -60,7 +60,7 @@ class window_c:
         if( self.stream == None or self.chart == None ): 
             return
         #update the chart
-        df = self.stream.df
+        df = self.stream.timeframe.df
         data_dict = {'time': pd.to_datetime( df['timestamp'].iloc[-1], unit='ms' ), 'open': df['open'].iloc[-1], 'high': df['high'].iloc[-1], 'low': df['low'].iloc[-1], 'close': df['close'].iloc[-1] }
         if SHOW_VOLUME:
             data_dict['volume'] = df['volume'].iloc[-1]
