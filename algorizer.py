@@ -227,10 +227,10 @@ class timeframe_c:
         print( "TIMEFRAME:", timeframeStr )
         self.timeframeStr = tools.timeframeString( timeframeStr )
         self.timeframe = tools.timeframeInt(self.timeframeStr) # in minutes
+        self.timeframeMsec = tools.timeframeMsec(self.timeframeStr)
         self.callback = None
         self.barindex = -1
         self.timestamp = 0
-        #self.initializing = True
         self.shadowcopy = False
 
         self.df:pd.DataFrame = []
@@ -263,13 +263,12 @@ class timeframe_c:
         # through the bars.
         ###############################################################################
         self.initdata = self.df
-        print( self.initdata )
         self.df = pd.DataFrame( pd.DataFrame(self.initdata.iloc[0]).T, columns=self.initdata.columns )
         
         # run the script logic accross all the rows
         self.shadowcopy = True
-        self.timestamp = 0
         self.barindex = -1
+        self.timestamp = int(self.df.iloc[0]['timestamp'])
         self.parseCandleUpdate(self.initdata)
         self.shadowcopy = False
         ###############################################################################
@@ -286,7 +285,7 @@ class timeframe_c:
             if oldTimestamp > newTimestamp:  # the server has sent a bunch of older candles
                 continue
 
-            if oldTimestamp == newTimestamp:
+            if oldTimestamp + self.timeframeMsec > newTimestamp :
                 # update the realtime candle
                 self.df.loc[self.df.index[-1], 'open'] = newrow.open
                 self.df.loc[self.df.index[-1], 'high'] = newrow.high
@@ -296,19 +295,18 @@ class timeframe_c:
 
                 # update the chart
                 if window is not None and window.stream == self.stream:
-                    window.updateChart()
+                    if self.timeframeStr == '1m' : window.updateChart()
 
             else:
                 if not self.stream.initializing:
                     print( f'NEW {self.timeframeStr} CANDLE', newrow )
-                    print( f'Next timestamp {newrow.timestamp + tools.timeframeMsec(self.timeframeStr)}' )
 
-                # CLOSE REALTIME CANDLE
+                # CLOSE REALTIME CANDLE 
                 self.barindex = self.df.iloc[-1].name
                 self.timestamp = self.df['timestamp'].iloc[-1]
                 new_row_index = self.barindex + 1
 
-                runCloseCandle( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
+                self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
 
                 # if( not self.shadowcopy ):
                 #     self.updateAllGeneratedSeries() # update all calculated series regardless if they are called or not
@@ -318,6 +316,7 @@ class timeframe_c:
                     # row_to_append = self.initdata.iloc[new_row_index].to_frame().T
                     # self.df = pd.concat( [self.df, row_to_append], ignore_index=True )
                     self.df = pd.concat( [self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True )
+                    
                 else:
                     self.df.loc[new_row_index, 'timestamp'] = newTimestamp
                     self.df.loc[new_row_index, 'open'] = newrow.open
@@ -329,7 +328,7 @@ class timeframe_c:
                 # update the chart
                 if( window != None ):
                     if( window.stream == self.stream ):
-                        window.updateChart()
+                        if self.timeframeStr == '1m' : window.updateChart()
 
                 if self.shadowcopy and new_row_index % 5000 == 0:
                     print( new_row_index, "candles processed." )
@@ -374,10 +373,11 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframe, max_amount = 5000 ):
+    def __init__( self, symbol, exchangeID:str, timeframeStr, max_amount = 5000 ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
-        self.timeframeFetch  = tools.timeframeString( timeframe )
+        self.timeframeFetch  = tools.timeframeString( timeframeStr )
+        self.timeframes: dict[str, timeframe_c] = {}
 
         '''
         self.markers:markers_c = []
@@ -395,26 +395,32 @@ class stream_c:
         #################################################
         # TEMPORARY FINISH ME
         ############################################
-        # timeframe
-        self.timeframe = timeframe_c( self, self.timeframeFetch )
-        self.timeframe.callback = self.timeframe.parseCandleUpdate
-        self.timeframe.barindex = -1
-        self.timeframe.timestamp = 0
-        self.timeframe.shadowcopy = False
-
-        self.timeframe.initDataframe( ohlcvDF )
+        timeframe = timeframe_c( self, self.timeframeFetch )
+        timeframe.callback = runCloseCandle
+        timeframe.initDataframe( ohlcvDF )
+        self.timeframes[self.timeframeFetch] = timeframe
+        
 
 
         ######################################################
         #   RESAMPLING TEST
         ######################################################
         ohlcvDV_5m = resample_ohlcv(ohlcvDF, '5m')
-        pprint( ohlcvDV_5m )
         # timeframe = '5m'
         # self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
         # self.timeframeStr = tools.timeframeString( self.timeframe )
-        # ohlcvDF = ohlcvDV_5m
+        ohlcvs = []
         ######################################################
+
+
+
+        timeframe = timeframe_c( self, '5m' )
+        timeframe.callback = runCloseCandle5m
+        timeframe.initDataframe( ohlcvDV_5m )
+        self.timeframes['5m'] = timeframe
+
+
+
         ######################################################
 
         self.initializing = False
@@ -434,6 +440,9 @@ class stream_c:
         # I think I should rewrite fetchCandleUpdates to build the rest of timeframes
         tasks.registerTask( fetchCandleUpdates( self ) )
 
+    def parseCandleUpdateMulti( self, rows ):
+        for timeframe in self.timeframes.values():
+            timeframe.parseCandleUpdate(rows)
 
 
 
@@ -971,6 +980,9 @@ def calcFWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
     return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
+def runCloseCandle5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    #print( "runCloseCandle5m" )
+    return
 
 def runCloseCandle( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
 
@@ -1068,7 +1080,7 @@ async def fetchCandleUpdates( stream:stream_c ):
 
         #pprint( response )
         if( len(response) ):
-            stream.timeframe.parseCandleUpdate( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
+            stream.parseCandleUpdateMulti( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
         
         await asyncio.sleep(0.005)
 
