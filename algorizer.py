@@ -224,7 +224,6 @@ def resample_ohlcv(df, target_timeframe):
 class timeframe_c:
     def __init__( self, stream, timeframeStr ):
         self.stream = stream
-        print( "TIMEFRAME:", timeframeStr )
         self.timeframeStr = tools.timeframeString( timeframeStr )
         self.timeframe = tools.timeframeInt(self.timeframeStr) # in minutes
         self.timeframeMsec = tools.timeframeMsec(self.timeframeStr)
@@ -239,23 +238,21 @@ class timeframe_c:
         self.registeredPlots: dict[str, plot_c] = {}
 
     def initDataframe( self, ohlcvDF ):
-        
-        print( "Creating dataframe 2" )
+        print( "=================" )
+        print( f"Creating dataframe {self.timeframeStr}" )
 
         # take out the last row to jumpstart the generatedSeries later
         self.df = ohlcvDF.iloc[:-1].copy()
 
-        print( "Calculating generated series 2" )
+        print( f"Calculating generated series {self.timeframeStr}" )
 
         # do the jump-starting with the last row of the dataframe
         start_time = time.time()
-        print( "=================" )
         self.parseCandleUpdate(ohlcvDF.iloc[[-1]])
-        print( "=================" )
         print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
-
-        print( "Computing script logic" )
+        print( "." )
+        print( f"Computing script logic {self.timeframeStr}" )
         # at this point we have the generatedSeries initialized for the whole dataframe
         # move the dataframe to use it as source for running the script logic.
         # Start with a new dataframe with only the first row copied from the precomputed dataframe.
@@ -1002,6 +999,10 @@ def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     #print( "runCloseCandle5m" )
     return
 
+def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    #print( "runCloseCandle5m" )
+    return
+
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
 
     ###########################
@@ -1128,7 +1129,7 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '5m'], 2000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '15m', '5m'], 2000 )
 
     # tasks.registerTask( update_clock(stream) )
     tasks.registerTask( cli_task(stream) )
