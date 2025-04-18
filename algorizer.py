@@ -134,6 +134,9 @@ class plot_c:
                     self.source = source
             return
         
+        if( timeframe != window.timeframe ):
+            return
+        
         if( not isinstance(source, pd.Series) ):
             source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
         
@@ -251,7 +254,6 @@ class timeframe_c:
         self.parseCandleUpdate(ohlcvDF.iloc[[-1]])
         print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
-        print( "." )
         print( f"Computing script logic {self.timeframeStr}" )
         # at this point we have the generatedSeries initialized for the whole dataframe
         # move the dataframe to use it as source for running the script logic.
@@ -291,8 +293,8 @@ class timeframe_c:
                 self.df.loc[self.df.index[-1], 'volume'] = newrow.volume
 
                 # update the chart
-                if window is not None and window.stream == self.stream:
-                    if self.timeframeStr == '1m' : window.updateChart()
+                if window is not None:
+                    window.updateChart(self)
 
             else:
                 if not self.stream.initializing:
@@ -324,8 +326,7 @@ class timeframe_c:
 
                 # update the chart
                 if( window != None ):
-                    if( window.stream == self.stream ):
-                        if self.timeframeStr == '1m' : window.updateChart()
+                    window.updateChart(self)
 
                 if self.shadowcopy and new_row_index % 5000 == 0:
                     print( new_row_index, "candles processed." )
@@ -367,7 +368,9 @@ class timeframe_c:
             if not plot.initialized:
                 plot.update( plot.source, self, window )
     
-
+def getTimeframeObject( name ):
+    name = tools.timeframeString( name ) #it validates de name
+    return stream.timeframes[name]
 
 class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframeList, max_amount = 5000 ):
@@ -996,11 +999,13 @@ def calcFWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
 
 
 def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    #print( "runCloseCandle5m" )
+    sma = calcSMA( timeframe, close, 350 )
+    sma.plot()
+    rsi = calcRSI( timeframe, close, 14 )
+    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
     return
 
 def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    #print( "runCloseCandle5m" )
     return
 
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
@@ -1134,7 +1139,7 @@ if __name__ == '__main__':
     # tasks.registerTask( update_clock(stream) )
     tasks.registerTask( cli_task(stream) )
 
-    window = createWindow( stream )
+    window = createWindow( stream.timeframes['5m'] )
 
     asyncio.run( tasks.runTasks() )
 

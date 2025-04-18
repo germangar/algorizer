@@ -1,27 +1,25 @@
 
 import pandas as pd
 from lightweight_charts import Chart
-# from algorizer import registerTask
 import tasks
 
 SHOW_VOLUME = False
 
 
 class window_c:
-    def __init__( self, stream, precision = 4, bottompanel_precision = 2 ):
-        self.stream = None
+    def __init__( self, timeframe, precision = 4, bottompanel_precision = 2 ):
+        self.timeframe = timeframe
         self.chart = None
         self.bottomPanel = None
         self.precision = precision
         self.bottompanel_precision = bottompanel_precision
 
-        if( stream == None ): raise SystemError( "Attempted to create a window without a stream" )
-        self.stream = stream
+        if( self.timeframe == None ): raise SystemError( "Attempted to create a window without a stream" )
+        
         
         self.chart = chart = Chart( inner_height=0.8, toolbox = False )
         if( self.chart == None ): raise SystemError( "Failed to create chart" )
-        timeframe = stream.timeframes[stream.timeframeFetch]
-        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + timeframe.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(timeframe.df)}' )
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=timeframe.stream.symbol + ' - ' + timeframe.timeframeStr + ' - ' + timeframe.stream.exchange.id + ' - ' + f'candles:{len(timeframe.df)}' )
         chart.time_scale( visible=False )
         chart.layout( font_size=14 )
         chart.precision( self.precision )
@@ -57,11 +55,13 @@ class window_c:
         tasks.registerTask( self.chart.show_async() )
         
 
-    def updateChart( self ):
-        if( self.stream == None or self.chart == None ): 
+    def updateChart( self, timeframe ):
+        if( self.chart == None ): 
+            return
+        if( self.timeframe != timeframe ):
             return
         #update the chart
-        df = self.stream.timeframes[self.stream.timeframeFetch].df
+        df = timeframe.df
         data_dict = {'time': pd.to_datetime( df['timestamp'].iloc[-1], unit='ms' ), 'open': df['open'].iloc[-1], 'high': df['high'].iloc[-1], 'low': df['low'].iloc[-1], 'close': df['close'].iloc[-1] }
         if SHOW_VOLUME:
             data_dict['volume'] = df['volume'].iloc[-1]
@@ -72,8 +72,8 @@ class window_c:
             self.bottomPanel.update( pd.Series(data_dict) )
 
 
-def createWindow( stream )->window_c:
-    return window_c( stream )
+def createWindow( timeframe )->window_c:
+    return window_c( timeframe )
 
 
 async def on_button_press(chart):
