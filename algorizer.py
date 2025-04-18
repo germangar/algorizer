@@ -373,55 +373,72 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeStr, max_amount = 5000 ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, max_amount = 5000 ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
-        self.timeframeFetch  = tools.timeframeString( timeframeStr )
+        self.timeframeFetch = None
         self.timeframes: dict[str, timeframe_c] = {}
 
         '''
         self.markers:markers_c = []
         '''
 
+        #################################################
+        # Validate de timeframes list and find 
+        # the smallest for fetching the data
+        #################################################
+        if not isinstance(timeframeList, list) :
+            timeframeList = [tools.timeframeString( timeframeList )]
 
-        # Update the cache
+        smallest = -1
+        for t in timeframeList:
+            # timeframeSec validates all the names. It will drop with a error if not valid.
+            if tools.timeframeSec(t) < smallest or smallest < 0 :
+                smallest = tools.timeframeSec(t)
+                self.timeframeFetch = t
+
+        if self.timeframeFetch == None :
+            raise SystemError( f"stream_c->Init: timeframeList doesn't contain a valid timeframe name ({timeframeList})" )
+        
+        # the amount of candles to fetch are defined by the last timeframe on the list
+        scale = int( tools.timeframeSec(timeframeList[-1]) / tools.timeframeSec(self.timeframeFetch) )
+        
+        
+        #################################################
+        # Fetch the candle history and update the cache
+        #################################################
+
         fetcher = candles_c( exchangeID, self.symbol )
-        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount )
+        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
         if( len(ohlcvs) == 0 ):
             raise SystemExit( f'No candles available in {exchangeID}. Aborting')
         ohlcvDF = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
-
+        ohlcvs = []
 
         #################################################
-        # TEMPORARY FINISH ME
-        ############################################
-        timeframe = timeframe_c( self, self.timeframeFetch )
-        timeframe.callback = runCloseCandle
-        timeframe.initDataframe( ohlcvDF )
-        self.timeframes[self.timeframeFetch] = timeframe
-        
+        # Create the timeframe sets with their dataframes
+        #################################################
 
+        for t in timeframeList:
+            if t == self.timeframeFetch:
+                candles = ohlcvDF
+            else:
+                candles = resample_ohlcv( ohlcvDF, t )
 
-        ######################################################
-        #   RESAMPLING TEST
-        ######################################################
-        ohlcvDV_5m = resample_ohlcv(ohlcvDF, '5m')
-        # timeframe = '5m'
-        # self.timeframe = timeframe if( type(timeframe) == int ) else tools.timeframeInt(timeframe)
-        # self.timeframeStr = tools.timeframeString( self.timeframe )
-        ohlcvs = []
-        ######################################################
+            timeframe = timeframe_c( self, t )
 
+            func_name = f'runCloseCandle_{t}'
+            timeframe.callback = globals().get(func_name)
+            if timeframe.callback is None:
+                raise SystemExit(f"[FATAL] Required callback '{func_name}' not found.")
 
+            timeframe.initDataframe( candles )
+            self.timeframes[t] = timeframe
+            candles = []
 
-        timeframe = timeframe_c( self, '5m' )
-        timeframe.callback = runCloseCandle5m
-        timeframe.initDataframe( ohlcvDV_5m )
-        self.timeframes['5m'] = timeframe
+        ohlcvDF = []
 
-
-
-        ######################################################
+        #################################################
 
         self.initializing = False
 
@@ -437,8 +454,9 @@ class stream_c:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
         
         
-        # I think I should rewrite fetchCandleUpdates to build the rest of timeframes
+        # We're done. Start fetching
         tasks.registerTask( fetchCandleUpdates( self ) )
+
 
     def parseCandleUpdateMulti( self, rows ):
         for timeframe in self.timeframes.values():
@@ -980,18 +998,15 @@ def calcFWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
     return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
-def runCloseCandle5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     #print( "runCloseCandle5m" )
     return
 
-def runCloseCandle( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
 
     ###########################
     # strategy code goes here #
     ###########################
-
-    # plot( "lazyline", 0, 'panel' )
-
     sma = calcSMA( timeframe, close, 350 )
     sma.plot()
 
@@ -1003,6 +1018,8 @@ def runCloseCandle( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:p
 
     rsi = calcRSI( timeframe, close, 14 )
     rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
+    
+    # plot( "lazyline", 0, 'panel' )
 
     # FIXME: It crashes when calling to plot the same series
     # atr = calcATR( stream, 14 )
@@ -1111,7 +1128,7 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', '1m', 4000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '5m'], 2000 )
 
     # tasks.registerTask( update_clock(stream) )
     tasks.registerTask( cli_task(stream) )
