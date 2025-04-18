@@ -124,7 +124,7 @@ class plot_c:
 
     def update( self, source, timeframe, window = None ):
 
-        if( window == None ): 
+        if( window == None or timeframe != window.timeframe): 
             # make a backup of the source series only on the last bar of the initialization
             # which will be used to jump-start the plots at opening the chart
             if( timeframe.shadowcopy ):
@@ -134,8 +134,6 @@ class plot_c:
                     self.source = source
             return
         
-        if( timeframe != window.timeframe ):
-            return
         
         if( not isinstance(source, pd.Series) ):
             source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
@@ -286,11 +284,19 @@ class timeframe_c:
 
             if oldTimestamp + self.timeframeMsec > newTimestamp :
                 # update the realtime candle
-                self.df.loc[self.df.index[-1], 'open'] = newrow.open
-                self.df.loc[self.df.index[-1], 'high'] = newrow.high
-                self.df.loc[self.df.index[-1], 'low'] = newrow.low
-                self.df.loc[self.df.index[-1], 'close'] = newrow.close
-                self.df.loc[self.df.index[-1], 'volume'] = newrow.volume
+                if( self.timeframeStr == self.stream.timeframeFetch ):
+                    self.df.loc[self.df.index[-1], 'open'] = newrow.open
+                    self.df.loc[self.df.index[-1], 'high'] = newrow.high
+                    self.df.loc[self.df.index[-1], 'low'] = newrow.low
+                    self.df.loc[self.df.index[-1], 'close'] = newrow.close
+                    self.df.loc[self.df.index[-1], 'volume'] = newrow.volume
+                else:
+                    self.df.loc[self.df.index[-1], 'high'] = max(newrow.high, self.df.iloc[-1]['high'])
+                    self.df.loc[self.df.index[-1], 'low'] = min(newrow.low, self.df.iloc[-1]['low'])
+                    self.df.loc[self.df.index[-1], 'close'] = newrow.close
+                    # add the volume of the smallest candles
+                    fecthTF = self.stream.timeframes[self.stream.timeframeFetch]
+                    self.df.loc[self.df.index[-1], 'volume'] = fecthTF.df.loc[fecthTF.df['timestamp'] >= oldTimestamp, 'volume'].sum()
 
                 # update the chart
                 if window is not None:
