@@ -50,8 +50,6 @@ class window_c:
             marker.refreshInChart()
         '''
 
-        timeframe.jumpstartPlots( self )
-
         tasks.registerTask( self.chart.show_async() )
         
 
@@ -70,10 +68,6 @@ class window_c:
         if( self.bottomPanel != None ):
             self.bottomPanel.legend( lines = False ) # It crashes if lines are enabled
             self.bottomPanel.update( pd.Series(data_dict) )
-
-
-def createWindow( timeframe )->window_c:
-    return window_c( timeframe )
 
 
 async def on_button_press(chart):

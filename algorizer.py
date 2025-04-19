@@ -10,7 +10,6 @@ import time
 from pprint import pprint
 
 from window import window_c
-from window import createWindow
 
 import tasks
 
@@ -21,7 +20,6 @@ from fetcher import candles_c
 import strategy
 
 
-window = None
 SHOW_VOLUME = False
 verbose = False
 
@@ -122,9 +120,9 @@ class plot_c:
         self.line = None
         self.initialized = False
 
-    def update( self, source, timeframe, window = None ):
+    def update( self, source, timeframe ):
 
-        if( window == None or timeframe != window.timeframe): 
+        if( timeframe.window is None ):
             # make a backup of the source series only on the last bar of the initialization
             # which will be used to jump-start the plots at opening the chart
             if( timeframe.shadowcopy ):
@@ -141,7 +139,7 @@ class plot_c:
         if( not self.initialized ):
             if( len(source)<1 ):
                 return
-            chart = window.bottomPanel if( self.chartName == 'panel' ) else window.chart
+            chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
             self.line.set( pd.DataFrame({'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: source}) )
             self.initialized = True
@@ -230,6 +228,7 @@ class timeframe_c:
         self.barindex = -1
         self.timestamp = 0
         self.shadowcopy = False
+        self.window = None
 
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
@@ -297,8 +296,8 @@ class timeframe_c:
                     self.df.loc[self.df.index[-1], 'volume'] = fecthTF.df.loc[fecthTF.df['timestamp'] >= oldTimestamp, 'volume'].sum()
 
                 # update the chart
-                if window is not None:
-                    window.updateChart(self)
+                if self.window is not None:
+                    self.window.updateChart(self)
 
             else:
                 if not self.stream.initializing:
@@ -330,8 +329,8 @@ class timeframe_c:
                     self.df.loc[new_row_index, 'volume'] = newrow.volume
 
                 # update the chart
-                if( window != None ):
-                    window.updateChart(self)
+                if( self.window != None ):
+                    self.window.updateChart(self)
 
                 if self.shadowcopy and new_row_index % 5000 == 0:
                     print( new_row_index, "candles processed." )
@@ -365,13 +364,13 @@ class timeframe_c:
             plot = plot_c( name, chart_name )
             self.registeredPlots[name] = plot
         
-        plot.update( source, self, window )
+        plot.update( source, self )
         return plot
     
-    def jumpstartPlots( self, window ):
+    def jumpstartPlots( self ):
         for plot in self.registeredPlots.values():
             if not plot.initialized:
-                plot.update( plot.source, self, window )
+                plot.update( plot.source, self )
     
 def getTimeframeObject( name ):
     name = tools.timeframeString( name ) #it validates de name
@@ -467,6 +466,14 @@ class stream_c:
         for timeframe in self.timeframes.values():
             timeframe.parseCandleUpdate(rows)
 
+    def createWindow( self, timeframeStr ):
+        # FIXME: Add proper checks
+        timeframe = self.timeframes[tools.timeframeString( timeframeStr )]
+        timeframe.window = window_c( timeframe )
+        timeframe.jumpstartPlots()
+
+
+
 
 
 def generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
@@ -505,9 +512,9 @@ def generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFram
         deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
         # Iterate over each rolling window
         for i in range(period - 1, len(series)):
-            window = series[i - period + 1:i + 1]
-            mean = window.mean()
-            deviation = (window - mean).abs().sum() / period
+            rolwindow = series[i - period + 1:i + 1]
+            mean = rolwindow.mean()
+            deviation = (rolwindow - mean).abs().sum() / period
             deviations.append(deviation)
         return pd.Series(deviations, index=series.index).dropna()
 
@@ -1049,10 +1056,10 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     # # sma_rising = rising( stream, sma.name, 10 )
 
     # cfo = calcCFO( stream, close, 20 )
-    # cfo.plot(window.bottomPanel)
+    # cfo.plot('panel')
 
     # dev = calcDEV( stream, close, 30 )
-    # # plot( stream, dev.name, dev.series(), window.bottomPanel )
+    # # plot( stream, dev.name, dev.series(), 'panel' )
 
     # rma = calcRMA( stream, close, 90 )
     # rma.plot()
@@ -1060,7 +1067,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     stdev = calcSTDEV( timeframe, close, 350 )
 
     # willr = calcWPR( stream, close, 32 ).plot('panel')
-    # calcBIAS( stream, close, 32 ).plot(window.bottomPanel)
+    # calcBIAS( stream, close, 32 ).plot('panel')
 
     # hma = calcHMA( stream, close, 150 )
     # hma.plot()
@@ -1125,11 +1132,13 @@ async def on_timeframe_selection(chart):
 
 from datetime import datetime
 async def update_clock(stream):
-    if( window == None ):
-        return
-    while window.chart.is_alive:
-        await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-        window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+    #FIXME: Find the timeframe with a window
+    # if( window == None ):
+    #     return
+    # while window.chart.is_alive:
+    #     await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+    #     window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+    return
 
 
 import aioconsole
@@ -1139,18 +1148,18 @@ async def cli_task(stream):
 
         if command.lower() == 'chart':
             print( 'opening chart' )
-            window = createWindow( stream )
+            window = stream.createWindow( stream.timeframeFetch )
         
         await asyncio.sleep(0.05)
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '1h'], 1000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '5m'], 1000 )
 
     # tasks.registerTask( update_clock(stream) )
     tasks.registerTask( cli_task(stream) )
 
-    window = createWindow( stream.timeframes['1h'] )
+    stream.createWindow( '5m' )
 
     asyncio.run( tasks.runTasks() )
 
