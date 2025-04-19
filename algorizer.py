@@ -201,9 +201,7 @@ def resample_ohlcv(df, target_timeframe):
 
     # If target_timeframe is a string like '15', convert to int
     if isinstance(target_timeframe, str):
-        if( target_timeframe[-1:].lower() == 'm' ):
-            target_timeframe = tools.timeframeInt(target_timeframe)
-        target_timeframe = int(target_timeframe)
+        target_timeframe = int(tools.timeframeInt(target_timeframe))
 
     pandas_freq = map_minutes_to_pandas_freq(target_timeframe)
 
@@ -311,7 +309,8 @@ class timeframe_c:
                 self.timestamp = self.df['timestamp'].iloc[-1]
                 new_row_index = self.barindex + 1
 
-                self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
+                if( self.callback != None ):
+                    self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
 
                 # if( not self.shadowcopy ):
                 #     self.updateAllGeneratedSeries() # update all calculated series regardless if they are called or not
@@ -436,7 +435,7 @@ class stream_c:
             func_name = f'runCloseCandle_{t}'
             timeframe.callback = globals().get(func_name)
             if timeframe.callback is None:
-                raise SystemExit(f"[FATAL] Required callback '{func_name}' not found.")
+                print( f"*** WARNING: Timeframe {t} doesn't have a closeCandle function. Create a 'closeCandle_{t}( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series )' function in your script")
 
             timeframe.initDataframe( candles )
             self.timeframes[t] = timeframe
@@ -1012,6 +1011,12 @@ def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     return
 
 def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    sma = calcSMA( timeframe, close, 350 )
+    sma.plot()
+    # calcCCI( timeframe, 20 ).plot('panel')
+
+    slope1000 = calcSMA( timeframe, calcSLOPE( timeframe, close, 200 ).series() * 500000, 14 )
+    plot( timeframe, slope1000.name, slope1000.series(), 'panel' )
     return
 
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
@@ -1140,12 +1145,12 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '15m', '5m'], 2000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '1h'], 1000 )
 
     # tasks.registerTask( update_clock(stream) )
     tasks.registerTask( cli_task(stream) )
 
-    window = createWindow( stream.timeframes['5m'] )
+    window = createWindow( stream.timeframes['1h'] )
 
     asyncio.run( tasks.runTasks() )
 
