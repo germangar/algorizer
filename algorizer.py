@@ -256,6 +256,12 @@ class timeframe_c:
         # The precomputed data will be (shadow)copied into the new dataframe as we progress
         # through the bars.
         ###############################################################################
+
+        # if there is no callback function we don't have anything to compute
+        if self.callback is None:
+            print( "No call back funtion defined. Total time: {:.2f} seconds".format(time.time() - start_time))
+            return
+        
         self.initdata = self.df
         self.df = pd.DataFrame( pd.DataFrame(self.initdata.iloc[0]).T, columns=self.initdata.columns )
         
@@ -433,8 +439,8 @@ class stream_c:
 
             func_name = f'runCloseCandle_{t}'
             timeframe.callback = globals().get(func_name)
-            if timeframe.callback is None:
-                print( f"*** WARNING: Timeframe {t} doesn't have a closeCandle function. Create a 'closeCandle_{t}( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series )' function in your script")
+            # if timeframe.callback is None:
+            #     print( f"*** WARNING: Timeframe {t} doesn't have a closeCandle function. Create a 'closeCandle_{t}( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series )' function in your script")
 
             timeframe.initDataframe( candles )
             self.timeframes[t] = timeframe
@@ -459,6 +465,7 @@ class stream_c:
         
         
         # We're done. Start fetching
+        tasks.registerTask( cli_task(self) )
         tasks.registerTask( fetchCandleUpdates( self ) )
 
 
@@ -1154,12 +1161,10 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '5m'], 1000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m','1d'], 1000000 )
 
     # tasks.registerTask( update_clock(stream) )
-    tasks.registerTask( cli_task(stream) )
-
-    stream.createWindow( '5m' )
+    stream.createWindow( '1d' )
 
     asyncio.run( tasks.runTasks() )
 

@@ -4,6 +4,8 @@ import ccxt
 
 from pprint import pprint
 
+path = 'data/'
+
 class candles_c:
     def __init__(self, exchangeID = 'binance', symbol = 'BTC/USDT:USDT', type = 'swap') -> None:
         self.symbol = symbol
@@ -12,11 +14,16 @@ class candles_c:
         self.exchange.defaultType = type
         print( 'Connecting to exchange:', self.exchange.id )
 
-    def loadOHLCVfile( self, symbol, timeframe ):
-        symbolName = symbol[:-len(':USDT')]
+
+    def filenameFromSymbol(self, symbol, timeframe ):
+        #symbolName = symbol[:-len(':USDT')]
+        symbolName = symbol.replace( ':USDT', '-M' )
         symbolName = symbolName.replace( '/', '-' )
         filename = symbolName+'-'+timeframe
-        filename = 'data/'+ self.exchange.id+'-'+ filename +'.csv'
+        return path + self.exchange.id +'-'+ filename +'.csv'
+
+    def loadOHLCVfile( self, symbol, timeframe ):
+        filename = self.filenameFromSymbol(symbol, timeframe)
         ohlcv_cache = []
         print('reading from file. ', end = '')
 
@@ -39,14 +46,15 @@ class candles_c:
         print( len(ohlcv_cache), 'candles loaded')
         return ohlcv_cache
     
+    
+    
     def writeOHLCVfile( self, symbol, timeframe, ohlcv_data ):
         if( len(ohlcv_data) == 0 ): 
             return
-        symbolName = symbol[:-len(':USDT')]
-        symbolName = symbolName.replace( '/', '-' )
-        filename = symbolName+'-'+timeframe
-        filename = 'data/'+ self.exchange.id +'-'+ filename +'.csv'
+        
+        filename = self.filenameFromSymbol( symbol, timeframe )
         print('Writing:', filename)
+        
 
         with open( filename, 'w', newline='' ) as file:
             writer = csv.writer(file)
@@ -247,10 +255,14 @@ class candles_c:
 
 
 if __name__ == '__main__':
+    # Good providers:
+    # PERP: Bybit, kucoin, okx, binance, htx, poloniexfutures
+    # SPOT: gate (best), kucoin, okx, binance, probit, upbit
 
-    symbol = 'ETH/USDT:USDT'
-    timeframe = '1m'
-    exchange = 'bitget'
+    symbol = 'LDO/USDT:USDT'
+    timeframe = '1d'
+    exchange = 'bybit'
+    # path = 'fetcherdata/'
     thisMarket = candles_c( exchange, symbol )
 
     ohlcv_cache = thisMarket.loadOHLCVfile( symbol, timeframe )
