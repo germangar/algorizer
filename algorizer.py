@@ -2,8 +2,6 @@
 
 import pandas as pd
 import pandas_ta as pt
-import math
-from lightweight_charts import Chart
 import asyncio
 import ccxt.pro as ccxt
 import time
@@ -18,6 +16,10 @@ from tools import df_append
 from fetcher import candles_c
 
 import strategy
+
+
+
+
 
 
 SHOW_VOLUME = False
@@ -259,7 +261,11 @@ class timeframe_c:
 
         # if there is no callback function we don't have anything to compute
         if self.callback is None:
-            print( "No call back funtion defined. Total time: {:.2f} seconds".format(time.time() - start_time))
+            print( "No call back funtion defined. Skipping. Total time: {:.2f} seconds".format(time.time() - start_time))
+            return
+        
+        if tools.emptyFunction( self.callback ):
+            print( "Callback function is empty. Skipping. Total time: {:.2f} seconds".format(time.time() - start_time))
             return
         
         self.initdata = self.df
@@ -1017,6 +1023,9 @@ def calcFWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
     return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
+
+def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    pass
 def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     sma = calcSMA( timeframe, close, 350 )
     sma.plot()
@@ -1161,10 +1170,10 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m','1d'], 1000000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1m','15m'], 1000 )
 
     # tasks.registerTask( update_clock(stream) )
-    stream.createWindow( '1d' )
+    stream.createWindow( '15m' )
 
     asyncio.run( tasks.runTasks() )
 

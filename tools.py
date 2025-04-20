@@ -39,6 +39,8 @@ def stringToValue( arg )->float:
         value = float(arg)
     return value
 
+def emptyFunction(func):
+    return func.__code__.co_consts == (None,)
 
 
 ''' # CCXT timeframe conventions
