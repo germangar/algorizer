@@ -43,26 +43,37 @@ class window_c:
         bottomPanel.set(tmpdf)
         bottomPanel.hide_data()
 
-        '''
-        for marker in stream.markers:
+        for marker in timeframe.stream.markers:
             if( marker.chart == None ):
                 marker.chart = self.bottomPanel if marker.chartName == 'panel' else self.chart
             marker.refreshInChart()
-        '''
 
-        tasks.registerTask( self.chart.show_async() )
+        self.task = self.chart.show_async()
+        tasks.registerTask( 'window', self.task )
         
+    def destroyWindow( self ):
+        # tasks.cancelTask( 'window' )
+        self.chart = None
+        self.bottomPanel = None
 
     def updateChart( self, timeframe ):
         if( self.chart == None ): 
             return
         if( self.timeframe != timeframe ):
             return
+        if not self.chart.is_alive : # this is false when there's no window. Clean up
+            if tasks.findTask( 'window' ) :
+                self.destroyWindow()
+                return
+            timeframe.window = None
+            return
+        
         #update the chart
         df = timeframe.df
         data_dict = {'time': pd.to_datetime( df['timestamp'].iloc[-1], unit='ms' ), 'open': df['open'].iloc[-1], 'high': df['high'].iloc[-1], 'low': df['low'].iloc[-1], 'close': df['close'].iloc[-1] }
         if SHOW_VOLUME:
             data_dict['volume'] = df['volume'].iloc[-1]
+
 
         self.chart.update( pd.Series(data_dict) )
         if( self.bottomPanel != None ):

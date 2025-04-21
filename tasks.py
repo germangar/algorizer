@@ -1,40 +1,64 @@
 import asyncio
 
-pendingTasks = []
+pendingTasks = {}
 
 
-def registerTask( task ):
-    pendingTasks.append( task )
+def registerTask( name, task ):
+    pendingTasks[name] = task
 
-async def dummy():
-    # while True:
-    #     for task in asyncio.all_tasks():
-    #         if not task.done():
-    #             print(f"Task: {task.get_name()}, Status: {task._state}")
-    #     await asyncio.sleep(3)
-    return
 
 async def watch_for_new_tasks(tasks):
-    while 1:
-        for task in pendingTasks :
-            tasks.append( asyncio.create_task(task) )
-            pendingTasks.remove( task )
+    while True:
+        to_remove = []
+        for taskname, task_coro in pendingTasks.items():
+            t = asyncio.create_task(task_coro)
+            t.set_name(taskname)
+            tasks.append(t)
+            to_remove.append(taskname)
+
+        # Clean up after launching tasks
+        for name in to_remove:
+            del pendingTasks[name]
+
         await asyncio.sleep(0.2)
 
 
 async def runTasks():
-    task1 = dummy()
+    tasks = []
 
-    tasks = [task1] + pendingTasks
-    for task in pendingTasks:
-        # tasks.append( task )
-        pendingTasks.remove( task )
+    # Launch all currently registered pending tasks
+    for name, coro in list(pendingTasks.items()):
+        task = asyncio.create_task(coro)
+        task.set_name(name)
+        tasks.append(task)
+        del pendingTasks[name]  # Clean them out of pendingTasks
 
-    last_task = watch_for_new_tasks(tasks)
-    tasks.append( last_task )
+    # Start the watcher to launch future ones
+    watcher_task = asyncio.create_task(watch_for_new_tasks(tasks))
+    watcher_task.set_name("task_watcher")
+    tasks.append(watcher_task)
 
+    # Wait for all tasks to complete
     await asyncio.gather(*tasks)
     
+
+def findTask( taskname ):
+    for task in asyncio.all_tasks():
+        if task.get_name() == taskname:
+            print(f"FOUND TASK: Task Name: {task.get_name()}, Status: {task._state}")
+            return
+        
+    print(f"TASK: {taskname} not found")
+
+def cancelTask( taskname ) :
+    running_tasks = asyncio.all_tasks()
+    for task in running_tasks:
+        if taskname == task.get_name():
+            if( task.cancelled() or task.cancelling() ):
+                print( "Task", taskname, "already cancelled")
+            else:
+                task.cancel()
+                print( taskname, "cancelled")
 
 # async def runTasks(stream):
 #     task1 = asyncio.create_task(fetchCandleUpdates(stream))

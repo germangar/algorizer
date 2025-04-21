@@ -159,7 +159,6 @@ class plot_c:
 def plot( timeframe, name, source, chart_name = None ):
     timeframe.plot( name, source, chart_name )
 
-'''
 class markers_c:
     def __init__( self, text:str, timestamp:int, chart_name:str = None ):
         self.timestamp = timestamp
@@ -181,7 +180,7 @@ class markers_c:
         if( self.chart ):
             self.remove()
             self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
-'''
+
 
 
 def resample_ohlcv(df, target_timeframe):
@@ -319,6 +318,8 @@ class timeframe_c:
                 self.barindex = self.df.iloc[-1].name
                 self.timestamp = self.df['timestamp'].iloc[-1]
                 new_row_index = self.barindex + 1
+                if self.timeframeStr == self.stream.timeframeFetch :
+                    self.stream.timestampFetch = self.timestamp
 
                 if( self.callback != None ):
                     self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
@@ -361,13 +362,6 @@ class timeframe_c:
 
         gs.update( source )
         return gs
-    
-    '''
-    def createMarker( self, text:str = '', timestamp:int = -1, chart_name:str = None ):
-        if timestamp == -1:
-            timestamp = self.timestamp
-        self.markers.append( markers_c( text, timestamp, chart_name ) )
-    '''
 
     def plot( self, name, source, chart_name = None ):
         plot = self.registeredPlots.get( name )
@@ -393,11 +387,10 @@ class stream_c:
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.timeframeFetch = None
+        self.timestampFetch = -1
         self.timeframes: dict[str, timeframe_c] = {}
 
-        '''
         self.markers:markers_c = []
-        '''
 
         #################################################
         # Validate de timeframes list and find 
@@ -448,8 +441,9 @@ class stream_c:
             # if timeframe.callback is None:
             #     print( f"*** WARNING: Timeframe {t} doesn't have a closeCandle function. Create a 'closeCandle_{t}( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series )' function in your script")
 
-            timeframe.initDataframe( candles )
             self.timeframes[t] = timeframe
+            timeframe.initDataframe( candles )
+            
             candles = []
 
         ohlcvDF = []
@@ -471,13 +465,20 @@ class stream_c:
         
         
         # We're done. Start fetching
-        tasks.registerTask( cli_task(self) )
-        tasks.registerTask( fetchCandleUpdates( self ) )
+        tasks.registerTask( 'cli', cli_task(self) )
+        tasks.registerTask( 'fetch', fetchCandleUpdates( self ) )
 
 
     def parseCandleUpdateMulti( self, rows ):
         for timeframe in self.timeframes.values():
             timeframe.parseCandleUpdate(rows)
+
+
+    def createMarker( self, text:str = '', timestamp:int = -1, chart_name:str = None ):
+        if timestamp == -1:
+            timestamp = self.timeframes[self.timeframeFetch].timestamp
+        self.markers.append( markers_c( text, timestamp, chart_name ) )
+
 
     def createWindow( self, timeframeStr ):
         # FIXME: Add proper checks
@@ -1080,7 +1081,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     # rma = calcRMA( stream, close, 90 )
     # rma.plot()
 
-    stdev = calcSTDEV( timeframe, close, 350 )
+    # stdev = calcSTDEV( timeframe, close, 350 )
 
     # willr = calcWPR( stream, close, 32 ).plot('panel')
     # calcBIAS( stream, close, 32 ).plot('panel')
@@ -1101,13 +1102,11 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     # slope1000 = calcSMA( stream, calcSLOPE( stream, close, 200 ).series() * 500000, 14 )
     # plot( stream, slope1000.name, slope1000.series(), 'panel' )
 
-    '''
-    if( sma.crossingUp(stream, close) ):
-        stream.createMarker( '🔷' )
+    if( sma.crossingUp(lr) ):
+        timeframe.stream.createMarker( '🔷' )
 
-    if crossingDown( stream, sma, lr ):
-        stream.createMarker( '🔺' )
-    '''
+    # if crossingDown( stream, sma, lr ):
+    #     timeframe.stream.createMarker( '🔺' )
     
 
 
@@ -1170,9 +1169,9 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1m','15m'], 1000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1m', '15m'], 2000 )
 
-    # tasks.registerTask( update_clock(stream) )
+    # tasks.registerTask( 'clock', update_clock(stream) )
     stream.createWindow( '15m' )
 
     asyncio.run( tasks.runTasks() )
