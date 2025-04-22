@@ -18,7 +18,7 @@ from fetcher import candles_c
 import strategy
 
 
-
+barindexStack:int = -1
 
 
 
@@ -37,15 +37,15 @@ def crossingUp( self, other ):
     if isinstance( self, pd.Series ):
         if( len(self) < 2 ):
             return False
-        self_old = self.iloc[-2]
-        self_new = self.iloc[-1]
+        self_old = self.loc[barindexStack-1]
+        self_new = self.loc[barindexStack-0]
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.iloc[-2]
-            self_new = other.iloc[-1]
+            other_old = other.loc[barindexStack-1]
+            self_new = other.loc[barindexStack-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.source) < 2 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -68,6 +68,51 @@ def crossingUp( self, other ):
 
     return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
 
+# def crossingDown( self, other ):
+#     if isinstance( self, generatedSeries_c ):
+#         return self.crossingDown( other )
+    
+#     self_old = 0
+#     self_new = 0
+#     other_old = 0
+#     other_new = 0
+#     if isinstance( self, pd.Series ):
+#         if( len(self) < 2 ):
+#             return False
+#         self_old = self.iloc[-2]
+#         self_new = self.iloc[-1]
+#         if isinstance( other, pd.Series ):
+#             if( len(other) < 2 ):
+#                 return False
+#             other_old = other.iloc[-2]
+#             self_new = other.iloc[-1]
+#         elif isinstance( other, generatedSeries_c ):
+#             if( other.timestamp == 0 or len(other.series()) < 2 ):
+#                 return False
+#             other_old = other.value(1)
+#             other_new = other.value()
+#             # other_old = other.series().iloc[-2]
+#             # other_new = other.series().iloc[-1]
+#         else:
+#             try:
+#                 float(other)
+#             except ValueError:
+#                 return False
+#             else:
+#                 other_old = float(other)
+#                 other_new = float(other)
+#     else:
+#         try:
+#             float(self)
+#         except ValueError:
+#             print( "crossinDown: Unsupported type", type(self) )
+#             return False
+#         else:
+#             return crossingUp( other, self )
+
+#     return ( self_old >= other_old and self_new <= other_new and self_old != self_new )
+
+
 def crossingDown( self, other ):
     if isinstance( self, generatedSeries_c ):
         return self.crossingDown( other )
@@ -79,15 +124,15 @@ def crossingDown( self, other ):
     if isinstance( self, pd.Series ):
         if( len(self) < 2 ):
             return False
-        self_old = self.iloc[-2]
-        self_new = self.iloc[-1]
+        self_old = self.loc[barindexStack-1]
+        self_new = self.loc[barindexStack-0]
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.iloc[-2]
-            self_new = other.iloc[-1]
+            other_old = other.loc[barindexStack-1]
+            self_new = other.loc[barindexStack-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.source) < 2 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -282,6 +327,7 @@ class timeframe_c:
         self.initdata = [] # free memory
 
     def parseCandleUpdate( self, rows ):
+        global barindexStack
 
         for newrow in rows.itertuples(index=False):
             newTimestamp = int(newrow.timestamp)
@@ -320,6 +366,7 @@ class timeframe_c:
                 new_row_index = self.barindex + 1
                 if self.timeframeStr == self.stream.timeframeFetch :
                     self.stream.timestampFetch = self.timestamp
+                barindexStack = self.barindex
 
                 if( self.callback != None ):
                     self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
@@ -871,12 +918,12 @@ class generatedSeries_c:
     
     def value( self, backindex = 0 ):
         df = self.timeframe.df
-        if( backindex < 0 or backindex + 1 > len(df) ):
-            return None
-            #raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
-        if( self.timestamp == 0 or pd.isna(df[self.name].iloc[-(backindex + 1)]) ):
-            return None
-        return df[self.name].iloc[-(backindex + 1)]
+        if( backindex + 1 > len(df) ):
+            raise SystemError( "generatedseries_c.value() : backindex out of bounds")
+            # return df[self.name].iloc[-(backindex + 1)]
+
+        return df[self.name].loc[self.timeframe.barindex - backindex]
+        return df[self.name].loc[len(df) - (backindex+1)]
     
     def bool( self, backindex = 0 ):
         df = self.timeframe.df
@@ -1102,11 +1149,11 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     # slope1000 = calcSMA( stream, calcSLOPE( stream, close, 200 ).series() * 500000, 14 )
     # plot( stream, slope1000.name, slope1000.series(), 'panel' )
 
-    if( sma.crossingUp(lr) ):
-        timeframe.stream.createMarker( '🔷' )
+    # if( sma.crossingUp(lr) ):
+    #     timeframe.stream.createMarker( '🔷' )
 
-    # if crossingDown( stream, sma, lr ):
-    #     timeframe.stream.createMarker( '🔺' )
+    if crossingDown( sma.series(), lr ):
+        timeframe.stream.createMarker( '🔺' )
     
 
 
@@ -1169,10 +1216,10 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1m', '15m'], 2000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1m', '15m'], 500 )
 
     # tasks.registerTask( 'clock', update_clock(stream) )
-    stream.createWindow( '15m' )
+    stream.createWindow( '1m' )
 
     asyncio.run( tasks.runTasks() )
 
