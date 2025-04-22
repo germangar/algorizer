@@ -1,9 +1,11 @@
 
 import pandas as pd
-from lightweight_charts import Chart
 import numpy as np
 import pandas_ta as ta
+# from lightweight_charts import Chart
+from lightweight_charts_esistjosh import Chart
 
+'''
 np.random.seed(42)
 if __name__ == '__main__':
     chart = Chart(inner_height=0.5, height=800)
@@ -39,5 +41,25 @@ if __name__ == '__main__':
     macd_line.set(macd_df[['date', 'macd']])
     macd_signal.set(macd_df[['date', 'macd_signal']])
     macd_hist.set(macd_df[['date', 'macd_hist']])
+
+    chart.show(block=True)'''
+
+
+
+if __name__ == '__main__':
+    chart = Chart()
+    chart.legend(visible=True)
+    chart.volume_config(
+        scale_margin_top=0.75,
+        up_color='rgba(83,141,131,0.0)',
+        down_color='rgba(200,127,130,0.0)'
+        )
+
+    df = pd.read_csv('ohlcv.csv')
+    # df = df.tail(120).reset_index(drop=True)
+
+    chart.set(df[['date', 'open', 'high', 'low', 'close', 'volume']])
+
+    chart.horizontal_line(200)
 
     chart.show(block=True)
