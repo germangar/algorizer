@@ -24,7 +24,7 @@ class window_c:
         chart.time_scale( visible=False )
         chart.layout( font_size=14 )
         chart.precision( self.precision )
-        chart.topbar.button('my_button', 'Off', func=on_button_press)
+        # chart.topbar.button('my_button', 'Off', func=on_button_press)
         
         volume_alpha = 0.8 if SHOW_VOLUME else 0.0
         chart.volume_config(
@@ -79,7 +79,6 @@ class window_c:
         df = timeframe.df
         data_dict = {'time': pd.to_datetime( df['timestamp'].iloc[-1], unit='ms' ), 'open': df['open'].iloc[-1], 'high': df['high'].iloc[-1], 'low': df['low'].iloc[-1], 'close': df['close'].iloc[-1], 'volume': df['volume'].iloc[-1] }
 
-        print(data_dict)
         self.chart.update( pd.Series(data_dict) )
         if( self.bottomPanel != None ):
             self.bottomPanel.legend( lines = False ) # It crashes if lines are enabled

@@ -47,19 +47,34 @@ if __name__ == '__main__':
 
 
 if __name__ == '__main__':
-    chart = Chart()
+    chart = Chart(inner_height=0.7, height=800)
     chart.legend(visible=True)
     chart.volume_config(
         scale_margin_top=0.75,
-        up_color='rgba(83,141,131,0.0)',
-        down_color='rgba(200,127,130,0.0)'
+        up_color='rgba(83,141,131,0.5)',
+        down_color='rgba(200,127,130,0.5)'
         )
 
     df = pd.read_csv('ohlcv.csv')
-    # df = df.tail(120).reset_index(drop=True)
+    
+    df[['macd', 'macd_hist', 'macd_signal']] = ta.macd(df.close, 20, 50, 10)
+    df = df.tail(120).reset_index(drop=True)
 
     chart.set(df[['date', 'open', 'high', 'low', 'close', 'volume']])
 
     chart.horizontal_line(200)
+
+
+    macd_chart = chart.create_subchart(position='bottom', width=1, height=0.25, sync=True)
+    macd_chart.legend(visible=True)
+    macd_line = macd_chart.create_line(name='macd', width=1)
+    macd_signal = macd_chart.create_line(name='macd_signal', width=1, style='dotted')
+    macd_hist = macd_chart.create_histogram(name='macd_hist')
+
+    macd_df = df[['date', 'macd', 'macd_signal', 'macd_hist']]
+
+    macd_line.set(macd_df[['date', 'macd']])
+    macd_signal.set(macd_df[['date', 'macd_signal']])
+    macd_hist.set(macd_df[['date', 'macd_hist']])
 
     chart.show(block=True)
