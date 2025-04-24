@@ -21,7 +21,7 @@ import strategy
 barindexStack:int = -1
 
 
-
+ALLOW_ILOC = True
 SHOW_VOLUME = False
 verbose = False
 
@@ -35,7 +35,7 @@ def crossingUp( self, other ):
     other_old = 0
     other_new = 0
     if isinstance( self, pd.Series ):
-        if( len(self) < 2 ):
+        if( len(self) < 2 or barindexStack < 1 ):
             return False
         self_old = self.loc[barindexStack-1]
         self_new = self.loc[barindexStack-0]
@@ -45,7 +45,7 @@ def crossingUp( self, other ):
             other_old = other.loc[barindexStack-1]
             self_new = other.loc[barindexStack-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 or barindexStack < 1 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -68,50 +68,6 @@ def crossingUp( self, other ):
 
     return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
 
-# def crossingDown( self, other ):
-#     if isinstance( self, generatedSeries_c ):
-#         return self.crossingDown( other )
-    
-#     self_old = 0
-#     self_new = 0
-#     other_old = 0
-#     other_new = 0
-#     if isinstance( self, pd.Series ):
-#         if( len(self) < 2 ):
-#             return False
-#         self_old = self.iloc[-2]
-#         self_new = self.iloc[-1]
-#         if isinstance( other, pd.Series ):
-#             if( len(other) < 2 ):
-#                 return False
-#             other_old = other.iloc[-2]
-#             self_new = other.iloc[-1]
-#         elif isinstance( other, generatedSeries_c ):
-#             if( other.timestamp == 0 or len(other.series()) < 2 ):
-#                 return False
-#             other_old = other.value(1)
-#             other_new = other.value()
-#             # other_old = other.series().iloc[-2]
-#             # other_new = other.series().iloc[-1]
-#         else:
-#             try:
-#                 float(other)
-#             except ValueError:
-#                 return False
-#             else:
-#                 other_old = float(other)
-#                 other_new = float(other)
-#     else:
-#         try:
-#             float(self)
-#         except ValueError:
-#             print( "crossinDown: Unsupported type", type(self) )
-#             return False
-#         else:
-#             return crossingUp( other, self )
-
-#     return ( self_old >= other_old and self_new <= other_new and self_old != self_new )
-
 
 def crossingDown( self, other ):
     if isinstance( self, generatedSeries_c ):
@@ -122,7 +78,7 @@ def crossingDown( self, other ):
     other_old = 0
     other_new = 0
     if isinstance( self, pd.Series ):
-        if( len(self) < 2 ):
+        if( len(self) < 2 or barindexStack < 1 ):
             return False
         self_old = self.loc[barindexStack-1]
         self_new = self.loc[barindexStack-0]
@@ -132,7 +88,7 @@ def crossingDown( self, other ):
             other_old = other.loc[barindexStack-1]
             self_new = other.loc[barindexStack-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 or barindexStack < 1 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -197,7 +153,7 @@ class plot_c:
             return
         
         # it's initalized so only update the new line
-        newval = source.iloc[-1]
+        newval = source.loc[timeframe.barindex]
         self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 
 
@@ -282,17 +238,23 @@ class timeframe_c:
         self.registeredPlots: dict[str, plot_c] = {}
 
     def initDataframe( self, ohlcvDF ):
+        global barindexStack
         print( "=================" )
         print( f"Creating dataframe {self.timeframeStr}" )
 
         # take out the last row to jumpstart the generatedSeries later
-        self.df = ohlcvDF.iloc[:-1].copy()
+        self.df = ohlcvDF.loc[:len(ohlcvDF) - 2].copy() # self.df = ohlcvDF.iloc[:-1].copy()
 
         print( f"Calculating generated series {self.timeframeStr}" )
 
         # do the jump-starting with the last row of the dataframe
         start_time = time.time()
-        self.parseCandleUpdate(ohlcvDF.iloc[[-1]])
+        lastRowDF = ohlcvDF.loc[[len(ohlcvDF) - 1]]
+        self.barindex = barindexStack = ohlcvDF.iloc[-2].name
+        self.timestamp = int(ohlcvDF.iloc[-2]['timestamp'])
+        print( f' ***** LAUNCH BARINDEX:{self.barindex}    LAUNCH TIMESTAMP:{self.timestamp}')
+        print( f" ***** FEEDING BARINDEX:{lastRowDF.iloc[-1].name}    FEEDING TIMESTAMP:{lastRowDF.iloc[-1]['timestamp']}")
+        self.parseCandleUpdate(lastRowDF) # self.parseCandleUpdate(ohlcvDF.iloc[[-1]])
         print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
         print( f"Computing script logic {self.timeframeStr}" )
@@ -312,19 +274,33 @@ class timeframe_c:
             print( "Callback function is empty. Skipping. Total time: {:.2f} seconds".format(time.time() - start_time))
             return
         
-        self.initdata = self.df
-        self.df = pd.DataFrame( pd.DataFrame(self.initdata.iloc[0]).T, columns=self.initdata.columns )
-        
+    
         # run the script logic accross all the rows
+        
+        if ALLOW_ILOC:
+            self.initdata = self.df
+            self.df = pd.DataFrame( pd.DataFrame(self.initdata.iloc[0]).T, columns=self.initdata.columns )
+            
+            # run the script logic accross all the rows
+            self.shadowcopy = True
+            self.barindex = barindexStack = self.df.iloc[0].name #self.barindex = -1
+            self.timestamp = int(self.df.iloc[0]['timestamp'])
+            self.parseCandleUpdate(self.initdata)
+            self.shadowcopy = False
+            ###############################################################################
+
+            print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
+            self.initdata = [] # free memory
+            return
+        
         self.shadowcopy = True
-        self.barindex = -1
+        self.barindex = barindexStack = self.df.iloc[0].name
         self.timestamp = int(self.df.iloc[0]['timestamp'])
-        self.parseCandleUpdate(self.initdata)
+        self.parseCandleUpdate(self.df)
         self.shadowcopy = False
         ###############################################################################
 
         print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
-        self.initdata = [] # free memory
 
     def parseCandleUpdate( self, rows ):
         global barindexStack
@@ -332,7 +308,13 @@ class timeframe_c:
         for newrow in rows.itertuples(index=False):
             newTimestamp = int(newrow.timestamp)
 
-            oldTimestamp = int(self.df.iloc[-1]['timestamp']) if len(self.df) > 1 else 0
+            if ALLOW_ILOC:
+                oldTimestamp = int(self.df.iloc[-1]['timestamp']) if len(self.df) > 1 else 0
+            else:
+                oldTimestamp = int(self.df.loc[self.barindex]['timestamp']) if self.barindex > 0 else 0
+
+            print( f"BARINDEX:{barindexStack}  LENDF:{len(self.df)}  ILOC-1NAME:{self.df.iloc[-1].name}" )
+            
             if oldTimestamp > newTimestamp:  # the server has sent a bunch of older candles
                 continue
 
@@ -361,12 +343,20 @@ class timeframe_c:
                     print( f'NEW {self.timeframeStr} CANDLE', newrow )
 
                 # CLOSE REALTIME CANDLE 
-                self.barindex = self.df.iloc[-1].name
-                self.timestamp = self.df['timestamp'].iloc[-1]
+
+                if ALLOW_ILOC:
+                    self.barindex = self.df.iloc[-1].name
+                    self.timestamp = self.df['timestamp'].iloc[-1]
+                else:
+                    self.timestamp = self.df['timestamp'].loc[self.barindex]
+                    self.barindex = self.df.loc[self.barindex].name
+                
                 new_row_index = self.barindex + 1
                 if self.timeframeStr == self.stream.timeframeFetch :
                     self.stream.timestampFetch = self.timestamp
                 barindexStack = self.barindex
+
+                print( f"BARINDEX:{barindexStack}  LENDF:{len(self.df)}  ILOC-1NAME:{self.df.iloc[-1].name}  LOC:{self.df.loc[barindexStack].name}" )
 
                 if( self.callback != None ):
                     self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
@@ -376,9 +366,10 @@ class timeframe_c:
 
                 # OPEN A NEW CANDLE
                 if self.shadowcopy:
-                    # row_to_append = self.initdata.iloc[new_row_index].to_frame().T
-                    # self.df = pd.concat( [self.df, row_to_append], ignore_index=True )
-                    self.df = pd.concat( [self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True )
+                    if ALLOW_ILOC:
+                        self.df = pd.concat( [self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True )
+                    else:
+                        self.barindex = barindexStack = self.barindex + 1
                     
                 else:
                     self.df.loc[new_row_index, 'timestamp'] = newTimestamp
@@ -624,7 +615,7 @@ def generatedseries_calculate_rsi(series, period, df:pd.DataFrame) -> pd.Series:
     loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
     rs = gain / loss
     rsi = 100 - (100 / (1 + rs))
-    return rsi #.iloc[-1]  # Returning the last value of RSI
+    return rsi
 
 
 def generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
@@ -803,6 +794,7 @@ def generatedSeriesNameFormat( type, source:pd.Series, period:int ):
         raise SystemError( f"Generated Series has no valid name [{type}{period} {source.name}]")
     return f'{type}{period} {source.name}'
 
+
 class generatedSeries_c:
     def __init__( self, type:str, source:pd.Series, period:int, func = None, always_reset:bool = False, timeframe:timeframe_c = None ):
         self.name = generatedSeriesNameFormat( type, source, period )
@@ -832,7 +824,7 @@ class generatedSeries_c:
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
             self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df).dropna()
-            self.timestamp = self.timeframe.df['timestamp'].iloc[-1]
+            self.timestamp = self.timeframe.df['timestamp'].loc[self.timeframe.barindex]
             if( self.timeframe.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
@@ -842,7 +834,7 @@ class generatedSeries_c:
             return
 
         # has this row already been updated?
-        if( self.timestamp >= self.timeframe.df['timestamp'].iloc[-1] ):
+        if( self.timestamp >= self.timeframe.df['timestamp'].loc[self.timeframe.barindex] ):
             return
 
         # if non existant try to create new. A few need to be made new every time
@@ -851,7 +843,7 @@ class generatedSeries_c:
             return
         
         # this happens when making the shadow copy
-        # if( not pd.isna( self.stream.df[self.name].iloc[-1] ) ):
+        # if( not pd.isna( self.stream.df[self.name].loc[self.timeframe.barindex] ) ):
         #     return
         
         if( len(self.timeframe.df) < self.period ):
@@ -860,10 +852,11 @@ class generatedSeries_c:
         # realtime updates
 
         # slice the required block of candles to calculate the current value of the generated series
-        newval = self.func(source[-self.period:], self.period, self.timeframe.df).iloc[-1]
+        newval = self.func(source[-self.period:], self.period, self.timeframe.df).loc[self.timeframe.barindex]
         self.timeframe.df.loc[self.timeframe.df.index[-1], self.name] = newval
         self.timestamp = self.timeframe.timestamp
-        
+
+
     def plot( self, chart = None ):
         if( self.timestamp > 0 ):
             self.timeframe.plot( self.name, self.series(), chart )
@@ -882,9 +875,9 @@ class generatedSeries_c:
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            if pd.isna(other.iloc[-2]) or pd.isna(other.iloc[-1]) :
+            if pd.isna(other.loc[self.timeframe.barindex-1]) or pd.isna(other.loc[self.timeframe.barindex]) :
                 return False
-            return ( self.value(1) <= other.iloc[-2] and self.value() >= other.iloc[-1] and self.value() != self.value(1) )
+            return ( self.value(1) <= other.loc[self.timeframe.barindex-1] and self.value() >= other.loc[self.timeframe.barindex] and self.value() != self.value(1) )
         try:
             float(other)
         except ValueError:
@@ -903,9 +896,9 @@ class generatedSeries_c:
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            if pd.isna(other.iloc[-2]) or pd.isna(other.iloc[-1]) :
+            if pd.isna(other.loc[self.timeframe.barindex-1]) or pd.isna(other.loc[self.timeframe.barindex]) :
                 return False
-            return ( self.value(1) >= other.iloc[-2] and self.value() <= other.iloc[-1] and self.value() != self.value(1) )
+            return ( self.value(1) >= other.loc[self.timeframe.barindex-1] and self.value() <= other.loc[self.timeframe.barindex] and self.value() != self.value(1) )
         try:
             float(other)
         except ValueError:
@@ -920,37 +913,8 @@ class generatedSeries_c:
         df = self.timeframe.df
         if( backindex + 1 > len(df) ):
             raise SystemError( "generatedseries_c.value() : backindex out of bounds")
-            # return df[self.name].iloc[-(backindex + 1)]
 
         return df[self.name].loc[self.timeframe.barindex - backindex]
-        return df[self.name].loc[len(df) - (backindex+1)]
-    
-    def bool( self, backindex = 0 ):
-        df = self.timeframe.df
-        if( backindex < 0 or backindex + 1 > len(df) ):
-            return None
-            #raise KeyError( 'Invalid backindex. It must be 0 or more. Maybe you wanted to use iloc(index)')
-        if( self.timestamp == 0 or pd.isna(df[self.name].iloc[-(backindex + 1)]) ):
-            return None
-        return df[self.name].iloc[-(backindex + 1)] != 0
-        
-    def loc( self, index = 0 ):
-        df = self.timeframe.df
-        if( self.timestamp == 0 ):
-            print( f"Warning: {self.name} has not yet produced any value")
-            return 0 # let's do this just to avoid crashes
-        
-        if( index < 0 or index > len(df) ):
-            raise KeyError( 'Invalid index. It must be 0 or more')
-        return df[self.name].loc[index]
-    
-    def iloc( self, index = -1 ):
-        df = self.timeframe.df
-        if( self.timestamp == 0 ):
-            print( f"Warning: {self.name} has not yet produced any value")
-            return 0 # let's do this just to avoid crashes
-        
-        return df[self.name].iloc[index]
     
 
 
@@ -1216,7 +1180,7 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1m', '15m'], 500 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1m'], 500 )
 
     # tasks.registerTask( 'clock', update_clock(stream) )
     stream.createWindow( '1m' )
