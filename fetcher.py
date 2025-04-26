@@ -139,6 +139,8 @@ class candles_c:
     def loadCacheAndFetchUpdate( self, symbol, timeframe, grab_amount ):
         grab_amount = grab_amount if( grab_amount != None ) else 0
         ohlcv_cache = self.loadOHLCVfile( symbol, timeframe )
+        if( len(ohlcv_cache) > 0 ): # drop the last candle as it may have been incomplete when originally fetched.
+            ohlcv_cache.pop()
         if( len(ohlcv_cache) == 0 ):
             ohlcvs = self.fetchAmount( symbol, timeframe, grab_amount )
             self.writeOHLCVfile( symbol, timeframe, ohlcvs )

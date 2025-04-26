@@ -219,10 +219,25 @@ def resample_ohlcv(df, target_timeframe):
     resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
     return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
+class candle_c:
+    def __init__( self ):
+        self.timestamp = 0
+        self.open = 0.0
+        self.high = 0.0
+        self.low = 0.0
+        self.close = 0.0
+        self.volume = 0.0
+
+    def str( self ):
+        return f'timestamp:{self.timestamp} open:{self.open} high:{self.high} low:{self.low} close:{self.close} volume:{self.volume}'
+
+    def print( self ):
+        print( self.str() )
+
 
 class timeframe_c:
     def __init__( self, stream, timeframeStr ):
-        self.stream = stream
+        self.stream:stream_c = stream
         self.timeframeStr = tools.timeframeString( timeframeStr )
         self.timeframe = tools.timeframeInt(self.timeframeStr) # in minutes
         self.timeframeMsec = tools.timeframeMsec(self.timeframeStr)
@@ -233,10 +248,12 @@ class timeframe_c:
         self.window = None
 
         self.df:pd.DataFrame = []
+        self.realtimeCandle:candle_c = candle_c()
         self.initdata:pd.DataFrame = []
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
 
+        
     def initDataframe( self, ohlcvDF ):
         global barindexStack
         print( "=================" )
@@ -249,11 +266,20 @@ class timeframe_c:
 
         # do the jump-starting with the last row of the dataframe
         start_time = time.time()
-        lastRowDF = ohlcvDF.loc[[len(ohlcvDF) - 1]]
+
+        #set up the status to the last 'processed' row
         self.barindex = barindexStack = ohlcvDF.iloc[-2].name
         self.timestamp = int(ohlcvDF.iloc[-2]['timestamp'])
-        print( f' ***** LAUNCH BARINDEX:{self.barindex}    LAUNCH TIMESTAMP:{self.timestamp}')
-        print( f" ***** FEEDING BARINDEX:{lastRowDF.iloc[-1].name}    FEEDING TIMESTAMP:{lastRowDF.iloc[-1]['timestamp']}")
+        self.realtimeCandle.timestamp = int(ohlcvDF.iloc[-2]['timestamp'])
+        self.realtimeCandle.open = ohlcvDF.iloc[-2]['open']
+        self.realtimeCandle.high = ohlcvDF.iloc[-2]['high']
+        self.realtimeCandle.low = ohlcvDF.iloc[-2]['low']
+        self.realtimeCandle.close = ohlcvDF.iloc[-2]['close']
+        self.realtimeCandle.volume = ohlcvDF.iloc[-2]['volume']
+
+        # set up to process the last row as a new update
+        lastRowDF = ohlcvDF.loc[[len(ohlcvDF) - 1]]
+        
         self.parseCandleUpdate(lastRowDF) # self.parseCandleUpdate(ohlcvDF.iloc[[-1]])
         print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
@@ -285,6 +311,12 @@ class timeframe_c:
             self.shadowcopy = True
             self.barindex = barindexStack = self.df.iloc[0].name #self.barindex = -1
             self.timestamp = int(self.df.iloc[0]['timestamp'])
+            self.realtimeCandle.timestamp = int(ohlcvDF.loc[self.barindex]['timestamp'])
+            self.realtimeCandle.open = ohlcvDF.loc[self.barindex]['open']
+            self.realtimeCandle.high = ohlcvDF.loc[self.barindex]['high']
+            self.realtimeCandle.low = ohlcvDF.loc[self.barindex]['low']
+            self.realtimeCandle.close = ohlcvDF.loc[self.barindex]['close']
+            self.realtimeCandle.volume = ohlcvDF.loc[self.barindex]['volume']
             self.parseCandleUpdate(self.initdata)
             self.shadowcopy = False
             ###############################################################################
@@ -296,6 +328,13 @@ class timeframe_c:
         self.shadowcopy = True
         self.barindex = barindexStack = self.df.iloc[0].name
         self.timestamp = int(self.df.iloc[0]['timestamp'])
+        #set up the status to the last 'processed' row
+        self.realtimeCandle.timestamp = int(ohlcvDF.loc[self.barindex]['timestamp'])
+        self.realtimeCandle.open = ohlcvDF.loc[self.barindex]['open']
+        self.realtimeCandle.high = ohlcvDF.loc[self.barindex]['high']
+        self.realtimeCandle.low = ohlcvDF.loc[self.barindex]['low']
+        self.realtimeCandle.close = ohlcvDF.loc[self.barindex]['close']
+        self.realtimeCandle.volume = ohlcvDF.loc[self.barindex]['volume']
         self.parseCandleUpdate(self.df)
         self.shadowcopy = False
         ###############################################################################
@@ -306,88 +345,88 @@ class timeframe_c:
         global barindexStack
 
         for newrow in rows.itertuples(index=False):
-            newTimestamp = int(newrow.timestamp)
-
-            if ALLOW_ILOC:
-                oldTimestamp = int(self.df.iloc[-1]['timestamp']) if len(self.df) > 1 else 0
-            else:
-                oldTimestamp = int(self.df.loc[self.barindex]['timestamp']) if self.barindex > 0 else 0
-
-            print( f"BARINDEX:{barindexStack}  LENDF:{len(self.df)}  ILOC-1NAME:{self.df.iloc[-1].name}" )
             
-            if oldTimestamp > newTimestamp:  # the server has sent a bunch of older candles
+            if( newrow.timestamp < int(self.df.iloc[self.barindex]['timestamp']) ):
                 continue
 
-            if oldTimestamp + self.timeframeMsec > newTimestamp :
+            if( self.realtimeCandle.timestamp < int(self.df.iloc[self.barindex]['timestamp']) ):
+                self.realtimeCandle.timestamp = self.df.iloc[self.barindex]['timestamp']
+                self.realtimeCandle.open = self.df.iloc[self.barindex]['open']
+                self.realtimeCandle.high = self.df.iloc[self.barindex]['high']
+                self.realtimeCandle.low = self.df.iloc[self.barindex]['low']
+                self.realtimeCandle.close = self.df.iloc[self.barindex]['close']
+                self.realtimeCandle.volume = self.df.iloc[self.barindex]['volume']
+
+            if( newrow.timestamp < self.realtimeCandle.timestamp ):
+                continue
+
+
+            targetTimestamp = self.realtimeCandle.timestamp + self.timeframeMsec
+            if newrow.timestamp < targetTimestamp:
                 # update the realtime candle
                 if( self.timeframeStr == self.stream.timeframeFetch ):
-                    self.df.loc[self.df.index[-1], 'open'] = newrow.open
-                    self.df.loc[self.df.index[-1], 'high'] = newrow.high
-                    self.df.loc[self.df.index[-1], 'low'] = newrow.low
-                    self.df.loc[self.df.index[-1], 'close'] = newrow.close
-                    self.df.loc[self.df.index[-1], 'volume'] = newrow.volume
+                    self.realtimeCandle.timestamp = newrow.timestamp
+                    self.realtimeCandle.open = newrow.open
+                    self.realtimeCandle.high = newrow.high
+                    self.realtimeCandle.low = newrow.low
+                    self.realtimeCandle.close = newrow.close
+                    self.realtimeCandle.volume = newrow.volume
                 else:
-                    self.df.loc[self.df.index[-1], 'high'] = max(newrow.high, self.df.iloc[-1]['high'])
-                    self.df.loc[self.df.index[-1], 'low'] = min(newrow.low, self.df.iloc[-1]['low'])
-                    self.df.loc[self.df.index[-1], 'close'] = newrow.close
+                    self.realtimeCandle.high = max(self.realtimeCandle.high, newrow.high)
+                    self.realtimeCandle.low = min(self.realtimeCandle.low, newrow.low)
+                    self.realtimeCandle.close = newrow.close
                     # add the volume of the smallest candles
                     fecthTF = self.stream.timeframes[self.stream.timeframeFetch]
-                    self.df.loc[self.df.index[-1], 'volume'] = fecthTF.df.loc[fecthTF.df['timestamp'] >= oldTimestamp, 'volume'].sum()
-
-                # update the chart
-                if self.window is not None:
-                    self.window.updateChart(self)
+                    self.realtimeCandle.volume = newrow.volume + fecthTF.df.loc[fecthTF.df['timestamp'] >= self.realtimeCandle.timestamp, 'volume'].sum()
 
             else:
-                if not self.stream.initializing:
-                    print( f'NEW {self.timeframeStr} CANDLE', newrow )
+                # CLOSE REALTIME CANDLE
 
-                # CLOSE REALTIME CANDLE 
+                # copy the realtimeCandle into a new dataframe candle.
+                # copy the newrow into the realtimeCandle
 
-                if ALLOW_ILOC:
-                    self.barindex = self.df.iloc[-1].name
-                    self.timestamp = self.df['timestamp'].iloc[-1]
+                if self.shadowcopy:
+                    if ALLOW_ILOC:
+                        self.df = pd.concat( [self.df, self.initdata.iloc[self.barindex+1].to_frame().T], ignore_index=True )
+                    
                 else:
-                    self.timestamp = self.df['timestamp'].loc[self.barindex]
-                    self.barindex = self.df.loc[self.barindex].name
-                
-                new_row_index = self.barindex + 1
+                    self.df.loc[self.barindex+1, 'timestamp'] = self.realtimeCandle.timestamp
+                    self.df.loc[self.barindex+1, 'open'] = self.realtimeCandle.open
+                    self.df.loc[self.barindex+1, 'high'] = self.realtimeCandle.high
+                    self.df.loc[self.barindex+1, 'low'] = self.realtimeCandle.low
+                    self.df.loc[self.barindex+1, 'close'] = self.realtimeCandle.close
+                    self.df.loc[self.barindex+1, 'volume'] = self.realtimeCandle.volume
+
+                    # copy newrow into realtimeCandle
+                    self.realtimeCandle.timestamp = newrow.timestamp
+                    self.realtimeCandle.open = newrow.open
+                    self.realtimeCandle.high = newrow.high
+                    self.realtimeCandle.low = newrow.low
+                    self.realtimeCandle.close = newrow.close
+                    self.realtimeCandle.volume = newrow.volume
+
+
+                self.barindex = self.barindex + 1
+                self.timestamp = int(self.df['timestamp'].loc[self.barindex])
+
                 if self.timeframeStr == self.stream.timeframeFetch :
                     self.stream.timestampFetch = self.timestamp
                 barindexStack = self.barindex
 
-                print( f"BARINDEX:{barindexStack}  LENDF:{len(self.df)}  ILOC-1NAME:{self.df.iloc[-1].name}  LOC:{self.df.loc[barindexStack].name}" )
+                if not self.stream.initializing:
+                    print( f'NEW {self.timeframeStr} CANDLE', self.candle().str(), "next:", self.realtimeCandle.timestamp )
 
                 if( self.callback != None ):
                     self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
 
-                # if( not self.shadowcopy ):
-                #     self.updateAllGeneratedSeries() # update all calculated series regardless if they are called or not
-
-                # OPEN A NEW CANDLE
-                if self.shadowcopy:
-                    if ALLOW_ILOC:
-                        self.df = pd.concat( [self.df, self.initdata.iloc[new_row_index].to_frame().T], ignore_index=True )
-                    else:
-                        self.barindex = barindexStack = self.barindex + 1
-                    
-                else:
-                    self.df.loc[new_row_index, 'timestamp'] = newTimestamp
-                    self.df.loc[new_row_index, 'open'] = newrow.open
-                    self.df.loc[new_row_index, 'high'] = newrow.high
-                    self.df.loc[new_row_index, 'low'] = newrow.low
-                    self.df.loc[new_row_index, 'close'] = newrow.close
-                    self.df.loc[new_row_index, 'volume'] = newrow.volume
-
-                # update the chart
-                if( self.window != None ):
-                    self.window.updateChart(self)
-
-                if self.shadowcopy and new_row_index % 5000 == 0:
-                    print( new_row_index, "candles processed." )
+                if self.shadowcopy and self.barindex % 5000 == 0:
+                    print( self.barindex, "candles processed." )
 
                 if not self.shadowcopy and verbose:
                     print( self.df )
+
+            if( self.window != None ):
+                self.window.updateChart(self)
 
 
     def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, always_reset:bool = False ):
@@ -415,6 +454,22 @@ class timeframe_c:
         for plot in self.registeredPlots.values():
             if not plot.initialized:
                 plot.update( plot.source, self )
+
+    def candle( self, index = None )->candle_c:
+        if( index is None or index > self.barindex ):
+            index = self.barindex
+        if( index < 0 ):
+            index = 0
+        
+        candle = candle_c()
+        candle.timestamp = int(self.df.loc[self.barindex]['timestamp'])
+        candle.open = self.df.loc[self.barindex]['open']
+        candle.high = self.df.loc[self.barindex]['high']
+        candle.low = self.df.loc[self.barindex]['low']
+        candle.close = self.df.loc[self.barindex]['close']
+        candle.volume = self.df.loc[self.barindex]['volume']
+        return candle
+
     
 def getTimeframeObject( name ):
     name = tools.timeframeString( name ) #it validates de name
@@ -1040,9 +1095,9 @@ def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     pass
 def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     sma = calcSMA( timeframe, close, 350 )
-    sma.plot()
-    rsi = calcRSI( timeframe, close, 14 )
-    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
+    # sma.plot()
+    # rsi = calcRSI( timeframe, close, 14 )
+    # rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
     return
 
 def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
@@ -1060,16 +1115,16 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     # strategy code goes here #
     ###########################
     sma = calcSMA( timeframe, close, 350 )
-    sma.plot()
+    # sma.plot()
 
-    ema = calcEMA( timeframe, close, 4 )
-    ema.plot()
+    # ema = calcEMA( timeframe, close, 4 )
+    # ema.plot()
 
-    lr = calcLINREG( timeframe, close, 300 )
-    lr.plot()
+    # lr = calcLINREG( timeframe, close, 300 )
+    # lr.plot()
 
-    rsi = calcRSI( timeframe, close, 14 )
-    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
+    # rsi = calcRSI( timeframe, close, 14 )
+    # rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
     
     # plot( "lazyline", 0, 'panel' )
 
@@ -1116,8 +1171,8 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     # if( sma.crossingUp(lr) ):
     #     timeframe.stream.createMarker( '🔷' )
 
-    if crossingDown( sma.series(), lr ):
-        timeframe.stream.createMarker( '🔺' )
+    # if crossingDown( sma.series(), lr ):
+    #     timeframe.stream.createMarker( '🔺' )
     
 
 

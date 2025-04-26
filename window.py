@@ -76,13 +76,19 @@ class window_c:
             return
         
         #update the chart
-        df = timeframe.df
-        data_dict = {'time': pd.to_datetime( df['timestamp'].iloc[-1], unit='ms' ), 'open': df['open'].iloc[-1], 'high': df['high'].iloc[-1], 'low': df['low'].iloc[-1], 'close': df['close'].iloc[-1], 'volume': df['volume'].iloc[-1] }
-
-        self.chart.update( pd.Series(data_dict) )
+        data_dict = {'time': pd.to_datetime( timeframe.realtimeCandle.timestamp, unit='ms' ), 
+                     'open': timeframe.realtimeCandle.open, 
+                     'high': timeframe.realtimeCandle.high, 
+                     'low': timeframe.realtimeCandle.low, 
+                     'close': timeframe.realtimeCandle.close, 
+                     'volume': timeframe.realtimeCandle.volume }
+        
+        series = pd.Series(data_dict)
+        
+        self.chart.update( series )
         if( self.bottomPanel != None ):
-            self.bottomPanel.legend( lines = False ) # It crashes if lines are enabled
-            self.bottomPanel.update( pd.Series(data_dict) )
+            # self.bottomPanel.legend( lines = False ) # It crashes if lines are enabled
+            self.bottomPanel.update( series )
 
 
 async def on_button_press(chart):
