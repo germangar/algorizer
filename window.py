@@ -38,7 +38,6 @@ class window_c:
         chart.set( tmpdf )
 
 
-
         # bottom panel
         self.bottomPanel = bottomPanel = chart.create_subchart( position='bottom', width=1.0, height=0.2, sync=chart.id )
         if( self.bottomPanel == None ): raise SystemError( "Failed to create bottomPanel" )
