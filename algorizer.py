@@ -18,7 +18,7 @@ from fetcher import candles_c
 import strategy
 
 
-barindexStack:int = -1
+barindexActive:int = -1
 
 
 ALLOW_NEGATIVE_ILOC = False
@@ -35,17 +35,17 @@ def crossingUp( self, other ):
     other_old = 0
     other_new = 0
     if isinstance( self, pd.Series ):
-        if( len(self) < 2 or barindexStack < 1 ):
+        if( len(self) < 2 or barindexActive < 1 ):
             return False
-        self_old = self.loc[barindexStack-1]
-        self_new = self.loc[barindexStack-0]
+        self_old = self.loc[barindexActive-1]
+        self_new = self.loc[barindexActive-0]
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.loc[barindexStack-1]
-            self_new = other.loc[barindexStack-0]
+            other_old = other.loc[barindexActive-1]
+            self_new = other.loc[barindexActive-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or barindexStack < 1 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 or barindexActive < 1 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -78,17 +78,17 @@ def crossingDown( self, other ):
     other_old = 0
     other_new = 0
     if isinstance( self, pd.Series ):
-        if( len(self) < 2 or barindexStack < 1 ):
+        if( len(self) < 2 or barindexActive < 1 ):
             return False
-        self_old = self.loc[barindexStack-1]
-        self_new = self.loc[barindexStack-0]
+        self_old = self.loc[barindexActive-1]
+        self_new = self.loc[barindexActive-0]
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.loc[barindexStack-1]
-            self_new = other.loc[barindexStack-0]
+            other_old = other.loc[barindexActive-1]
+            self_new = other.loc[barindexActive-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or barindexStack < 1 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 or barindexActive < 1 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -228,8 +228,45 @@ class candle_c:
         self.close = 0.0
         self.volume = 0.0
 
+        self.timeframemsec = 0
+
+        self.remainingmsec = 0
+        self.remainingseconds = 0
+        self.remainingminutes = 0
+        self.remaininghours = 0
+        self.remainingdays = 0
+
     def str( self ):
         return f'timestamp:{self.timestamp} open:{self.open} high:{self.high} low:{self.low} close:{self.close} volume:{self.volume}'
+    
+    def updateRemainingTime( self ):
+        from datetime import datetime
+        if( self.timestamp <= 0 ):
+            return
+        
+        endTime = self.timestamp + self.timeframemsec
+        currentTime = datetime.now().timestamp() * 1000
+        if( currentTime >= endTime ):
+            self.remainingmsec = self.remainingdays = self.remaininghours = self.remainingminutes = self.remainingseconds = 0
+            return
+        
+        self.remainingmsec = endTime - currentTime
+        sec = self.remainingmsec // 1000
+
+        # Calculate days, hours, minutes, and seconds
+        self.remainingdays = sec // 86400  # 86400 seconds in a day
+        self.remaininghours = (sec % 86400) // 3600  # Remaining seconds divided by seconds in an hour
+        self.remainingminutes = (sec % 3600) // 60  # Remaining seconds divided by seconds in a minute
+        self.remainingseconds = sec % 60  # Remaining seconds
+    
+    def remainingTimeStr( self ):
+        rtstring = ''
+        if self.remainingdays > 0:
+            rtstring = f"{int(self.remainingdays)}:"  # Days do not need two digits
+        if self.remaininghours > 0 or self.remainingdays > 0:
+            rtstring += f"{int(self.remaininghours):02}:"  # Ensure two digits for hours if there are days
+        rtstring += f"{int(self.remainingminutes):02}:{int(self.remainingseconds):02}"  # Ensure two digits for minutes and seconds
+        return rtstring
 
     def print( self ):
         print( self.str() )
@@ -248,14 +285,16 @@ class timeframe_c:
         self.window = None
 
         self.df:pd.DataFrame = []
-        self.realtimeCandle:candle_c = candle_c()
         self.initdata:pd.DataFrame = []
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
 
+        self.realtimeCandle:candle_c = candle_c()
+        self.realtimeCandle.timeframemsec = self.timeframeMsec
+
         
     def initDataframe( self, ohlcvDF ):
-        global barindexStack
+        global barindexActive
         print( "=================" )
         print( f"Creating dataframe {self.timeframeStr}" )
 
@@ -267,7 +306,7 @@ class timeframe_c:
         # do the jump-starting with the last row of the dataframe
         start_time = time.time()
 
-        self.barindex = barindexStack = self.df.iloc[-2].name
+        self.barindex = barindexActive = self.df.iloc[-2].name
         self.timestamp = self.df.iloc[-2]['timestamp']
         self.realtimeCandle.timestamp = int(self.df.iloc[-1]['timestamp'])
         self.realtimeCandle.open = self.df.iloc[-1]['open']
@@ -331,7 +370,7 @@ class timeframe_c:
 
 
     def parseCandleUpdate( self, rows ):
-        global barindexStack
+        global barindexActive
 
         for newrow in rows.itertuples(index=False):
 
@@ -344,7 +383,7 @@ class timeframe_c:
                         self.df = pd.concat( [self.df, self.initdata.iloc[self.barindex+1].to_frame().T], ignore_index=True )
 
                     self.barindex = self.df.iloc[self.barindex].name + 1
-                    barindexStack = self.barindex
+                    barindexActive = self.barindex
                     self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
 
                     if( newrow.timestamp != self.timestamp ):
@@ -428,9 +467,10 @@ class timeframe_c:
             self.realtimeCandle.low = newrow.low
             self.realtimeCandle.close = newrow.close
             self.realtimeCandle.volume = newrow.volume
+            self.realtimeCandle.updateRemainingTime()
 
             self.barindex = self.barindex+ 1
-            barindexStack = self.barindex
+            barindexActive = self.barindex
             self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
             if self.timeframeStr == self.stream.timeframeFetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
@@ -575,6 +615,7 @@ class stream_c:
         # We're done. Start fetching
         tasks.registerTask( 'cli', cli_task(self) )
         tasks.registerTask( 'fetch', fetchCandleUpdates( self ) )
+        tasks.registerTask( 'clocks', update_clocks(self) )
 
 
     def parseCandleUpdateMulti( self, rows ):
@@ -1105,89 +1146,27 @@ def calcFWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
     return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
+async def update_clocks( stream:stream_c ):
+    from datetime import datetime
 
-def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    pass
-def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    sma = calcSMA( timeframe, close, 350 )
-    sma.plot()
-    rsi = calcRSI( timeframe, close, 14 )
-    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
-    return
+    while True:
+        await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
 
-def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    return
-
-def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-
-    ###########################
-    # strategy code goes here #
-    ###########################
-    sma = calcSMA( timeframe, close, 350 )
-    sma.plot()
-
-    ema = calcEMA( timeframe, close, 4 )
-    ema.plot()
-
-    # lr = calcLINREG( timeframe, close, 300 )
-    # lr.plot()
-
-    rsi = calcRSI( timeframe, close, 14 )
-    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
-    
-    # plot( "lazyline", 0, 'panel' )
-
-    # FIXME: It crashes when calling to plot the same series
-    # atr = calcATR( stream, 14 )
-    # plot( stream, atr.name, atr.series(), 'panel' )
-
-    # calcTR(14).plot('panel')
-
-    
-
-    # # sma_rising = rising( stream, sma.name, 10 )
-
-    # cfo = calcCFO( stream, close, 20 )
-    # cfo.plot('panel')
-
-    # dev = calcDEV( stream, close, 30 )
-    # # plot( stream, dev.name, dev.series(), 'panel' )
-
-    # rma = calcRMA( stream, close, 90 )
-    # rma.plot()
-
-    # stdev = calcSTDEV( timeframe, close, 350 )
-
-    # willr = calcWPR( stream, close, 32 ).plot('panel')
-    # calcBIAS( stream, close, 32 ).plot('panel')
-
-    # hma = calcHMA( stream, close, 150 )
-    # hma.plot()
-    # r = rising( stream, hma.series(), 10 )
-    # f = falling( stream, hma.series(), 10 )
-    # if( not stream.initializing ):
-    #     print( (hma.series() > 1.7) )
-
-
-    # calcBarsSince( stream.barindex, r )
-    # calcBarsWhileTrue( hma.series() > 1.7 )
-
-    # calcCCI( stream, 20 )
-
-    # slope1000 = calcSMA( stream, calcSLOPE( stream, close, 200 ).series() * 500000, 14 )
-    # plot( stream, slope1000.name, slope1000.series(), 'panel' )
-
-    # if( sma.crossingUp(lr) ):
-    #     timeframe.stream.createMarker( '🔷' )
-
-    # if crossingDown( sma.series(), lr ):
-    #     timeframe.stream.createMarker( '🔺' )
-    
+        for timeframe in stream.timeframes.values():
+            timeframe.realtimeCandle.updateRemainingTime()
+            if timeframe.window != None:
+                timeframe.window.updateClock()
 
 
 
-    return
-
+# async def update_clock(stream):
+#     #FIXME: Find the timeframe with a window
+#     # if( window == None ):
+#     #     return
+#     # while window.chart.is_alive:
+#     #     await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+#     #     window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+#     return
 
 async def fetchCandleUpdates( stream:stream_c ):
 
@@ -1220,14 +1199,86 @@ async def fetchCandleUpdates( stream:stream_c ):
 async def on_timeframe_selection(chart):
     print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
 
-from datetime import datetime
-async def update_clock(stream):
-    #FIXME: Find the timeframe with a window
-    # if( window == None ):
-    #     return
-    # while window.chart.is_alive:
-    #     await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-    #     window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
+
+
+def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    pass
+def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    sma = calcSMA( timeframe, close, 350 )
+    sma.plot()
+    rsi = calcRSI( timeframe, close, 14 )
+    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
+    return
+
+def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    return
+
+def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+
+    ###########################
+    # strategy code goes here #
+    ###########################
+    sma = calcSMA( timeframe, close, 75 )
+    sma.plot()
+
+    # ema = calcEMA( timeframe, close, 4 )
+    # ema.plot()
+
+    lr = calcLINREG( timeframe, close, 300 )
+    lr.plot()
+
+    # plot( timeframe, "lazyline", 0, 'panel' )
+
+    # rsi = calcRSI( timeframe, close, 14 )
+    # rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
+    
+    # FIXME: It crashes when calling to plot the same series
+    # atr = calcATR( timeframe,  14 )
+    # plot( timeframe,  atr.name, atr.series(), 'panel' )
+
+    # calcTR(timeframe, 14).plot('panel')
+
+    # cfo = calcCFO( timeframe,  close, 20 )
+    # cfo.plot('panel')
+
+    # dev = calcDEV( timeframe,  close, 30 )
+    # plot( timeframe, dev.name, dev.series(), 'panel' )
+
+    # rma = calcRMA( timeframe,  close, 90 )
+    # rma.plot()
+
+    # stdev = calcSTDEV( timeframe, close, 350 )
+
+    willr = calcWPR( timeframe,  close, 32 ).plot('panel')
+    # calcBIAS( timeframe,  close, 32 ).plot('panel')
+
+    # hma = calcHMA( timeframe,  close, 150 )
+    # hma.plot()
+    # r = rising( timeframe,  hma.series(), 10 )
+    # f = falling( timeframe,  hma.series(), 10 )
+
+    # calcBarsSince( timeframe.barindex, r )
+    # wt = calcBarsWhileTrue( timeframe.barindex, hma.series() > 1.7 )
+
+    # calcCCI( timeframe, 100 ).plot('panel')
+
+    # slope1000 = calcSMA( timeframe, calcSLOPE( timeframe, close, 200 ).series() * 500000, 14 )
+    # plot( timeframe, slope1000.name, slope1000.series(), 'panel' )
+
+    # hma_rising = rising( timeframe, hma.series(), 30 )
+    # if( hma_rising.value() and not hma_rising.value(1) ):
+    #     timeframe.stream.createMarker( '🔼' )
+
+    # hma_falling = falling( timeframe, hma.series(), 30 )
+    # if( hma_falling.value() and not hma_falling.value(1) ):
+    #     timeframe.stream.createMarker( '🔽' )
+
+    if( sma.crossingUp(lr) ):
+        timeframe.stream.createMarker( '🔷' )
+
+    if crossingDown( sma.series(), lr ):
+        timeframe.stream.createMarker( '🔺' )
+    
     return
 
 
@@ -1244,7 +1295,7 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], 500 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], 10000 )
 
     # tasks.registerTask( 'clock', update_clock(stream) )
     stream.createWindow( '1m' )

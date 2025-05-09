@@ -1,8 +1,13 @@
 
 import pandas as pd
 import tasks
+import asyncio
 from lightweight_charts import Chart
 # from lightweight_charts_esistjosh import Chart
+
+from datetime import datetime
+from datetime import timedelta
+
 
 SHOW_VOLUME = False
 
@@ -14,13 +19,15 @@ class window_c:
         self.bottomPanel = None
         self.precision = precision
         self.bottompanel_precision = bottompanel_precision
+        self.legendStr = ''
 
         if( self.timeframe == None ): raise SystemError( "Attempted to create a window without a stream" )
         
         
-        self.chart = chart = Chart( inner_height=0.8, toolbox = False )
+        self.chart = chart = Chart( 1024, 768, inner_height=0.8, toolbox = False )
         if( self.chart == None ): raise SystemError( "Failed to create chart" )
-        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=timeframe.stream.symbol + ' - ' + timeframe.timeframeStr + ' - ' + timeframe.stream.exchange.id + ' - ' + f'candles:{len(timeframe.df)}' )
+        self.legendStr = f"{timeframe.stream.symbol} - {timeframe.timeframeStr} - {timeframe.stream.exchange.id} - candles:{len(timeframe.df)}"
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=self.legendStr )
         chart.time_scale( visible=False )
         chart.layout( font_size=14 )
         chart.precision( self.precision )
@@ -49,6 +56,8 @@ class window_c:
         bottomPanel.precision( self.bottompanel_precision )
         bottomPanel.set(tmpdf)
         bottomPanel.hide_data()
+
+        tempdf = []
 
         for marker in timeframe.stream.markers:
             if( marker.chart == None ):
@@ -88,6 +97,11 @@ class window_c:
         if( self.bottomPanel != None ):
             # self.bottomPanel.legend( lines = False ) # It crashes if lines are enabled
             self.bottomPanel.update( series )
+
+    def updateClock( self ):
+        timeframe = self.timeframe
+        string1 = self.legendStr + " - " + timeframe.realtimeCandle.remainingTimeStr()
+        self.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=string1 )
 
 
 async def on_button_press(chart):
