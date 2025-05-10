@@ -19,6 +19,7 @@ import strategy
 
 
 barindexActive:int = -1
+timeframeActive = None
 
 
 ALLOW_NEGATIVE_ILOC = False
@@ -157,7 +158,8 @@ class plot_c:
         self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 
 
-def plot( timeframe, name, source, chart_name = None ):
+def plot( name, source, chart_name = None, timeframe = None ):
+    if timeframe == None : timeframe = timeframeActive
     timeframe.plot( name, source, chart_name )
 
 class markers_c:
@@ -295,8 +297,11 @@ class timeframe_c:
         
     def initDataframe( self, ohlcvDF ):
         global barindexActive
+        global timeframeActive
         print( "=================" )
         print( f"Creating dataframe {self.timeframeStr}" )
+
+        timeframeActive = self
 
         # take out the last row to jumpstart the generatedSeries later
         self.df = ohlcvDF.loc[:len(ohlcvDF) - 2].copy() # self.df = ohlcvDF.iloc[:-1].copy()
@@ -371,6 +376,9 @@ class timeframe_c:
 
     def parseCandleUpdate( self, rows ):
         global barindexActive
+        global timeframeActive
+
+        timeframeActive = self
 
         for newrow in rows.itertuples(index=False):
 
@@ -527,10 +535,6 @@ class timeframe_c:
         candle.volume = self.df.loc[self.barindex]['volume']
         return candle
 
-    
-def getTimeframeObject( name ):
-    name = tools.timeframeString( name ) #it validates de name
-    return stream.timeframes[name]
 
 class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframeList, max_amount = 5000 ):
@@ -1075,74 +1079,97 @@ def calcBarsWhileTrue( barindex, source ):
 
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
-def falling( timeframe:timeframe_c, source:pd.Series, period:int ):
+def falling( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
 
-def rising( timeframe:timeframe_c, source:pd.Series, period:int ):
+def rising( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
 
-def calcSMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcSMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
 
-def calcEMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcEMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
 
-def calcDEMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcDEMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
 
-def calcWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcWMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
 
-def calcHMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcHMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
 
-# def calcJMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+# def calcJMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+#     if timeframe == None : timeframe = timeframeActive
 #     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
 
-# def calcKAMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+# def calcKAMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+#     if timeframe == None : timeframe = timeframeActive
 #     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
 
-def calcLINREG( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcLINREG( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
 
-def calcRSI( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcRSI( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
 
-def calcDEV( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcDEV( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
 
-def calcSTDEV( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcSTDEV( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
 
-def calcRMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcRMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
 
-def calcWPR( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcWPR( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
 
-def calcATR2( timeframe:timeframe_c, period:int ): # The other one using pt is much faster
+def calcATR2( period:int, timeframe:timeframe_c = None ): # The other one using pt is much faster
+    if timeframe == None : timeframe = timeframeActive
     tr = timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
     return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
 
-def calcTR( timeframe:timeframe_c, period:int ):
+def calcTR( period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
 
-def calcATR( timeframe:timeframe_c, period:int ):
+def calcATR( period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
 
-def calcSLOPE( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcSLOPE( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
 
-def calcBIAS( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcBIAS( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
 
-def calcCCI( timeframe:timeframe_c, period:int ):
+def calcCCI( period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
 
-def calcCFO( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcCFO( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
 
-def calcFWMA( timeframe:timeframe_c, source:pd.Series, period:int ):
+def calcFWMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
+    if timeframe == None : timeframe = timeframeActive
     return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
@@ -1157,16 +1184,6 @@ async def update_clocks( stream:stream_c ):
             if timeframe.window != None:
                 timeframe.window.updateClock()
 
-
-
-# async def update_clock(stream):
-#     #FIXME: Find the timeframe with a window
-#     # if( window == None ):
-#     #     return
-#     # while window.chart.is_alive:
-#     #     await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-#     #     window.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=stream.symbol + ' - ' + stream.timeframeStr + ' - ' + stream.exchange.id + ' - ' + f'candles:{len(stream.df)}' + ' - ' + datetime.now().strftime('%H:%M:%S') )
-#     return
 
 async def fetchCandleUpdates( stream:stream_c ):
 
@@ -1196,18 +1213,15 @@ async def fetchCandleUpdates( stream:stream_c ):
 
     await exchange.close()
 
-async def on_timeframe_selection(chart):
-    print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
-
 
 
 def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     pass
 def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    sma = calcSMA( timeframe, close, 350 )
+    sma = calcSMA( close, 350 )
     sma.plot()
-    rsi = calcRSI( timeframe, close, 14 )
-    rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
+    rsi = calcRSI( close, 14 )
+    rsiplot = plot( rsi.name, rsi.series(), 'panel' )
     return
 
 def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
@@ -1218,58 +1232,58 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     ###########################
     # strategy code goes here #
     ###########################
-    sma = calcSMA( timeframe, close, 75 )
+    sma = calcSMA( close, 75 )
     sma.plot()
 
-    # ema = calcEMA( timeframe, close, 4 )
+    # ema = calcEMA( close, 4 )
     # ema.plot()
 
-    lr = calcLINREG( timeframe, close, 300 )
+    lr = calcLINREG( close, 300 )
     lr.plot()
 
-    # plot( timeframe, "lazyline", 0, 'panel' )
+    # plot( "lazyline", 0, 'panel' )
 
-    # rsi = calcRSI( timeframe, close, 14 )
-    # rsiplot = plot( timeframe, rsi.name, rsi.series(), 'panel' )
+    # rsi = calcRSI( close, 14 )
+    # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
     
     # FIXME: It crashes when calling to plot the same series
-    # atr = calcATR( timeframe,  14 )
-    # plot( timeframe,  atr.name, atr.series(), 'panel' )
+    atr = calcATR( 14 )
+    plot( atr.name, atr.series(), 'panel' )
 
-    # calcTR(timeframe, 14).plot('panel')
+    # calcTR(14).plot('panel')
 
-    # cfo = calcCFO( timeframe,  close, 20 )
+    # cfo = calcCFO( close, 20 )
     # cfo.plot('panel')
 
-    # dev = calcDEV( timeframe,  close, 30 )
-    # plot( timeframe, dev.name, dev.series(), 'panel' )
+    # dev = calcDEV( close, 30 )
+    # plot( dev.name, dev.series(), 'panel' )
 
-    # rma = calcRMA( timeframe,  close, 90 )
+    # rma = calcRMA( close, 90 )
     # rma.plot()
 
-    # stdev = calcSTDEV( timeframe, close, 350 )
+    # stdev = calcSTDEV( close, 350 )
 
-    willr = calcWPR( timeframe,  close, 32 ).plot('panel')
-    # calcBIAS( timeframe,  close, 32 ).plot('panel')
+    # willr = calcWPR( close, 32 ).plot('panel')
+    # calcBIAS( close, 32 ).plot('panel')
 
-    # hma = calcHMA( timeframe,  close, 150 )
+    # hma = calcHMA( close, 150 )
     # hma.plot()
-    # r = rising( timeframe,  hma.series(), 10 )
-    # f = falling( timeframe,  hma.series(), 10 )
+    # r = rising( hma.series(), 10 )
+    # f = falling( hma.series(), 10 )
 
     # calcBarsSince( timeframe.barindex, r )
     # wt = calcBarsWhileTrue( timeframe.barindex, hma.series() > 1.7 )
 
-    # calcCCI( timeframe, 100 ).plot('panel')
+    # calcCCI( 100 ).plot('panel')
 
-    # slope1000 = calcSMA( timeframe, calcSLOPE( timeframe, close, 200 ).series() * 500000, 14 )
-    # plot( timeframe, slope1000.name, slope1000.series(), 'panel' )
+    # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
+    # plot( slope1000.name, slope1000.series(), 'panel' )
 
-    # hma_rising = rising( timeframe, hma.series(), 30 )
+    # hma_rising = rising( hma.series(), 30 )
     # if( hma_rising.value() and not hma_rising.value(1) ):
     #     timeframe.stream.createMarker( '🔼' )
 
-    # hma_falling = falling( timeframe, hma.series(), 30 )
+    # hma_falling = falling( hma.series(), 30 )
     # if( hma_falling.value() and not hma_falling.value(1) ):
     #     timeframe.stream.createMarker( '🔽' )
 
@@ -1295,10 +1309,10 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], 10000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '5m'], 1000 )
 
     # tasks.registerTask( 'clock', update_clock(stream) )
-    stream.createWindow( '1m' )
+    stream.createWindow( '5m' )
 
     asyncio.run( tasks.runTasks() )
 

@@ -104,6 +104,9 @@ class window_c:
         self.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=string1 )
 
 
+async def on_timeframe_selection(chart):
+    print( f'Getting data with a {chart.topbar["my_switcher"].value} timeframe.' )
+
 async def on_button_press(chart):
     new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
     chart.topbar['my_button'].set(new_button_value)
