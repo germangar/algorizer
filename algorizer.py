@@ -1247,16 +1247,17 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     # if( hma_falling.value() and not hma_falling.value(1) ):
     #     timeframe.stream.createMarker( '🔽' )
 
+    size = 10
     if( sma.crossingUp(lr) ):
         if( strategy.direction() < 0 ):
-            strategy.close()
-        strategy.order( 'buy', timeframe.realtimeCandle.close, 10 )
+            size = 20
+        strategy.order( 'buy', timeframe.realtimeCandle.close, size )
         # timeframe.stream.createMarker( '🔷' )
 
     if crossingDown( sma.series(), lr ):
         if( strategy.direction() > 0 ):
-            strategy.close()
-        strategy.order( 'sell', timeframe.realtimeCandle.close, 10 )
+            size = 20
+        strategy.order( 'sell', timeframe.realtimeCandle.close, size )
         # timeframe.stream.createMarker( '🔺' )
         pass
     

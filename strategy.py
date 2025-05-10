@@ -22,18 +22,38 @@ class position_c:
 
     def update( self, optype:int, price, quantity, leverage ):
         if( self.type == LONG and optype == SHORT ):
-
             self.size -= quantity  # FIXME
             if( self.size > 0.0 ):
+                createMarker( "R" )
                 return
             
             if( self.size == 0.0 ):
                 self.active = False
+                createMarker( "❌" )
                 return
             
             #open a new reversed position
             quantity = -self.size
             openPosition( optype, price, quantity, leverage )
+            return
+
+        if( self.type == SHORT and optype == LONG ):
+            self.size -= quantity  # FIXME
+            if( self.size > 0.0 ):
+                createMarker( "R" )
+                return
+            
+            if( self.size == 0.0 ):
+                self.active = False
+                createMarker( "❌" )
+                return
+            
+            #open a new reversed position
+            quantity = -self.size
+            openPosition( optype, price, quantity, leverage )
+            return
+        
+        openPosition( optype, price, quantity, leverage )
 
     def close(self, price):
         if( not self.active ):
@@ -41,12 +61,10 @@ class position_c:
         
         if self.type == SHORT:
             self.update( LONG, price, self.size, self.leverage )
-            createMarker( "❌" )
             print( f'closed short position {len(positions)}' )
 
         elif self.type == LONG:
             self.update( SHORT, price, self.size, self.leverage )
-            createMarker( "❌" )
             print( f'closed long position {len(positions)}' )
 
 
@@ -92,7 +110,6 @@ def order( cmd:str, price:float, quantity:float, leverage:int=1 ):
     if cmd == 'buy':
         pos = getActivePosition()
         if( pos == None or not pos.active ):
-            print('buy')
             pos = openPosition( LONG, price, quantity, leverage )
             return
         
@@ -113,7 +130,9 @@ def order( cmd:str, price:float, quantity:float, leverage:int=1 ):
 
 def close():
     pos = getActivePosition()
-    if( pos == None or not pos.active ):
+    if pos == None :
+        return
+    if pos.active != True or pos.size == 0.0:
         return
     realtimeCandle = getRealtimeCandle()
     if realtimeCandle != None :
