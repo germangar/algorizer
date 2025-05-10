@@ -6,7 +6,7 @@ from pprint import pprint
 
 path = 'data/'
 
-class candles_c:
+class ohlcvs_c:
     def __init__(self, exchangeID = 'binance', symbol = 'BTC/USDT:USDT', type = 'swap') -> None:
         self.symbol = symbol
         self.maxRetries = 3
@@ -265,7 +265,7 @@ if __name__ == '__main__':
     timeframe = '1d'
     exchange = 'bybit'
     # path = 'fetcherdata/'
-    thisMarket = candles_c( exchange, symbol )
+    thisMarket = ohlcvs_c( exchange, symbol )
 
     ohlcv_cache = thisMarket.loadOHLCVfile( symbol, timeframe )
 

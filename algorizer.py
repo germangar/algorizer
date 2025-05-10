@@ -10,16 +10,12 @@ from pprint import pprint
 from window import window_c
 
 import tasks
-
 import tools
-from tools import df_append
-from fetcher import candles_c
+from fetcher import ohlcvs_c
+from candle import candle_c
+import active
 
 import strategy
-
-
-barindexActive:int = -1
-timeframeActive = None
 
 
 ALLOW_NEGATIVE_ILOC = False
@@ -36,17 +32,17 @@ def crossingUp( self, other ):
     other_old = 0
     other_new = 0
     if isinstance( self, pd.Series ):
-        if( len(self) < 2 or barindexActive < 1 ):
+        if( len(self) < 2 or active.barindex < 1 ):
             return False
-        self_old = self.loc[barindexActive-1]
-        self_new = self.loc[barindexActive-0]
+        self_old = self.loc[active.barindex-1]
+        self_new = self.loc[active.barindex-0]
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.loc[barindexActive-1]
-            self_new = other.loc[barindexActive-0]
+            other_old = other.loc[active.barindex-1]
+            self_new = other.loc[active.barindex-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or barindexActive < 1 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -79,17 +75,17 @@ def crossingDown( self, other ):
     other_old = 0
     other_new = 0
     if isinstance( self, pd.Series ):
-        if( len(self) < 2 or barindexActive < 1 ):
+        if( len(self) < 2 or active.barindex < 1 ):
             return False
-        self_old = self.loc[barindexActive-1]
-        self_new = self.loc[barindexActive-0]
+        self_old = self.loc[active.barindex-1]
+        self_new = self.loc[active.barindex-0]
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.loc[barindexActive-1]
-            self_new = other.loc[barindexActive-0]
+            other_old = other.loc[active.barindex-1]
+            self_new = other.loc[active.barindex-0]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or barindexActive < 1 ):
+            if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
             other_old = other.value(1)
             other_new = other.value()
@@ -159,7 +155,7 @@ class plot_c:
 
 
 def plot( name, source, chart_name = None, timeframe = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     timeframe.plot( name, source, chart_name )
 
 class markers_c:
@@ -221,60 +217,6 @@ def resample_ohlcv(df, target_timeframe):
     resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
     return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
-class candle_c:
-    def __init__( self ):
-        self.timestamp = 0
-        self.open = 0.0
-        self.high = 0.0
-        self.low = 0.0
-        self.close = 0.0
-        self.volume = 0.0
-        self.bottom = 0.0
-        self.top = 0.0
-
-        self.timeframemsec = 0
-
-        self.remainingmsec = 0
-        self.remainingseconds = 0
-        self.remainingminutes = 0
-        self.remaininghours = 0
-        self.remainingdays = 0
-
-    def str( self ):
-        return f'timestamp:{self.timestamp} open:{self.open} high:{self.high} low:{self.low} close:{self.close} volume:{self.volume}'
-    
-    def updateRemainingTime( self ):
-        from datetime import datetime
-        if( self.timestamp <= 0 ):
-            return
-        
-        endTime = self.timestamp + self.timeframemsec
-        currentTime = datetime.now().timestamp() * 1000
-        if( currentTime >= endTime ):
-            self.remainingmsec = self.remainingdays = self.remaininghours = self.remainingminutes = self.remainingseconds = 0
-            return
-        
-        self.remainingmsec = endTime - currentTime
-        sec = self.remainingmsec // 1000
-
-        # Calculate days, hours, minutes, and seconds
-        self.remainingdays = sec // 86400  # 86400 seconds in a day
-        self.remaininghours = (sec % 86400) // 3600  # Remaining seconds divided by seconds in an hour
-        self.remainingminutes = (sec % 3600) // 60  # Remaining seconds divided by seconds in a minute
-        self.remainingseconds = sec % 60  # Remaining seconds
-    
-    def remainingTimeStr( self ):
-        rtstring = ''
-        if self.remainingdays > 0:
-            rtstring = f"{int(self.remainingdays)}:"  # Days do not need two digits
-        if self.remaininghours > 0 or self.remainingdays > 0:
-            rtstring += f"{int(self.remaininghours):02}:"  # Ensure two digits for hours if there are days
-        rtstring += f"{int(self.remainingminutes):02}:{int(self.remainingseconds):02}"  # Ensure two digits for minutes and seconds
-        return rtstring
-
-    def print( self ):
-        print( self.str() )
-
 
 class timeframe_c:
     def __init__( self, stream, timeframeStr ):
@@ -298,12 +240,10 @@ class timeframe_c:
 
         
     def initDataframe( self, ohlcvDF ):
-        global barindexActive
-        global timeframeActive
         print( "=================" )
         print( f"Creating dataframe {self.timeframeStr}" )
 
-        timeframeActive = self
+        active.timeframe = self
 
         # take out the last row to jumpstart the generatedSeries later
         self.df = ohlcvDF.loc[:len(ohlcvDF) - 2].copy() # self.df = ohlcvDF.iloc[:-1].copy()
@@ -313,7 +253,7 @@ class timeframe_c:
         # do the jump-starting with the last row of the dataframe
         start_time = time.time()
 
-        self.barindex = barindexActive = self.df.iloc[-2].name
+        self.barindex = active.barindex = self.df.iloc[-2].name
         self.timestamp = self.df.iloc[-2]['timestamp']
         self.realtimeCandle.timestamp = int(self.df.iloc[-1]['timestamp'])
         self.realtimeCandle.open = self.df.iloc[-1]['open']
@@ -377,10 +317,8 @@ class timeframe_c:
 
 
     def parseCandleUpdate( self, rows ):
-        global barindexActive
-        global timeframeActive
 
-        timeframeActive = self
+        active.timeframe = self
 
         for newrow in rows.itertuples( index=False, name=None ):
             newrow_timestamp = newrow[0]
@@ -399,7 +337,7 @@ class timeframe_c:
                         self.df = pd.concat( [self.df, self.initdata.iloc[self.barindex+1].to_frame().T], ignore_index=True )
 
                     self.barindex = self.df.iloc[self.barindex].name + 1
-                    barindexActive = self.barindex
+                    active.barindex = self.barindex
                     self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
 
                     if( newrow_timestamp != self.timestamp ):
@@ -407,13 +345,13 @@ class timeframe_c:
                     
                     # copy the last row into the realtimeCandle row. This would be incorrect in realtime. Only for shadowcopying
                     self.realtimeCandle.timestamp = newrow_timestamp
-                    # self.realtimeCandle.open = newrow_open
-                    # self.realtimeCandle.high = newrow_high
-                    # self.realtimeCandle.low = newrow_low
-                    # self.realtimeCandle.close = newrow_close
-                    # self.realtimeCandle.volume = newrow_volume
-                    # if self.timeframeStr == self.stream.timeframeFetch :
-                    #     self.stream.timestampFetch = self.realtimeCandle.timestamp
+                    self.realtimeCandle.open = newrow_open
+                    self.realtimeCandle.high = newrow_high
+                    self.realtimeCandle.low = newrow_low
+                    self.realtimeCandle.close = newrow_close
+                    self.realtimeCandle.volume = newrow_volume
+                    if self.timeframeStr == self.stream.timeframeFetch :
+                        self.stream.timestampFetch = self.realtimeCandle.timestamp
 
                     if( self.callback != None ):
                         self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
@@ -491,7 +429,7 @@ class timeframe_c:
             self.realtimeCandle.updateRemainingTime()
 
             self.barindex = self.barindex+ 1
-            barindexActive = self.barindex
+            active.barindex = self.barindex
             self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
             if self.timeframeStr == self.stream.timeframeFetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
@@ -543,12 +481,6 @@ class timeframe_c:
         
         candle = candle_c()
         candle.timeframemsec = self.timeframeMsec
-        # candle.timestamp = int(self.df.loc[self.barindex]['timestamp'])
-        # candle.open = self.df.loc[self.barindex]['open']
-        # candle.high = self.df.loc[self.barindex]['high']
-        # candle.low = self.df.loc[self.barindex]['low']
-        # candle.close = self.df.loc[self.barindex]['close']
-        # candle.volume = self.df.loc[self.barindex]['volume']
         row = self.df.iloc[self.barindex]
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume = ( int(row[0]), row[1], row[2], row[3], row[4], row[5] )
         candle.bottom = min( candle.open, candle.close )
@@ -591,7 +523,7 @@ class stream_c:
         # Fetch the candle history and update the cache
         #################################################
 
-        fetcher = candles_c( exchangeID, self.symbol )
+        fetcher = ohlcvs_c( exchangeID, self.symbol )
         ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
         if( len(ohlcvs) == 0 ):
             raise SystemExit( f'No candles available in {exchangeID}. Aborting')
@@ -660,7 +592,15 @@ class stream_c:
         timeframe.jumpstartPlots()
 
 
+def getRealtimeCandle()->candle_c:
+    if( active.timeframe == None ):
+        return None
+    return active.timeframe.realtimeCandle
 
+def createMarker( text ):
+    if( active.timeframe == None ):
+        return None
+    return active.timeframe.stream.createMarker( text )
 
 
 def generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
@@ -1100,96 +1040,96 @@ def calcBarsWhileTrue( barindex, source ):
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
 def falling( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
 
 def rising( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
 
 def calcSMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
 
 def calcEMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
 
 def calcDEMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
 
 def calcWMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
 
 def calcHMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
 
 # def calcJMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-#     if timeframe == None : timeframe = timeframeActive
+#     if timeframe == None : timeframe = active.timeframe
 #     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
 
 # def calcKAMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-#     if timeframe == None : timeframe = timeframeActive
+#     if timeframe == None : timeframe = active.timeframe
 #     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
 
 def calcLINREG( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
 
 def calcRSI( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
 
 def calcDEV( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
 
 def calcSTDEV( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
 
 def calcRMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
 
 def calcWPR( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
 
 def calcATR2( period:int, timeframe:timeframe_c = None ): # The other one using pt is much faster
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     tr = timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
     return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
 
 def calcTR( period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
 
 def calcATR( period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
 
 def calcSLOPE( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
 
 def calcBIAS( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
 
 def calcCCI( period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
 
 def calcCFO( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
 
 def calcFWMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = timeframeActive
+    if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
 
 
@@ -1308,12 +1248,18 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     #     timeframe.stream.createMarker( '🔽' )
 
     if( sma.crossingUp(lr) ):
-        timeframe.stream.createMarker( '🔷' )
+        if( strategy.direction() < 0 ):
+            strategy.close()
+        strategy.order( 'buy', timeframe.realtimeCandle.close, 10 )
+        # timeframe.stream.createMarker( '🔷' )
 
     if crossingDown( sma.series(), lr ):
-        timeframe.stream.createMarker( '🔺' )
+        if( strategy.direction() > 0 ):
+            strategy.close()
+        strategy.order( 'sell', timeframe.realtimeCandle.close, 10 )
+        # timeframe.stream.createMarker( '🔺' )
+        pass
     
-    return
 
 
 import aioconsole
@@ -1329,10 +1275,10 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m', '5m'], 1000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], 5000 )
 
     # tasks.registerTask( 'clock', update_clock(stream) )
-    stream.createWindow( '5m' )
+    stream.createWindow( '1m' )
 
     asyncio.run( tasks.runTasks() )
 
