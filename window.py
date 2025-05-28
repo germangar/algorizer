@@ -13,6 +13,18 @@ from datetime import timedelta
 SHOW_VOLUME = False
 
 
+
+
+def get_screen_resolution():
+    import tkinter as tk
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    root.destroy()  # Destroy the window after getting the resolution
+    return screen_width, screen_height
+
+
 class window_c:
     def __init__( self, timeframe, precision = 4, bottompanel_precision = 2 ):
         self.timeframe = timeframe
@@ -23,9 +35,13 @@ class window_c:
         self.legendStr = ''
 
         if( self.timeframe == None ): raise SystemError( "Attempted to create a window without a stream" )
+
+        [window_width, window_height] = get_screen_resolution()
+        window_width = int(0.75 * window_width)
+        window_height = int(0.75 * window_height)
         
         
-        self.chart = chart = Chart( 1024, 768, inner_height=0.8, toolbox = False )
+        self.chart = chart = Chart( window_width, window_height, inner_height=0.8, toolbox = False )
         if( self.chart == None ): raise SystemError( "Failed to create chart" )
         self.legendStr = f"{timeframe.stream.symbol} - {timeframe.timeframeStr} - {timeframe.stream.exchange.id} - candles:{len(timeframe.df)}"
         chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=self.legendStr )
