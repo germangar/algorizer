@@ -40,7 +40,7 @@ def crossingUp( self, other ):
             if( len(other) < 2 ):
                 return False
             other_old = other.iloc[active.barindex-1]
-            self_new = other.iloc[active.barindex]
+            other_new = other.iloc[active.barindex]
         elif isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
@@ -83,7 +83,7 @@ def crossingDown( self, other ):
             if( len(other) < 2 ):
                 return False
             other_old = other.iloc[active.barindex-1]
-            self_new = other.iloc[active.barindex]
+            other_new = other.iloc[active.barindex]
         elif isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
