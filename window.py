@@ -37,8 +37,8 @@ class window_c:
         if( self.timeframe == None ): raise SystemError( "Attempted to create a window without a stream" )
 
         [window_width, window_height] = get_screen_resolution()
-        window_width = int(0.75 * window_width)
-        window_height = int(0.75 * window_height)
+        window_width = int(0.65 * window_width)
+        window_height = int(0.65 * window_height)
         
         
         self.chart = chart = Chart( window_width, window_height, inner_height=0.8, toolbox = False )
