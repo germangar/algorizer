@@ -1,5 +1,5 @@
 
-import pandas as pd
+
 from candle import candle_c
 
 from algorizer import getRealtimeCandle
@@ -61,11 +61,9 @@ class position_c:
         
         if self.type == SHORT:
             self.update( LONG, price, self.size, self.leverage )
-            print( f'closed short position {len(positions)}' )
 
         elif self.type == LONG:
             self.update( SHORT, price, self.size, self.leverage )
-            print( f'closed long position {len(positions)}' )
 
 
     
@@ -82,7 +80,6 @@ def openPosition( posType:int, price, quantity, leverage )->position_c:
     positions.append( pos )
     icon = '🔴' if pos.type == SHORT else '🟢'
     createMarker( icon )
-    print( f'opened position: {len(positions)}' )
     return pos
 
 def getActivePosition()->position_c:

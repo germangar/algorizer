@@ -1,4 +1,5 @@
 
+
 class candle_c:
     def __init__( self ):
         self.timestamp = 0

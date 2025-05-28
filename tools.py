@@ -1,14 +1,4 @@
 
-import pandas as pd
-
-# concat a dictionary to a dataframe
-# new_row = { 'timestamp': timestamp, self.name : newval }
-# self.dataFrame = pd.concat( [self.dataFrame, pd.DataFrame(new_row, index=[0])], ignore_index=False )
-
-
-# Extract the last 'num_rows' rows of the specified column into a new DataFrame
-# sdf = df[self.source].tail(self.period).to_frame()
-
 
 def stringToValue( arg )->float:
     try:
@@ -120,7 +110,7 @@ def timeframeString( timeframe )->str:
     
     return name
 
-def replaceValueByTimestamp( df, timestamp, key:str, value ):
-    if( key == 'open' or key == 'high' or key == 'low' or key == 'close' ):
-        df.loc[df['timestamp'] == timestamp, f'{key}'] = value
+# def replaceValueByTimestamp( df, timestamp, key:str, value ):
+#     if( key == 'open' or key == 'high' or key == 'low' or key == 'close' ):
+#         df.loc[df['timestamp'] == timestamp, f'{key}'] = value
 
