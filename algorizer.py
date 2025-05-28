@@ -556,6 +556,10 @@ class stream_c:
 
         self.initializing = False
 
+
+        from strategy import print_strategy_stats
+        print_strategy_stats()
+
         #################################################
 
         # connect to ccxt.pro (FIXME? This is probably redundant with the fetcher)
