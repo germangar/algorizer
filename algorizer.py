@@ -157,11 +157,16 @@ class plot_c:
 def plot( name, source, chart_name = None, timeframe = None ):
     if timeframe == None : timeframe = active.timeframe
     timeframe.plot( name, source, chart_name )
-
+# markers_c( text, timestamp, position, shape, color, chart_name )
 class markers_c:
-    def __init__( self, text:str, timestamp:int, chart_name:str = None ):
+    def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
+        # MARKER_POSITION = Literal['above', 'below', 'inside']
+        # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
         self.timestamp = timestamp
         self.text = text
+        self.position = position
+        self.shape = shape
+        self.color = color
         self.chartName = chart_name
         self.chart = None
         self.marker = None
@@ -178,7 +183,11 @@ class markers_c:
     def refreshInChart( self ):
         if( self.chart ):
             self.remove()
-            self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ), text = self.text )
+            self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ),
+                                            position = self.position,
+                                            shape = self.shape,
+                                            color = self.color,
+                                            text = self.text )
 
 
 
@@ -583,10 +592,13 @@ class stream_c:
             timeframe.parseCandleUpdate(rows)
 
 
-    def createMarker( self, text:str = '', timestamp:int = -1, chart_name:str = None ):
+    def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = -1, chart_name:str = None ):
+        # MARKER_POSITION = Literal['above', 'below', 'inside']
+        # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
         if timestamp == -1:
             timestamp = self.timeframes[self.timeframeFetch].timestamp
-        self.markers.append( markers_c( text, timestamp, chart_name ) )
+
+        self.markers.append( markers_c( text, timestamp, location, shape, color, chart_name ) )
 
 
     def createWindow( self, timeframeStr ):
@@ -601,10 +613,10 @@ def getRealtimeCandle()->candle_c:
         return None
     return active.timeframe.realtimeCandle
 
-def createMarker( text ):
+def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE" ):
     if( active.timeframe == None ):
         return None
-    return active.timeframe.stream.createMarker( text )
+    return active.timeframe.stream.createMarker( text, location, shape, color )
 
 
 def generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:

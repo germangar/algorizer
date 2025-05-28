@@ -141,7 +141,12 @@ class position_c:
 
         # Handle markers based on the *net* change in position
         if not previous_active and self.active: # Opened a new position (should be handled by openPosition)
-            createMarker('🟢' if self.type == LONG else '🔴')
+            # createMarker( self, text:str = '', position:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = -1, chart_name:str = None ):
+            #createMarker('🟢' if self.type == LONG else '🔴')
+            position = 'below' if self.type == LONG else 'above'
+            shape = 'arrow_up' if self.type == LONG else 'arrow_down'
+            color = "#06935D" if self.type == LONG else "#C51147"
+            createMarker( '', position, shape, color )
         elif previous_active and self.active: # Position is still active
             # If the type has changed, it implies a reversal that didn't fully close the prior position
             # This logic is mostly for partial reversals now that 'order' handles full reversals
@@ -252,7 +257,12 @@ def openPosition(pos_type: int, price: float, quantity: float, leverage: int) ->
     pos.active = True # Explicitly set to active as it's just opened
 
     positions.append(pos) # Add the new position to the global list
-    createMarker('🟢' if pos_type == LONG else '🔴') # Mark the opening of the position on the chart
+    location = 'below' if pos.type == LONG else 'above'
+    shape = 'arrow_up' if pos.type == LONG else 'arrow_down'
+    color = "#00E48D" if pos.type == LONG else "#E70045"
+    text = f"buy {quantity}" if pos.type == LONG else f"sell {quantity}"
+    createMarker( text, location, shape, color )
+    # createMarker('🟢' if pos_type == LONG else '🔴') # Mark the opening of the position on the chart
     return pos
 
 def getActivePosition() -> position_c:
