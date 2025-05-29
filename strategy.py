@@ -9,6 +9,8 @@ from candle import candle_c
 from algorizer import getRealtimeCandle, createMarker
 import active # Import active to get active.barindex
 
+p_verbose = False
+
 # Define constants for position types
 SHORT = -1
 LONG = 1
@@ -230,7 +232,7 @@ class position_c:
 
             pnl_percentage = (self.profit / total_capital_involved) * 100 if total_capital_involved != 0 else 0
 
-            print(f"CLOSED POSITION ({'LONG' if self.type == LONG else 'SHORT'}): PnL: {self.profit:.2f} | PnL %: {pnl_percentage:.2f}% | Total Strategy PnL: {total_profit_loss:.2f}")
+            if p_verbose : print(f"CLOSED POSITION ({'LONG' if self.type == LONG else 'SHORT'}): PnL: {self.profit:.2f} | PnL %: {pnl_percentage:.2f}% | Total Strategy PnL: {total_profit_loss:.2f}")
 
         # If the position is not fully closed (e.g., partial close), self.active remains True
         # and no PnL is calculated for the position object yet.
@@ -349,7 +351,7 @@ def order(cmd: str, target_position_type: int, price: float, quantity: float, le
                 # Full close: close the existing position (or oversized order that just closes)
                 active_target_pos.close(price)
                 createMarker('❌', location='above', shape='square', color='#808080') # Grey square for full close
-                if quantity > active_target_pos.size + EPSILON: # If it was an oversized order
+                if p_verbose and quantity > active_target_pos.size + EPSILON: # If it was an oversized order
                     print(f"Warning: Attempted to close a {active_target_pos.type} position with an oversized {cmd} order.")
                     print(f"Position was fully closed. Remaining quantity ({quantity - active_target_pos.size:.2f}) was not used to open a new position.")
 

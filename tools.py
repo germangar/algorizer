@@ -9,6 +9,14 @@ def stringToValue( arg )->float:
         value = float(arg)
     return value
 
+
+# used to standarize the name given to a generated series (calcseries.py)
+# I probably should defined type pd.series for 'source' but I don't feel like importing pandas here
+def generatedSeriesNameFormat( type, source, period:int ):
+    if( source.name == None ):
+        raise SystemError( f"Generated Series has no valid name [{type}{period} {source.name}]")
+    return f'{type}{period} {source.name}'
+
 def emptyFunction(func):
     return func.__code__.co_consts == (None,)
 
@@ -109,6 +117,44 @@ def timeframeString( timeframe )->str:
         name =  f'{int(timeframe/604800)}M'
     
     return name
+
+
+def resample_ohlcv(df, target_timeframe):
+    """
+    Resample OHLCV dataframe to a higher timeframe.
+    Accepts target_timeframe as number of minutes (e.g., 15, 60, 1440).
+    Keeps timestamp in milliseconds, no datetime column is returned.
+    """
+
+    import pandas as pd
+
+    def map_minutes_to_pandas_freq(minutes: int) -> str:
+        if minutes % 1440 == 0:
+            return f"{minutes // 1440}D"
+        elif minutes % 60 == 0:
+            return f"{minutes // 60}H"
+        else:
+            return f"{minutes}T"
+
+    # If target_timeframe is a string like '15', convert to int
+    if isinstance(target_timeframe, str):
+        target_timeframe = int(timeframeInt(target_timeframe))
+
+    pandas_freq = map_minutes_to_pandas_freq(target_timeframe)
+
+    df = df.copy()
+    df.index = pd.to_datetime(df['timestamp'], unit='ms')
+
+    resampled = df.resample(pandas_freq, label='left', closed='left').agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
+    }).dropna()
+
+    resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
+    return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
 # def replaceValueByTimestamp( df, timestamp, key:str, value ):
 #     if( key == 'open' or key == 'high' or key == 'low' or key == 'close' ):

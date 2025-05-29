@@ -5,109 +5,23 @@ import pandas_ta as pt
 import asyncio
 import ccxt.pro as ccxt
 import time
-from pprint import pprint
-
-from window import window_c
 
 import tasks
 import tools
 from fetcher import ohlcvs_c
 from candle import candle_c
-import active
+import calcseries as calc
+from calcseries import generatedSeries_c # just for making lives easier
 
+from window import window_c # I should try to get rid of this import
+
+import active
 
 # ALLOW_NEGATIVE_ILOC = False
 SHOW_VOLUME = False
 verbose = False
 
 
-def crossingUp( self, other ):
-    if isinstance( self, generatedSeries_c ):
-        return self.crossingUp( other )
-    
-    self_old = 0
-    self_new = 0
-    other_old = 0
-    other_new = 0
-    if isinstance( self, pd.Series ):
-        if( len(self) < 2 or active.barindex < 1 ):
-            return False
-        self_old = self.iloc[active.barindex-1]
-        self_new = self.iloc[active.barindex]
-        if isinstance( other, pd.Series ):
-            if( len(other) < 2 ):
-                return False
-            other_old = other.iloc[active.barindex-1]
-            other_new = other.iloc[active.barindex]
-        elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
-                return False
-            other_old = other.value(1)
-            other_new = other.value()
-        else:
-            try:
-                float(other)
-            except ValueError:
-                return False
-            else:
-                other_old = float(other)
-                other_new = float(other)
-    else:
-        try:
-            float(self)
-        except ValueError:
-            print( "crossinUp: Unsupported type", type(self) )
-            return False
-        else:
-            return crossingDown( other, self )
-
-    return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
-
-
-def crossingDown( self, other ):
-    if isinstance( self, generatedSeries_c ):
-        return self.crossingDown( other )
-    
-    self_old = 0
-    self_new = 0
-    other_old = 0
-    other_new = 0
-    if isinstance( self, pd.Series ):
-        if( len(self) < 2 or active.barindex < 1 ):
-            return False
-        self_old = self.iloc[active.barindex-1]
-        self_new = self.iloc[active.barindex]
-        if isinstance( other, pd.Series ):
-            if( len(other) < 2 ):
-                return False
-            other_old = other.iloc[active.barindex-1]
-            other_new = other.iloc[active.barindex]
-        elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
-                return False
-            other_old = other.value(1)
-            other_new = other.value()
-        else:
-            try:
-                float(other)
-            except ValueError:
-                return False
-            else:
-                other_old = float(other)
-                other_new = float(other)
-    else:
-        try:
-            float(self)
-        except ValueError:
-            print( "crossinDown: Unsupported type", type(self) )
-            return False
-        else:
-            return crossingUp( other, self )
-
-    return ( self_old >= other_old and self_new <= other_new and self_old != self_new )
-
-def crossing( self, other ):
-    return crossingUp( other, self ) or crossingDown( other, self )
 
 
 class plot_c:
@@ -155,7 +69,9 @@ class plot_c:
 def plot( name, source, chart_name = None, timeframe = None ):
     if timeframe == None : timeframe = active.timeframe
     timeframe.plot( name, source, chart_name )
-# markers_c( text, timestamp, position, shape, color, chart_name )
+    
+
+
 class markers_c:
     def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
         # MARKER_POSITION = Literal['above', 'below', 'inside']
@@ -187,42 +103,6 @@ class markers_c:
                                             color = self.color,
                                             text = self.text )
 
-
-
-def resample_ohlcv(df, target_timeframe):
-    """
-    Resample OHLCV dataframe to a higher timeframe.
-    Accepts target_timeframe as number of minutes (e.g., 15, 60, 1440).
-    Keeps timestamp in milliseconds, no datetime column is returned.
-    """
-
-    def map_minutes_to_pandas_freq(minutes: int) -> str:
-        if minutes % 1440 == 0:
-            return f"{minutes // 1440}D"
-        elif minutes % 60 == 0:
-            return f"{minutes // 60}H"
-        else:
-            return f"{minutes}T"
-
-    # If target_timeframe is a string like '15', convert to int
-    if isinstance(target_timeframe, str):
-        target_timeframe = int(tools.timeframeInt(target_timeframe))
-
-    pandas_freq = map_minutes_to_pandas_freq(target_timeframe)
-
-    df = df.copy()
-    df.index = pd.to_datetime(df['timestamp'], unit='ms')
-
-    resampled = df.resample(pandas_freq, label='left', closed='left').agg({
-        'open': 'first',
-        'high': 'max',
-        'low': 'min',
-        'close': 'last',
-        'volume': 'sum'
-    }).dropna()
-
-    resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
-    return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
 
 class timeframe_c:
@@ -450,18 +330,17 @@ class timeframe_c:
                 self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
 
 
+    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, always_reset:bool = False )->generatedSeries_c:
+        name = tools.generatedSeriesNameFormat( type, source, period )
 
+        gse = self.generatedSeries.get( name )
+        if( gse == None ):
+            gse = generatedSeries_c( type, source, period, func, always_reset, self )
+            self.generatedSeries[name] = gse
 
-    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, always_reset:bool = False ):
-        name = generatedSeriesNameFormat( type, source, period )
+        gse.update( source )
+        return gse
 
-        gs = self.generatedSeries.get( name )
-        if( gs == None ):
-            gs = generatedSeries_c( type, source, period, func, always_reset, self )
-            self.generatedSeries[name] = gs
-
-        gs.update( source )
-        return gs
 
     def plot( self, name, source, chart_name = None ):
         plot = self.registeredPlots.get( name )
@@ -473,10 +352,12 @@ class timeframe_c:
         plot.update( source, self )
         return plot
     
+
     def jumpstartPlots( self ):
         for plot in self.registeredPlots.values():
             if not plot.initialized:
                 plot.update( plot.source, self )
+
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
@@ -493,6 +374,8 @@ class timeframe_c:
         candle.bottom = min( candle.open, candle.close )
         candle.top = max( candle.open, candle.close )
         return candle
+
+
 
 
 class stream_c:
@@ -545,7 +428,7 @@ class stream_c:
             if t == self.timeframeFetch:
                 candles = ohlcvDF
             else:
-                candles = resample_ohlcv( ohlcvDF, t )
+                candles = tools.resample_ohlcv( ohlcvDF, t )
 
             timeframe = timeframe_c( self, t )
 
@@ -583,6 +466,8 @@ class stream_c:
         tasks.registerTask( 'fetch', fetchCandleUpdates( self ) )
         tasks.registerTask( 'clocks', update_clocks(self) )
 
+    def run(self):
+        asyncio.run( tasks.runTasks() )
 
     def parseCandleUpdateMulti( self, rows ):
         for timeframe in self.timeframes.values():
@@ -616,532 +501,6 @@ def createMarker( text, location:str = 'below', shape:str = 'circle', color:str 
     return active.timeframe.stream.createMarker( text, location, shape, color )
 
 
-def generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.sma( series, period )
-
-def generatedseries_calculate_ema(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.ema( series, period )
-
-def generatedseries_calculate_dema(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.dema( series, period )
-
-def generatedseries_calculate_linreg(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.linreg( series, period )
-
-def generatedseries_calculate_rma(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
-    return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean()
-
-def generatedseries_calculate_stdev(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.stdev( series, period )
-
-def generatedseries_calculate_bias(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.bias( series, period )
-
-def generatedseries_calculate_cfo(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.cfo( series, period )
-
-def generatedseries_calculate_fwma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    return pt.fwma( series, period )
-
-def generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    if 1:
-        return pt.mad( series, period )
-    else:
-        # Calculate the average deviation over a given rolling window in a pandas Series.
-        # Initialize a list to hold the deviation values
-        deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
-        # Iterate over each rolling window
-        for i in range(period - 1, len(series)):
-            rolwindow = series[i - period + 1:i + 1]
-            mean = rolwindow.mean()
-            deviation = (rolwindow - mean).abs().sum() / period
-            deviations.append(deviation)
-        return pd.Series(deviations, index=series.index).dropna()
-
-def generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    if 1:
-        return pt.willr( df['high'], df['low'], df['close'], length=period )
-    else:
-        """
-        Calculate Williams %R for a given series using OHLC data from df over a period.
-
-        Args:
-        - series: pd.Series, typically a placeholder, but required for compatibility with generatedSeries_c.
-        - period: int, the period/window for the Williams %R calculation.
-
-        Returns:
-        - pd.Series, the calculated Williams %R values.
-        """
-
-        # Ensure the DataFrame has the required columns
-        # if not all(col in df.columns for col in ['high', 'low', 'close']):
-        #     raise ValueError("The global DataFrame must contain 'high', 'low', and 'close' columns")
-
-        if len(df) < period:
-            return pd.Series([pd.NA] * len(df), index=df.index)  # Not enough data to calculate Williams %R
-
-        # Initialize a list to hold the Williams %R values
-        williams_r_values = [pd.NA] * (period - 1)  # NA for the initial period
-
-        # Calculate Williams %R for each rolling window
-        for i in range(period - 1, len(df)):
-            highest_high = df['high'].iloc[i - period + 1:i + 1].max()
-            lowest_low = df['low'].iloc[i - period + 1:i + 1].min()
-            current_close = df['close'].iloc[i]
-
-            if highest_high == lowest_low:  # Prevent division by zero
-                williams_r_values.append(pd.NA)
-            else:
-                williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100
-                williams_r_values.append(williams_r)
-
-        return pd.Series(williams_r_values, index=df.index)
-
-def generatedseries_calculate_rsi(series, period, df:pd.DataFrame) -> pd.Series:
-    deltas = series.diff()
-    gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
-    loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-
-def generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    if 1:
-        if len(series) < period:
-            return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-        return pt.true_range( df['high'], df['low'], df['close'], length=period )
-    else:
-        """
-        Calculate the True Range (TR) for a given series.
-
-        Args:
-        - series: pd.Series, the input series (only used to align with generatedSeries_c interface).
-        - period: int, the period for the True Range calculation.
-
-        Returns:
-        - pd.Series, the calculated True Range series.
-        """
-        high = df['high']
-        low = df['low']
-        close = df['close']
-
-        high_low = high - low
-        high_close_prev = (high - close.shift()).abs()
-        low_close_prev = (low - close.shift()).abs()
-
-        tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
-        return tr
-
-def generatedseries_calculate_atr(series, period, df:pd.DataFrame) -> pd.Series:
-    if len(series) < period:
-        return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-    return pt.atr( df['high'], df['low'], df['close'], length=period )
-    
-
-def generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
-    """
-    Check if the series has been rising for the given length of time.
-
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the number of periods to check.
-
-    Returns:
-    - pd.Series, a boolean series indicating where the series is rising.
-    """
-    if len(series) < length:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
-
-    # Calculate the difference between consecutive elements
-    diff_series = series.diff().dropna()
-    
-    # Create a boolean series indicating whether each rolling window is rising
-    is_rising = diff_series.rolling(window=length-1).apply(lambda x: (x > 0).all(), raw=True).astype(bool)
-    is_rising = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_rising])
-
-    return is_rising
-
-def generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
-    """
-    Check if the series has been falling for the given length of time.
-
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the number of periods to check.
-
-    Returns:
-    - pd.Series, a boolean series indicating where the series is falling.
-    """
-    if len(series) < length:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
-    
-    # Calculate the difference between consecutive elements
-    diff_series = series.diff().dropna()
-
-    # Create a boolean series indicating whether each rolling window is falling
-    is_falling = diff_series.rolling(window=length-1).apply(lambda x: (x < 0).all(), raw=True).astype(bool)
-    is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
-    return is_falling
-
-def generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    if 1:
-        if len(series) < period:
-            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-        return pt.wma( series, period )
-    else:
-        """
-        Calculate the Weighted Moving Average (WMA) for a given series and length.
-        
-        Args:
-        - series: pd.Series, the input series.
-        - length: int, the period/window for the WMA calculation.
-        
-        Returns:
-        - pd.Series, the calculated WMA series.
-        """
-        weights = pd.Series(range(1, period + 1))
-        wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
-        return wma
-
-def generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    if 1:
-        if len(series) < period:
-            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-        return pt.hma( series, period )
-    else:
-        """
-        Calculate the Hull Moving Average (HMA) for a given series and length.
-        
-        Args:
-        - series: pd.Series, the input series.
-        - length: int, the period/window for the HMA calculation.
-        
-        Returns:
-        - pd.Series, the calculated HMA series.
-        """
-        if len(series) < period:
-            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the HMA
-        
-        half_length = int(period / 2)
-        sqrt_length = int(period ** 0.5)
-        
-        wma_half_length = pt.wma(series, half_length)
-        wma_full_length = pt.wma(series, period)
-        
-        diff_wma = 2 * wma_half_length - wma_full_length
-        
-        hma = pt.wma(diff_wma, sqrt_length)
-        
-        return hma
-
-def generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
-    """
-    Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
-
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the period/window for the slope calculation.
-
-    Returns:
-    - pd.Series, the calculated slope series.
-    """
-    if len(series) < period:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-    
-    if 1: 
-        return pt.slope( series, period )
-    else:
-        # this one doesn't fail on single candle updates but it's slower than recalculating it all using pandas_ta
-        def slope_calc(y):
-            x = range(len(y))
-            n = len(y)
-            x_mean = sum(x) / n
-            y_mean = sum(y) / n
-
-            num = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y))
-            den = sum((x_i - x_mean) ** 2 for x_i in x)
-
-            if den == 0:
-                return 0  # Prevent division by zero
-
-            slope = num / den
-            return slope
-
-        # Apply the slope calculation to each rolling window
-        slope_series = series.rolling(window=period).apply(slope_calc, raw=False)
-
-        return slope_series
-    
-def generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFrame ) -> pd.Series:
-    return pt.cci( df['high'], df['low'], df['close'], period )
-
-
-def generatedSeriesNameFormat( type, source:pd.Series, period:int ):
-    if( source.name == None ):
-        raise SystemError( f"Generated Series has no valid name [{type}{period} {source.name}]")
-    return f'{type}{period} {source.name}'
-
-
-class generatedSeries_c:
-    def __init__( self, type:str, source:pd.Series, period:int, func = None, always_reset:bool = False, timeframe:timeframe_c = None ):
-        self.name = generatedSeriesNameFormat( type, source, period )
-        self.sourceName = source.name
-        self.period = period
-        self.func = func
-        self.timeframe = timeframe
-        self.timestamp = 0
-        self.alwaysReset = always_reset
-
-        if( self.timeframe == None ):
-            raise SystemError( f"Generated Series has no assigned timeframe [{self.name}]")
-        
-        if( self.timeframe.shadowcopy ):
-            raise SystemError( f'Tried to create series [{self.name}] while shadowcopying.' )
-
-        if( self.func == None ):
-            raise SystemError( f"Generated Series without a func [{self.name}]")
-
-        if( self.period < 1 ):
-            raise SystemError( f"Generated Series  with invalid period [{period}]")
-        
-
-    def initialize( self, source:pd.Series ):
-        if( len(source) >= self.period and ( not self.name in self.timeframe.df.columns or self.alwaysReset ) ):
-            if( self.timeframe.shadowcopy ):
-                raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
-            start_time = time.time()
-            self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df).dropna()
-            self.timestamp = self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
-            if( self.timeframe.stream.initializing ):
-                print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
-
-
-    def update( self, source:pd.Series ):
-        if( self.timeframe.shadowcopy ):
-            return
-
-        # has this row already been updated?
-        if( self.timestamp >= self.timeframe.df['timestamp'].iloc[self.timeframe.barindex] ):
-            return
-
-        # if non existant try to create new. A few need to be made new every time
-        if( self.timestamp == 0 or self.alwaysReset ):
-            self.initialize( source )
-            return
-        
-        
-        if( len(self.timeframe.df) < self.period ):
-            return
-        
-        # realtime updates
-
-        # slice the required block of candles to calculate the current value of the generated series
-        newval = self.func(source[-self.period:], self.period, self.timeframe.df).loc[self.timeframe.barindex]
-        self.timeframe.df.loc[self.timeframe.df.index[-1], self.name] = newval
-        self.timestamp = self.timeframe.timestamp
-
-
-    def plot( self, chart = None ):
-        if( self.timestamp > 0 ):
-            self.timeframe.plot( self.name, self.series(), chart )
-    
-    def series( self ):
-        return self.timeframe.df[self.name]
-    
-    def crossingUp( self, other ):
-        df = self.timeframe.df
-        if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
-            return False
-        if isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
-                return False
-            return ( self.value(1) <= other.value(1) and self.value() >= other.value() and self.value() != self.value(1) )
-        if isinstance( other, pd.Series ):
-            if( len(other) < 2 ):
-                return False
-            if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
-                return False
-            return ( self.value(1) <= other.iloc[self.timeframe.barindex-1] and self.value() >= other.iloc[self.timeframe.barindex] and self.value() != self.value(1) )
-        try:
-            float(other)
-        except ValueError:
-            return False
-        else:
-            return ( self.value(1) <= float(other) and self.value() >= float(other) and self.value() != self.value(1) )
-    
-    def crossingDown( self, other ):
-        df = self.timeframe.df
-        if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
-            return False
-        if isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
-                return False
-            return ( self.value(1) >= other.value(1) and self.value() <= other.value() and self.value() != self.value(1) )
-        if isinstance( other, pd.Series ):
-            if( len(other) < 2 ):
-                return False
-            if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
-                return False
-            return ( self.value(1) >= other.iloc[self.timeframe.barindex-1] and self.value() <= other.iloc[self.timeframe.barindex] and self.value() != self.value(1) )
-        try:
-            float(other)
-        except ValueError:
-            return False
-        else:
-            return ( self.value(1) >= float(other) and self.value() <= float(other) and self.value() != self.value(1) )
-    
-    def crossing( self, other ):
-        return self.crossingUp(other) or self.crossingDown(other)
-    
-    def value( self, backindex = 0 ):
-        if( backindex >= len(self.timeframe.df) ):
-            raise SystemError( "generatedseries_c.value() : backindex out of bounds")
-
-        return self.timeframe.df[self.name].iloc[self.timeframe.barindex - backindex]
-    
-
-
-def findIndexWhenTrue( source ):
-    if( not isinstance(source, pd.Series ) ):
-        if( isinstance( source, generatedSeries_c) ):
-            source = source.series()
-        else:
-            raise ValueError( "calcIndexWhenTrue must be called with a series" )
-    boolean_source = source.astype(bool) if source.dtype != bool else source
-    return boolean_source[::-1].idxmax() if source.any() else None
-
-
-def calcBarsSince( barindex, source ):
-    index_when_true = findIndexWhenTrue( source )
-    if( index_when_true == None ):
-        return None
-    return barindex - index_when_true
-    # return activeStream.barindex - index_when_true
-
-
-def findIndexWhenFalse( source ):
-    if( not isinstance(source, pd.Series ) ):
-        if( isinstance( source, generatedSeries_c) ):
-            source = source.series()
-        else:
-            raise ValueError( "calcIndexWhenFalse must be called with a series" )
-    if not source.empty and source.any():
-        # Ensure the source is boolean
-        boolean_source = source.astype(bool) if source.dtype != bool else source
-        
-        # Reverse the boolean source and Calculate the cumulative sum of the negated values
-        cumsum_negated = (~boolean_source[::-1]).cumsum()
-        first_false_index = cumsum_negated[cumsum_negated == 1].index.min() # Find the first 1 in the cumulative sum (which means the first False in the original series from the end)
-
-        return first_false_index
-    else:
-        return 0  # Return 0 if the series is empty or has no True values''
-
-
-def calcBarsWhileTrue( barindex, source ):
-    index_when_false = findIndexWhenFalse( source )
-    if( index_when_false == None ):
-        return None
-    return barindex - index_when_false
-    # return activeStream.barindex - index_when_false
-
-
-# this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
-def falling( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'falling', source, period, generatedseries_calculate_falling )
-
-def rising( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'rising', source, period, generatedseries_calculate_rising )
-
-def calcSMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'sma', source, period, generatedseries_calculate_sma )
-
-def calcEMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( "ema", source, period, generatedseries_calculate_ema )
-
-def calcDEMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( "dema", source, period, generatedseries_calculate_dema, always_reset=True )
-
-def calcWMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( "wma", source, period, generatedseries_calculate_wma )
-
-def calcHMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( "hma", source, period, generatedseries_calculate_hma, always_reset=True )
-
-# def calcJMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-#     if timeframe == None : timeframe = active.timeframe
-#     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
-
-# def calcKAMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-#     if timeframe == None : timeframe = active.timeframe
-#     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
-
-def calcLINREG( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( "linreg", source, period, generatedseries_calculate_linreg )
-
-def calcRSI( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'rsi', source, period, generatedseries_calculate_rsi )
-
-def calcDEV( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'dev', source, period, generatedseries_calculate_dev )
-
-def calcSTDEV( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev', source, period, generatedseries_calculate_stdev )
-
-def calcRMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'rma', source, period, generatedseries_calculate_rma, always_reset=True )
-
-def calcWPR( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'wpr', source, period, generatedseries_calculate_williams_r )
-
-def calcATR2( period:int, timeframe:timeframe_c = None ): # The other one using pt is much faster
-    if timeframe == None : timeframe = active.timeframe
-    tr = timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
-    return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, generatedseries_calculate_rma )
-
-def calcTR( period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, generatedseries_calculate_tr )
-
-def calcATR( period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, generatedseries_calculate_atr )
-
-def calcSLOPE( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'slope', source, period, generatedseries_calculate_slope, always_reset=True )
-
-def calcBIAS( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'bias', source, period, generatedseries_calculate_bias )
-
-def calcCCI( period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, generatedseries_calculate_cci )
-
-def calcCFO( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'cfo', source, period, generatedseries_calculate_cfo )
-
-def calcFWMA( source:pd.Series, period:int, timeframe:timeframe_c = None ):
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'fwma', source, period, generatedseries_calculate_fwma )
-
-
 async def update_clocks( stream:stream_c ):
     from datetime import datetime
 
@@ -1154,6 +513,7 @@ async def update_clocks( stream:stream_c ):
                 timeframe.window.updateClock()
 
 
+# FIXME: Shouldn't I simply make this a method of stream_c?
 async def fetchCandleUpdates( stream:stream_c ):
 
     maxRows = 20
@@ -1195,19 +555,17 @@ async def cli_task(stream):
         
         await asyncio.sleep(0.05)
 
+
 if __name__ == '__main__':
 
     import strategy
 
-
-
-
     def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
         pass
     def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-        sma = calcSMA( close, 350 )
+        sma = calc.SMA( close, 350 )
         sma.plot()
-        rsi = calcRSI( close, 14 )
+        rsi = calc.RSI( close, 14 )
         rsiplot = plot( rsi.name, rsi.series(), 'panel' )
         return
 
@@ -1219,13 +577,13 @@ if __name__ == '__main__':
         ###########################
         # strategy code goes here #
         ###########################
-        sma = calcSMA( close, 75 )
+        sma = calc.SMA( close, 75 )
         sma.plot()
 
         # ema = calcEMA( close, 4 )
         # ema.plot()
 
-        lr = calcLINREG( close, 300 )
+        lr = calc.LINREG( close, 300 )
         lr.plot()
 
         # plot( "lazyline", 0, 'panel' )
@@ -1234,7 +592,7 @@ if __name__ == '__main__':
         # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
         
         # FIXME: It crashes when calling to plot the same series
-        atr = calcATR( 14 )
+        atr = calc.ATR( 14 )
         plot( atr.name, atr.series(), 'panel' )
 
         # calcTR(14).plot('panel')
@@ -1283,7 +641,7 @@ if __name__ == '__main__':
             strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, size )
             # timeframe.stream.createMarker( '🔷' )
 
-        if crossingDown( sma.series(), lr ):
+        if calc.crossingDown( sma.series(), lr ):
 
             longpos = strategy.getActivePosition(strategy.LONG)
             if( longpos and len(longpos.order_history) > 2 ):
@@ -1300,7 +658,7 @@ if __name__ == '__main__':
 
     stream.createWindow( '1m' )
 
-    asyncio.run( tasks.runTasks() )
+    stream.run()
 
 
     
