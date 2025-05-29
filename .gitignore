@@ -3,3 +3,5 @@ data
 __pycache__/*
 IGNORE/*
 main.py
+ohlcv.csv
+test.py
