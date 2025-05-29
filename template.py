@@ -12,8 +12,6 @@ import strategy
 
 
 
-stream:stream_c = None
-
 def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
      pass
 
@@ -21,7 +19,6 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 
     sma = calc.SMA( close, 75 )
     plot( sma.name, sma.series() )
-    # sma.plot()
 
     lr = calc.LINREG( close, 300 )
     lr.plot()
