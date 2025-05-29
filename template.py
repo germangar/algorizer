@@ -1,14 +1,11 @@
 import pandas as pd
-import asyncio
-import tasks
 from algorizer import stream_c, timeframe_c
 from algorizer import plot
+import calcseries as calc
+from calcseries import generatedSeries_c # for autocompletion and in case the user wants to create a new generated series
 from candle import candle_c
 import active
 import strategy
-
-import calcseries as calc
-from calcseries import generatedSeries_c # for autocompletion and in case the user wants to create a new generated series
 
 
 # from window import window_c # Importing window_c is only required if you want direct access to lightweight charts
