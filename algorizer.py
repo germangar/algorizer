@@ -15,8 +15,6 @@ from fetcher import ohlcvs_c
 from candle import candle_c
 import active
 
-import strategy
-
 
 # ALLOW_NEGATIVE_ILOC = False
 SHOW_VOLUME = False
@@ -498,7 +496,7 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, max_amount = 5000 ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbackList, max_amount = 5000 ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.timeframeFetch = None
@@ -543,7 +541,7 @@ class stream_c:
         # Create the timeframe sets with their dataframes
         #################################################
 
-        for t in timeframeList:
+        for i, t in enumerate(timeframeList):
             if t == self.timeframeFetch:
                 candles = ohlcvDF
             else:
@@ -551,8 +549,11 @@ class stream_c:
 
             timeframe = timeframe_c( self, t )
 
-            func_name = f'runCloseCandle_{t}'
-            timeframe.callback = globals().get(func_name)
+            if i < len(callbackList):
+                timeframe.callback = callbackList[i]
+            else:
+                func_name = f'runCloseCandle_{t}'
+                timeframe.callback = globals().get(func_name)
 
             self.timeframes[t] = timeframe
             timeframe.initDataframe( candles )
@@ -564,10 +565,6 @@ class stream_c:
         #################################################
 
         self.initializing = False
-
-
-        from strategy import print_strategy_stats
-        print_strategy_stats()
 
         #################################################
 
@@ -1187,99 +1184,6 @@ async def fetchCandleUpdates( stream:stream_c ):
 
 
 
-def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    pass
-def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    sma = calcSMA( close, 350 )
-    sma.plot()
-    rsi = calcRSI( close, 14 )
-    rsiplot = plot( rsi.name, rsi.series(), 'panel' )
-    return
-
-def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    return
-
-def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-
-    ###########################
-    # strategy code goes here #
-    ###########################
-    sma = calcSMA( close, 75 )
-    sma.plot()
-
-    # ema = calcEMA( close, 4 )
-    # ema.plot()
-
-    lr = calcLINREG( close, 300 )
-    lr.plot()
-
-    # plot( "lazyline", 0, 'panel' )
-
-    # rsi = calcRSI( close, 14 )
-    # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
-    
-    # FIXME: It crashes when calling to plot the same series
-    atr = calcATR( 14 )
-    plot( atr.name, atr.series(), 'panel' )
-
-    # calcTR(14).plot('panel')
-
-    # cfo = calcCFO( close, 20 )
-    # cfo.plot('panel')
-
-    # dev = calcDEV( close, 30 )
-    # plot( dev.name, dev.series(), 'panel' )
-
-    # rma = calcRMA( close, 90 )
-    # rma.plot()
-
-    # stdev = calcSTDEV( close, 350 )
-
-    # willr = calcWPR( close, 32 ).plot('panel')
-    # calcBIAS( close, 32 ).plot('panel')
-
-    # hma = calcHMA( close, 150 )
-    # hma.plot()
-    # r = rising( hma.series(), 10 )
-    # f = falling( hma.series(), 10 )
-
-    # calcBarsSince( timeframe.barindex, r )
-    # wt = calcBarsWhileTrue( timeframe.barindex, hma.series() > 1.7 )
-
-    # calcCCI( 100 ).plot('panel')
-
-    # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
-    # plot( slope1000.name, slope1000.series(), 'panel' )
-
-    # hma_rising = rising( hma.series(), 30 )
-    # if( hma_rising.value() and not hma_rising.value(1) ):
-    #     timeframe.stream.createMarker( '🔼' )
-
-    # hma_falling = falling( hma.series(), 30 )
-    # if( hma_falling.value() and not hma_falling.value(1) ):
-    #     timeframe.stream.createMarker( '🔽' )
-
-    size = 20
-    if( sma.crossingUp(lr) ):
-        shortpos = strategy.getActivePosition(strategy.SHORT)
-        if(shortpos and len(shortpos.order_history) > 2 ):
-            strategy.close(strategy.SHORT)
-
-        strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, size )
-        # timeframe.stream.createMarker( '🔷' )
-
-    if crossingDown( sma.series(), lr ):
-
-        longpos = strategy.getActivePosition(strategy.LONG)
-        if( longpos and len(longpos.order_history) > 2 ):
-            strategy.close(strategy.LONG)
-
-        strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, size )
-        # timeframe.stream.createMarker( '🔺' )
-
-    
-
-
 import aioconsole
 async def cli_task(stream):
     while True:
@@ -1293,9 +1197,107 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], 5000 )
+    import strategy
 
-    # tasks.registerTask( 'clock', update_clock(stream) )
+
+
+
+    def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+        pass
+    def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+        sma = calcSMA( close, 350 )
+        sma.plot()
+        rsi = calcRSI( close, 14 )
+        rsiplot = plot( rsi.name, rsi.series(), 'panel' )
+        return
+
+    def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+        return
+
+    def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+
+        ###########################
+        # strategy code goes here #
+        ###########################
+        sma = calcSMA( close, 75 )
+        sma.plot()
+
+        # ema = calcEMA( close, 4 )
+        # ema.plot()
+
+        lr = calcLINREG( close, 300 )
+        lr.plot()
+
+        # plot( "lazyline", 0, 'panel' )
+
+        # rsi = calcRSI( close, 14 )
+        # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
+        
+        # FIXME: It crashes when calling to plot the same series
+        atr = calcATR( 14 )
+        plot( atr.name, atr.series(), 'panel' )
+
+        # calcTR(14).plot('panel')
+
+        # cfo = calcCFO( close, 20 )
+        # cfo.plot('panel')
+
+        # dev = calcDEV( close, 30 )
+        # plot( dev.name, dev.series(), 'panel' )
+
+        # rma = calcRMA( close, 90 )
+        # rma.plot()
+
+        # stdev = calcSTDEV( close, 350 )
+
+        # willr = calcWPR( close, 32 ).plot('panel')
+        # calcBIAS( close, 32 ).plot('panel')
+
+        # hma = calcHMA( close, 150 )
+        # hma.plot()
+        # r = rising( hma.series(), 10 )
+        # f = falling( hma.series(), 10 )
+
+        # calcBarsSince( timeframe.barindex, r )
+        # wt = calcBarsWhileTrue( timeframe.barindex, hma.series() > 1.7 )
+
+        # calcCCI( 100 ).plot('panel')
+
+        # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
+        # plot( slope1000.name, slope1000.series(), 'panel' )
+
+        # hma_rising = rising( hma.series(), 30 )
+        # if( hma_rising.value() and not hma_rising.value(1) ):
+        #     timeframe.stream.createMarker( '🔼' )
+
+        # hma_falling = falling( hma.series(), 30 )
+        # if( hma_falling.value() and not hma_falling.value(1) ):
+        #     timeframe.stream.createMarker( '🔽' )
+
+        size = 20
+        if( sma.crossingUp(lr) ):
+            shortpos = strategy.getActivePosition(strategy.SHORT)
+            if(shortpos and len(shortpos.order_history) > 2 ):
+                strategy.close(strategy.SHORT)
+
+            strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, size )
+            # timeframe.stream.createMarker( '🔷' )
+
+        if crossingDown( sma.series(), lr ):
+
+            longpos = strategy.getActivePosition(strategy.LONG)
+            if( longpos and len(longpos.order_history) > 2 ):
+                strategy.close(strategy.LONG)
+
+            strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, size )
+            # timeframe.stream.createMarker( '🔺' )
+
+
+
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], [runCloseCandle_1m], 5000 )
+
+    # strategy.print_strategy_stats()
+
     stream.createWindow( '1m' )
 
     asyncio.run( tasks.runTasks() )
