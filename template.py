@@ -12,28 +12,24 @@ import strategy
 #   RUNNING THE ALGO
 # 
 
-rsi30m:generatedSeries_c = None
-rsi30plot1 = pd.Series(dtype=float)
 
 def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-    global rsi30m
-
     rsi30m = calc.RSI(close, 14)
+    rsi30m.plot('panel')
 
 
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+
     sma = calc.SMA( close, 75 )
     plot( sma.series(), sma.name )
 
     lr = calc.LINREG( close, 300 )
     lr.plot()
 
-    # rsi = calc.RSI( close, 14 ).plot('panel')
-    # rsi30plot1.loc[timeframe.barindex] = rsi30m.value()
-    # plot( rsi30m.value(), 'rsi30m1m', 'panel' )
 
-    if( not timeframe.stream.initializing ):
-        print( rsi30m.value() )
+    timeframe30 = timeframe.stream.timeframes['30m']
+    rsi30mvalue = timeframe30.valueAtTimestamp( '_rsi14 close', timeframe.timestamp )
+    plot( rsi30mvalue, "rsi30mvalue", "panel" )
 
     if( sma.crossingUp(lr) ):
         shortpos = strategy.getActivePosition(strategy.SHORT)
@@ -77,7 +73,10 @@ if __name__ == '__main__':
     #
     # - Amount of history candles *from the last timeframe in the list* to calculate. The other timeframes will adjust to it.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 50000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 10000 )
+
+    print( stream.timeframes[stream.timeframeFetch].df )
+    print( stream.timeframes['30m'].df )
 
     strategy.print_summary_stats()
 

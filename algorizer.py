@@ -64,7 +64,7 @@ class plot_c:
             self.initialized = True
             return
         
-        source = source.dropna()
+        # source = source.dropna()
         if( len(source) < 1 ):
             return
         
@@ -72,7 +72,6 @@ class plot_c:
         newval = source.loc[timeframe.barindex]
         self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 '''
-
 
 
 
@@ -84,44 +83,96 @@ class plot_c:
         self.line = None
         self.initialized = False
 
+        if name is None:
+            raise SystemError( "ERROR: plot_c: Can't create a plot without a name" )
+
+        # Names starting with an underscore are reserved for generated series
+        # and must already exist in the dataframe
+        if name.startswith('_') :
+            if name not in active.timeframe.df.columns:
+                raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
+
     def update( self, source, timeframe ):
 
-        if( timeframe.window is None ):
-            # temp check. Remove me
-            if timeframe.stream.initializing and not timeframe.shadowcopy :
-                print( f"PLOT: Skipping barindex {timeframe.barindex}" )
-                return
-        
-            # make a backup of the source series only on the last bar of the initialization
-            # which will be used to jump-start the plots at opening the chart
-            if( timeframe.shadowcopy ):
-                if( not isinstance(source, pd.Series) ):
-                    source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
-                if( len( timeframe.initdata ) <= len(timeframe.df) + 1 ): 
-                    self.source = source
+        if timeframe.stream.initializing and not timeframe.shadowcopy :
+            # This is the call made on the last row to force pandas
+            # to calculate all the generated series at once. We don't
+            # want to do anything here.
             return
         
-        
-        if( not isinstance(source, pd.Series) ):
-            source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
-        
-        if( not self.initialized ):
-            if( len(source)<1 ):
+        if not self.initialized:
+            # We want to store a reference to the series that is being plotted
+            # to have it ready when the window is opened
+            if( timeframe.window is None ):
+                # if it's plotting a generated series reference its column in the dataframe
+                if self.name.startswith('_'):
+                    if self.name not in timeframe.df.columns:
+                        raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
+                    self.source = timeframe.df[self.name] # we don't really need to do this
+                    return
+                
+                if( isinstance(source, pd.Series) ):
+                    return
+                
+                if( not isinstance(source, int) and not isinstance(source, float) ):
+                    if source != None:
+                        print( f"* WARNING: plot_c: Unrecognized type {type(source)}." )
+                        return
+                    
+                if source != None:
+                    source = float(source)
+
+                # Create a column in the dataframe for it if there's none, and keep updating it
+                if self.name not in timeframe.df.columns:
+                    timeframe.df[self.name] = None
+                    
+                column_index = timeframe.df.columns.get_loc(self.name)
+                timeframe.df.iloc[timeframe.barindex, column_index] = source
+                self.source = timeframe.df[self.name]
+                return
+            
+            # We've got a window, but aren't initialized yet
+            # INITIALIZE in the chart
+
+            # if self.name.startswith('_'): # it's a generated series
+            if( len(self.source)<1 ):
                 return
             chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
             self.line.set( pd.DataFrame({'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: source}) )
             self.initialized = True
             return
+
+
+
+
+        # No window, but we are initialized. The window has been lost
+        if( timeframe.window is None ):
+            self.initialized = False
+            return # should I return an indication to delete it from the list?
         
-        source = source.dropna()
-        if( len(source) < 1 ):
+        if( isinstance(source, pd.Series) ):
+            return
+
+        # if it's not a series, update its series in the dataframe
+        if( isinstance(source, int) or isinstance(source, float) ):
+            source = float(source)
+            if self.name not in timeframe.df.columns: # Create a column in the dataframe for it if there's none, and keep updating it
+                timeframe.df[self.name] = None
+
+            column_index = timeframe.df.columns.get_loc(self.name)
+            timeframe.df.iloc[timeframe.barindex, column_index] = source
+            # self.source = timeframe.df[self.name]
+            self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': source } ) )
+            return
+
+
+        if( len(self.source) < 1 ):
             return
         
         # it's initalized so only update the new line
-        newval = source.loc[timeframe.barindex]
+        newval = self.source.loc[timeframe.barindex]
         self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
-
 
 
 
@@ -417,6 +468,22 @@ class timeframe_c:
             if not plot.initialized:
                 plot.update( plot.source, self )
 
+
+    def indexForTimestamp( self, timestamp:int )->int:
+        # Estimate the index by dividing the offset by the time difference between rows
+        baseTimestamp = int(self.df['timestamp'].iloc[0])
+        index = (timestamp - baseTimestamp) // self.timeframeMsec
+        return max(-1, index - 1) # Return the previous index or -1 if not found
+
+
+    def valueAtTimestamp( self, column_name, timestamp:int ):
+        index = self.indexForTimestamp(timestamp)
+        if index == -1:
+            return None
+        if column_name not in self.df.columns:
+            raise ValueError(f"Column '{column_name}' not found in DataFrame.")
+        return self.df[column_name].iloc[index]
+        
 
     def candle( self, index = None )->candle_c:
         if( index is None ):

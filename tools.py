@@ -15,7 +15,7 @@ def stringToValue( arg )->float:
 def generatedSeriesNameFormat( type, source, period:int ):
     if( source.name == None ):
         raise SystemError( f"Generated Series has no valid name [{type}{period} {source.name}]")
-    return f'{type}{period} {source.name}'
+    return f'_{type}{period} {source.name}'
 
 def emptyFunction(func):
     return func.__code__.co_consts == (None,)
