@@ -342,7 +342,7 @@ class generatedSeries_c:
 
     def plot( self, chart = None ):
         if( self.timestamp > 0 ):
-            self.timeframe.plot( self.name, self.series(), chart )
+            self.timeframe.plot( self.series(), self.name, chart )
     
     def series( self ):
         return self.timeframe.df[self.name]

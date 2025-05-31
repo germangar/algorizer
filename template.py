@@ -1,59 +1,85 @@
 import pandas as pd
-from algorizer import stream_c, timeframe_c
-from algorizer import plot
+from algorizer import stream_c, timeframe_c, plot
 import calcseries as calc
-from calcseries import generatedSeries_c # for autocompletion and in case the user wants to create a new generated series
+from calcseries import generatedSeries_c
 from candle import candle_c
-import active
 import strategy
-
 
 # from window import window_c # Importing window_c is only required if you want direct access to lightweight charts
 
 
+# 
+#   RUNNING THE ALGO
+# 
 
-def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-     pass
+rsi30m:generatedSeries_c = None
+rsi30plot1 = pd.Series(dtype=float)
+
+def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    global rsi30m
+
+    rsi30m = calc.RSI(close, 14)
+
 
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
-
     sma = calc.SMA( close, 75 )
-    plot( sma.name, sma.series() )
+    plot( sma.series(), sma.name )
 
     lr = calc.LINREG( close, 300 )
     lr.plot()
 
-    calc.RSI( close, 14 ).plot('panel')
+    # rsi = calc.RSI( close, 14 ).plot('panel')
+    # rsi30plot1.loc[timeframe.barindex] = rsi30m.value()
+    # plot( rsi30m.value(), 'rsi30m1m', 'panel' )
 
-    size = 20
+    if( not timeframe.stream.initializing ):
+        print( rsi30m.value() )
+
     if( sma.crossingUp(lr) ):
         shortpos = strategy.getActivePosition(strategy.SHORT)
-        if(shortpos and len(shortpos.order_history) > 2 ):
+        if(shortpos and len(shortpos.order_history) > 1 ):
             strategy.close(strategy.SHORT)
 
-        strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, size )
+        strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, 50 )
 
     if calc.crossingDown( sma.series(), lr ):
-
         longpos = strategy.getActivePosition(strategy.LONG)
-        if( longpos and len(longpos.order_history) > 2 ):
+        if( longpos and len(longpos.order_history) > 1 ):
             strategy.close(strategy.LONG)
 
-        strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, size )
+        
 
+        strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, 50 )
+
+
+
+# 
+#   SETTING UP THE CANDLES FEED
+# 
 
 
 if __name__ == '__main__':
 
-    # start the candles stream:
-    # - The symbol is in CCXT format. If the final :USDT is not included it opens a spot stream, if included it opens a perpetual contracts stream
-    # - timeframes:
+    # Start the candles stream:
+    #
+    # - The symbol in CCXT format. ('BTC/USDT' means spot, 'BTC/USDT:USDT' means futures PERP)
+    #
+    # - The exchange to connect to. It must be a exchange supported by the CCXT library https://github.com/ccxt/ccxt?tab=readme-ov-file#certified-cryptocurrency-exchanges
+    #   Not all exchanges provide historic data to fetch.
+    #
+    # - timeframes list:
     #   It's a list of timeframes you want to run. The order in the list will determine the order of execution of
-    #   their 'runCloseCandle' function callbacks. You should create a runCloseCandle_{timeframe} function for each 
-    #   timeframe you want to use in your strategy. The smallest timeframe will be used for fetching the price updates.
+    #   their 'runCloseCandle' function callbacks. The smallest timeframe will be used for fetching the price updates.
     #   So, if you want to check, let's say, the 4h rsi in a 30m strategy you should add 4h first in the list and then 30m.
+    #
+    # - Callbacks list:
+    #   The functions that will be called when each timeframe closes a candle. That's where the heart of your algo resides.
+    #
+    # - Amount of history candles *from the last timeframe in the list* to calculate. The other timeframes will adjust to it.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], [runCloseCandle_1m], 5000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 50000 )
+
+    strategy.print_summary_stats()
 
     # Call only if you want to open the chart window. It's not needed to run the algo
     stream.createWindow( '1m' )

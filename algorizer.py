@@ -24,6 +24,8 @@ verbose = False
 
 
 
+
+'''
 class plot_c:
     def __init__( self, name:str, chart_name = None ):
         self.name = name
@@ -35,6 +37,61 @@ class plot_c:
     def update( self, source, timeframe ):
 
         if( timeframe.window is None ):
+            # temp check. Remove me
+            if timeframe.stream.initializing and not timeframe.shadowcopy :
+                print( f"PLOT: Skipping barindex {timeframe.barindex}" )
+                return
+        
+            # make a backup of the source series only on the last bar of the initialization
+            # which will be used to jump-start the plots at opening the chart
+            if( timeframe.shadowcopy ):
+                if( not isinstance(source, pd.Series) ):
+                    source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
+                if( len( timeframe.initdata ) <= len(timeframe.df) + 1 ): 
+                    self.source = source
+            return
+        
+        
+        if( not isinstance(source, pd.Series) ):
+            source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
+        
+        if( not self.initialized ):
+            if( len(source)<1 ):
+                return
+            chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
+            self.line = chart.create_line( self.name, price_line=False, price_label=False )
+            self.line.set( pd.DataFrame({'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: source}) )
+            self.initialized = True
+            return
+        
+        source = source.dropna()
+        if( len(source) < 1 ):
+            return
+        
+        # it's initalized so only update the new line
+        newval = source.loc[timeframe.barindex]
+        self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
+'''
+
+
+
+
+class plot_c:
+    def __init__( self, name:str, chart_name = None ):
+        self.name = name
+        self.chartName = chart_name
+        self.source = None
+        self.line = None
+        self.initialized = False
+
+    def update( self, source, timeframe ):
+
+        if( timeframe.window is None ):
+            # temp check. Remove me
+            if timeframe.stream.initializing and not timeframe.shadowcopy :
+                print( f"PLOT: Skipping barindex {timeframe.barindex}" )
+                return
+        
             # make a backup of the source series only on the last bar of the initialization
             # which will be used to jump-start the plots at opening the chart
             if( timeframe.shadowcopy ):
@@ -66,9 +123,11 @@ class plot_c:
         self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 
 
-def plot( name, source, chart_name = None, timeframe = None ):
+
+
+def plot( source, name:str = None, chart_name:str = None, timeframe = None ):
     if timeframe == None : timeframe = active.timeframe
-    timeframe.plot( name, source, chart_name )
+    timeframe.plot( source, name, chart_name )
     
 
 
@@ -342,7 +401,7 @@ class timeframe_c:
         return gse
 
 
-    def plot( self, name, source, chart_name = None ):
+    def plot( self, source, name:str = None, chart_name:str = None )->plot_c:
         plot = self.registeredPlots.get( name )
 
         if( plot == None ):
@@ -566,7 +625,7 @@ if __name__ == '__main__':
         sma = calc.SMA( close, 350 )
         sma.plot()
         rsi = calc.RSI( close, 14 )
-        rsiplot = plot( rsi.name, rsi.series(), 'panel' )
+        rsiplot = plot( rsi.series(), rsi.name, 'panel' )
         return
 
     def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
@@ -586,14 +645,14 @@ if __name__ == '__main__':
         lr = calc.LINREG( close, 300 )
         lr.plot()
 
-        # plot( "lazyline", 0, 'panel' )
+        # plot( 0, "lazyline", 'panel' )
 
         # rsi = calcRSI( close, 14 )
-        # rsiplot = plot( rsi.name, rsi.series(), 'panel' )
+        # rsiplot = plot( rsi.series(), rsi.name, 'panel' )
         
         # FIXME: It crashes when calling to plot the same series
         atr = calc.ATR( 14 )
-        plot( atr.name, atr.series(), 'panel' )
+        plot( atr.series(), atr.name, 'panel' )
 
         # calcTR(14).plot('panel')
 
@@ -601,7 +660,7 @@ if __name__ == '__main__':
         # cfo.plot('panel')
 
         # dev = calcDEV( close, 30 )
-        # plot( dev.name, dev.series(), 'panel' )
+        # plot( dev.series(), dev.name, 'panel' )
 
         # rma = calcRMA( close, 90 )
         # rma.plot()
@@ -622,7 +681,7 @@ if __name__ == '__main__':
         # calcCCI( 100 ).plot('panel')
 
         # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
-        # plot( slope1000.name, slope1000.series(), 'panel' )
+        # plot( slope1000.series(), slope1000.name, 'panel' )
 
         # hma_rising = rising( hma.series(), 30 )
         # if( hma_rising.value() and not hma_rising.value(1) ):
