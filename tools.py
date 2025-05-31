@@ -134,7 +134,7 @@ def resample_ohlcv(df, target_timeframe):
         elif minutes % 60 == 0:
             return f"{minutes // 60}H"
         else:
-            return f"{minutes}T"
+            return f"{minutes}min"
 
     # If target_timeframe is a string like '15', convert to int
     if isinstance(target_timeframe, str):
