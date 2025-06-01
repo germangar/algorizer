@@ -22,59 +22,6 @@ SHOW_VOLUME = False
 verbose = False
 
 
-
-
-
-'''
-class plot_c:
-    def __init__( self, name:str, chart_name = None ):
-        self.name = name
-        self.chartName = chart_name
-        self.source = None
-        self.line = None
-        self.initialized = False
-
-    def update( self, source, timeframe ):
-
-        if( timeframe.window is None ):
-            # temp check. Remove me
-            if timeframe.stream.initializing and not timeframe.shadowcopy :
-                print( f"PLOT: Skipping barindex {timeframe.barindex}" )
-                return
-        
-            # make a backup of the source series only on the last bar of the initialization
-            # which will be used to jump-start the plots at opening the chart
-            if( timeframe.shadowcopy ):
-                if( not isinstance(source, pd.Series) ):
-                    source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
-                if( len( timeframe.initdata ) <= len(timeframe.df) + 1 ): 
-                    self.source = source
-            return
-        
-        
-        if( not isinstance(source, pd.Series) ):
-            source = pd.Series([source] * len(timeframe.df), index=timeframe.df.index)
-        
-        if( not self.initialized ):
-            if( len(source)<1 ):
-                return
-            chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
-            self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: source}) )
-            self.initialized = True
-            return
-        
-        # source = source.dropna()
-        if( len(source) < 1 ):
-            return
-        
-        # it's initalized so only update the new line
-        newval = source.loc[timeframe.barindex]
-        self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
-'''
-
-
-
 class plot_c:
     def __init__( self, name:str, chart_name = None ):
         self.name = name
@@ -585,7 +532,7 @@ class stream_c:
         
         # We're done. Start fetching
         tasks.registerTask( 'cli', cli_task(self) )
-        tasks.registerTask( 'fetch', fetchCandleUpdates( self ) )
+        tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
         tasks.registerTask( 'clocks', update_clocks(self) )
 
     def run(self):
@@ -594,6 +541,32 @@ class stream_c:
     def parseCandleUpdateMulti( self, rows ):
         for timeframe in self.timeframes.values():
             timeframe.parseCandleUpdate(rows)
+
+    async def fetchCandleUpdates( self ):
+        maxRows = 20
+        while True:
+            try:
+                response = await self.exchange.watch_ohlcv( self.symbol, self.timeframeFetch, limit = maxRows )
+                #print(response)
+
+            except Exception as e:
+                print( 'Exception raised at fetchCandleupdates: Reconnecting', e, type(e) )
+                await self.exchange.close()
+                await asyncio.sleep(1.0)
+                continue
+                
+            # extract the data
+
+            if( len(response) > maxRows ):
+                response = response[len(response)-maxRows:]
+
+            #pprint( response )
+            if( len(response) ):
+                self.parseCandleUpdateMulti( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
+            
+            await asyncio.sleep(0.01)
+
+        await exchange.close()
 
 
     def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = -1, chart_name:str = None ):
@@ -622,6 +595,9 @@ def createMarker( text, location:str = 'below', shape:str = 'circle', color:str 
         return None
     return active.timeframe.stream.createMarker( text, location, shape, color )
 
+def isInitializing():
+    return active.timeframe.stream.initializing
+
 
 async def update_clocks( stream:stream_c ):
     from datetime import datetime
@@ -633,36 +609,6 @@ async def update_clocks( stream:stream_c ):
             timeframe.realtimeCandle.updateRemainingTime()
             if timeframe.window != None:
                 timeframe.window.updateClock()
-
-
-# FIXME: Shouldn't I simply make this a method of stream_c?
-async def fetchCandleUpdates( stream:stream_c ):
-
-    maxRows = 20
-    while True:
-        try:
-            response = await stream.exchange.watch_ohlcv( stream.symbol, stream.timeframeFetch, limit = maxRows )
-            #print(response)
-
-        except Exception as e:
-            print( 'Exception raised at fetchCandleupdates: Reconnecting', e, type(e) )
-            await stream.exchange.close()
-            await asyncio.sleep(1.0)
-            continue
-        
-            
-        # extract the data
-
-        if( len(response) > maxRows ):
-            response = response[len(response)-maxRows:]
-
-        #pprint( response )
-        if( len(response) ):
-            stream.parseCandleUpdateMulti( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
-        
-        await asyncio.sleep(0.01)
-
-    await exchange.close()
 
 
 

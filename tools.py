@@ -156,7 +156,3 @@ def resample_ohlcv(df, target_timeframe):
     resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
     return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
 
-# def replaceValueByTimestamp( df, timestamp, key:str, value ):
-#     if( key == 'open' or key == 'high' or key == 'low' or key == 'close' ):
-#         df.loc[df['timestamp'] == timestamp, f'{key}'] = value
-
