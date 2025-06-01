@@ -40,7 +40,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
         if(shortpos and len(shortpos.order_history) > 1 ):
             trade.close(trade.SHORT)
         if rsi30min < 45:
-            trade.order( 'buy', trade.LONG, timeframe.realtimeCandle.close, 50 )
+            trade.order( 'buy', trade.LONG )
 
     longpos = trade.getActivePosition(trade.LONG)
     if longpos and longpos.get_unrealized_pnl_percentage()  < -0.5:
@@ -51,7 +51,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
             trade.close(trade.LONG)
 
         if rsi30min > 55 :
-            trade.order( 'sell', trade.SHORT, timeframe.realtimeCandle.close, 50 )
+            trade.order( 'sell', trade.SHORT )
 
 
 
@@ -61,6 +61,11 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 
 
 if __name__ == '__main__':
+
+    # configure the strategy before creating the stream
+    trade.strategy.hedged = False
+    trade.strategy.order_size = 100 # set to smaller than max_position_size for pyramiding
+    trade.strategy.max_position_size = 100
 
     # Start the candles stream:
     #
@@ -79,7 +84,7 @@ if __name__ == '__main__':
     #
     # - Amount of history candles *from the last timeframe in the list* to calculate. The other timeframes will adjust to it.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 100000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 10000 )
 
     print( stream.timeframes[stream.timeframeFetch].df )
     print( stream.timeframes['30m'].df )
