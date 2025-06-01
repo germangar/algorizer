@@ -27,21 +27,31 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     lr = calc.LINREG( close, 300 )
     lr.plot()
 
-    plot( requestValue( rsi30m.name, '30m' ), 'rsi30m', 'panel' )
+    rsi30min = requestValue( rsi30m.name, '30m' )
+    plot( rsi30min, 'rsi30m', 'panel' )
 
-    if( sma.crossingUp(lr) ):
-        shortpos = strategy.getActivePosition(strategy.SHORT)
-        if(shortpos and len(shortpos.order_history) > 1 ):
+    shortpos = strategy.getActivePosition(strategy.SHORT)
+    if shortpos :
+        pnl = shortpos.get_unrealized_pnl_percentage()
+        if pnl < -0.5 or pnl > 10.0:
             strategy.close(strategy.SHORT)
 
-        strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, 50 )
+    if( sma.crossingUp(lr) ):
+        if(shortpos and len(shortpos.order_history) > 1 ):
+            strategy.close(strategy.SHORT)
+        if rsi30min < 45:
+            strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, 50 )
+
+    longpos = strategy.getActivePosition(strategy.LONG)
+    if longpos and longpos.get_unrealized_pnl_percentage()  < -0.5:
+        strategy.close(strategy.LONG)
 
     if calc.crossingDown( sma.series(), lr ):
-        longpos = strategy.getActivePosition(strategy.LONG)
         if( longpos and len(longpos.order_history) > 1 ):
             strategy.close(strategy.LONG)
 
-        strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, 50 )
+        if rsi30min > 55 :
+            strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, 50 )
 
 
 
@@ -69,11 +79,12 @@ if __name__ == '__main__':
     #
     # - Amount of history candles *from the last timeframe in the list* to calculate. The other timeframes will adjust to it.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 10000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 100000 )
 
     print( stream.timeframes[stream.timeframeFetch].df )
     print( stream.timeframes['30m'].df )
 
+    strategy.print_strategy_stats()
     strategy.print_summary_stats()
 
     # Call only if you want to open the chart window. It's not needed to run the algo
