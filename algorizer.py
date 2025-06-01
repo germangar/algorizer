@@ -645,8 +645,6 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    import strategy
-
     def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
         pass
     def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
@@ -718,25 +716,6 @@ if __name__ == '__main__':
         # hma_falling = falling( hma.series(), 30 )
         # if( hma_falling.value() and not hma_falling.value(1) ):
         #     timeframe.stream.createMarker( '🔽' )
-
-        size = 20
-        if( sma.crossingUp(lr) ):
-            shortpos = strategy.getActivePosition(strategy.SHORT)
-            if(shortpos and len(shortpos.order_history) > 2 ):
-                strategy.close(strategy.SHORT)
-
-            strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, size )
-            # timeframe.stream.createMarker( '🔷' )
-
-        if calc.crossingDown( sma.series(), lr ):
-
-            longpos = strategy.getActivePosition(strategy.LONG)
-            if( longpos and len(longpos.order_history) > 2 ):
-                strategy.close(strategy.LONG)
-
-            strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, size )
-            # timeframe.stream.createMarker( '🔺' )
-
 
 
     stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], [runCloseCandle_1m], 5000 )

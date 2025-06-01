@@ -3,7 +3,7 @@ from algorizer import stream_c, timeframe_c, plot, requestValue
 import calcseries as calc
 from calcseries import generatedSeries_c
 from candle import candle_c
-import strategy
+import trade
 
 # from window import window_c # Importing window_c is only required if you want direct access to lightweight charts
 
@@ -30,28 +30,28 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     rsi30min = requestValue( rsi30m.name, '30m' )
     plot( rsi30min, 'rsi30m', 'panel' )
 
-    shortpos = strategy.getActivePosition(strategy.SHORT)
+    shortpos = trade.getActivePosition(trade.SHORT)
     if shortpos :
         pnl = shortpos.get_unrealized_pnl_percentage()
         if pnl < -0.5 or pnl > 10.0:
-            strategy.close(strategy.SHORT)
+            trade.close(trade.SHORT)
 
     if( sma.crossingUp(lr) ):
         if(shortpos and len(shortpos.order_history) > 1 ):
-            strategy.close(strategy.SHORT)
+            trade.close(trade.SHORT)
         if rsi30min < 45:
-            strategy.order( 'buy', strategy.LONG, timeframe.realtimeCandle.close, 50 )
+            trade.order( 'buy', trade.LONG, timeframe.realtimeCandle.close, 50 )
 
-    longpos = strategy.getActivePosition(strategy.LONG)
+    longpos = trade.getActivePosition(trade.LONG)
     if longpos and longpos.get_unrealized_pnl_percentage()  < -0.5:
-        strategy.close(strategy.LONG)
+        trade.close(trade.LONG)
 
     if calc.crossingDown( sma.series(), lr ):
         if( longpos and len(longpos.order_history) > 1 ):
-            strategy.close(strategy.LONG)
+            trade.close(trade.LONG)
 
         if rsi30min > 55 :
-            strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, 50 )
+            trade.order( 'sell', trade.SHORT, timeframe.realtimeCandle.close, 50 )
 
 
 
@@ -84,8 +84,8 @@ if __name__ == '__main__':
     print( stream.timeframes[stream.timeframeFetch].df )
     print( stream.timeframes['30m'].df )
 
-    strategy.print_strategy_stats()
-    strategy.print_summary_stats()
+    # trade.print_strategy_stats()
+    trade.print_summary_stats()
 
     # Call only if you want to open the chart window. It's not needed to run the algo
     stream.createWindow( '1m' )
