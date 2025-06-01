@@ -1,5 +1,5 @@
 import pandas as pd
-from algorizer import stream_c, timeframe_c, plot
+from algorizer import stream_c, timeframe_c, plot, requestValue
 import calcseries as calc
 from calcseries import generatedSeries_c
 from candle import candle_c
@@ -12,8 +12,9 @@ import strategy
 #   RUNNING THE ALGO
 # 
 
-
+rsi30m = None
 def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    global rsi30m
     rsi30m = calc.RSI(close, 14)
     rsi30m.plot('panel')
 
@@ -26,10 +27,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     lr = calc.LINREG( close, 300 )
     lr.plot()
 
-
-    timeframe30 = timeframe.stream.timeframes['30m']
-    rsi30mvalue = timeframe30.valueAtTimestamp( '_rsi14 close', timeframe.timestamp )
-    plot( rsi30mvalue, "rsi30mvalue", "panel" )
+    plot( requestValue( rsi30m.name, '30m' ), 'rsi30m', 'panel' )
 
     if( sma.crossingUp(lr) ):
         shortpos = strategy.getActivePosition(strategy.SHORT)
@@ -42,8 +40,6 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
         longpos = strategy.getActivePosition(strategy.LONG)
         if( longpos and len(longpos.order_history) > 1 ):
             strategy.close(strategy.LONG)
-
-        
 
         strategy.order( 'sell', strategy.SHORT, timeframe.realtimeCandle.close, 50 )
 

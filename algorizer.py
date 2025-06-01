@@ -119,9 +119,12 @@ class plot_c:
 
 
 
-def plot( source, name:str = None, chart_name:str = None, timeframe = None ):
-    if timeframe == None : timeframe = active.timeframe
-    timeframe.plot( source, name, chart_name )
+def plot( source, name:str = None, chart_name:str = None ):
+    '''
+    source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
+    chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+    '''
+    active.timeframe.plot( source, name, chart_name )
     
 
 
@@ -589,6 +592,15 @@ def getRealtimeCandle()->candle_c:
     if( active.timeframe == None ):
         return None
     return active.timeframe.realtimeCandle
+
+def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
+    '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''
+    if not timestamp : 
+        timestamp = active.timeframe.timestamp
+
+    targetTimeframe = active.timeframe.stream.timeframes[timeframeName] if timeframeName is not None else active.timeframe
+    return targetTimeframe.valueAtTimestamp( column_name, timestamp )
+    
 
 def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE" ):
     if( active.timeframe == None ):
