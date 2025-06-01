@@ -6,7 +6,7 @@
 
 
 from candle import candle_c
-from algorizer import getRealtimeCandle, createMarker
+from algorizer import getRealtimeCandle, createMarker, isInitializing
 import active # Import active to get active.barindex
 
 # Define constants for position types
@@ -123,9 +123,7 @@ class strategy_c:
         elif cmd == 'sell':
             order_direction = SHORT
         else:
-            if self.verbose:
-                print(f"Error: Invalid command '{cmd}'. Must be 'buy' or 'sell'.")
-            return
+            print(f"Error: Invalid command '{cmd}'. Must be 'buy' or 'sell'.")
 
         # Get the specific active position (LONG or SHORT) that this order is targeting
         active_target_pos = self.get_active_position(target_position_type)
@@ -138,14 +136,13 @@ class strategy_c:
                 clamped_quantity = min(quantity, self.max_position_size)
                 if clamped_quantity > EPSILON:
                     self.open_position(target_position_type, price, clamped_quantity, leverage)
-                elif self.verbose:
+                elif self.verbose and not isInitializing():
                     print(f"Warning: Order quantity ({quantity:.2f}) clamped to 0 because it exceeds max_position_size ({self.max_position_size:.2f}) for opening a new position. No position opened.")
             else:
-                if self.verbose:
-                    print(f"Warning: Cannot open a {target_position_type} position with a {cmd} order without an active position.")
-                    print("To open a LONG position, use 'buy' with LONG target_position_type.")
-                    print("To open a SHORT position, use 'sell' with SHORT target_position_type.")
-                    print("To close an existing position, use an opposing order with the correct target_position_type.")
+                print(f"Warning: Cannot open a {target_position_type} position with a {cmd} order without an active position.")
+                print("To open a LONG position, use 'buy' with LONG target_position_type.")
+                print("To open a SHORT position, use 'sell' with SHORT target_position_type.")
+                print("To close an existing position, use an opposing order with the correct target_position_type.")
                 
         else: # An active position of the target_position_type exists
             if order_direction == active_target_pos.type:
@@ -156,7 +153,7 @@ class strategy_c:
 
                 if clamped_quantity > EPSILON:
                     active_target_pos.update(order_direction, price, clamped_quantity, leverage)
-                elif self.verbose:
+                elif self.verbose and not isInitializing():
                     print(f"Warning: Attempted to increase {active_target_pos.type} position but order quantity ({quantity:.2f}) clamped to 0 because it would exceed max_position_size ({self.max_position_size:.2f}). No change to position.")
             else:
                 # Order direction opposes existing position type: reduce or close
@@ -169,7 +166,7 @@ class strategy_c:
                     active_target_pos.close(price) # This calls position_c.close()
                     createMarker('❌', location='above', shape='square', color='#808080') # Grey square for full close
                     if quantity > active_target_pos.size + EPSILON: # If it was an oversized order
-                        if self.verbose:
+                        if self.verbose and not isInitializing():
                             print(f"Warning: Attempted to close a {active_target_pos.type} position with an oversized {cmd} order.")
                             print(f"Position was fully closed. Remaining quantity ({quantity - active_target_pos.size:.2f}) was not used to open a new position.")
 
@@ -182,7 +179,7 @@ class strategy_c:
         """
         pos_to_close = self.get_active_position(pos_type)
         if pos_to_close is None or not pos_to_close.active or pos_to_close.size < EPSILON: # Use EPSILON
-            if self.verbose:
+            if self.verbose and not isInitializing():
                 print(f"No active { 'LONG' if pos_type == LONG else 'SHORT' } position to close.")
             return
         
@@ -284,7 +281,8 @@ class position_c:
     """
     Represents an individual trading position (long or short).
     Handles opening, updating (increasing/reducing), and closing orders.
-    Keeps a history of all orders made within this position.
+    Kee
+    ps a history of all orders made within this position.
     """
     def __init__(self, strategy_instance: strategy_c): # Accept strategy instance during initialization
         self.strategy_instance = strategy_instance # Store reference to the parent strategy
@@ -506,7 +504,7 @@ class position_c:
             # createMarker('❌') # Removed from here
 
             # Print PnL to console
-            if self.strategy_instance.verbose: # Conditional print
+            if self.strategy_instance.verbose and not isInitializing():
                 print(f"CLOSED POSITION ({'LONG' if previous_position_type == LONG else 'SHORT'}): PnL: {self.profit:.2f} | PnL %: {self.realized_pnl_percentage:.2f}% | Total Strategy PnL: {self.strategy_instance.total_profit_loss:.2f}")
 
         # If the position is not fully closed (e.g., partial close), self.active remains True
