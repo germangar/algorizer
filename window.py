@@ -94,6 +94,7 @@ class window_c:
         if( self.timeframe != timeframe ):
             return
         if not self.chart.is_alive : # this is false when there's no window. Clean up
+            self.chart.exit()
             if tasks.findTask( 'window' ) :
                 self.destroyWindow()
                 return
