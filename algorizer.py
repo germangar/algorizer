@@ -108,7 +108,7 @@ class plot_c:
                 return
 
         # update the chart
-        newval = timeframe.df.iat[self.iat_index, timeframe.barindex]
+        newval = timeframe.df.iat[timeframe.barindex, self.iat_index]
         self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 
 
