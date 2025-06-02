@@ -53,19 +53,16 @@ class plot_c:
             if( timeframe.window is None ):
                 # if it's plotting a generated series reference its column in the dataframe
                 if( isinstance(source, pd.Series) ):
-                    if self.name not in timeframe.df.columns:
-                        raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
+                    # if self.name not in timeframe.df.columns:
+                    #     raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
                     # I don't support series which are not in the dataframe yet
                     return
 
-                
-                if( not isinstance(source, int) and not isinstance(source, float) ):
-                    if source != None:
-                        print( f"* WARNING: plot_c: Unrecognized type {type(source)}." )
-                        return
+                if not isinstance(source, (int, float, type(None))) :
+                    return
 
                 # Create a column in the dataframe for it if there's none, and keep updating it
-                if self.name not in timeframe.df.columns:
+                if self.iat_index == -1: # self.name not in timeframe.df.columns:
                     timeframe.df[self.name] = None
                     self.iat_index = timeframe.df.columns.get_loc(self.name)
                     
@@ -113,12 +110,12 @@ class plot_c:
 
 
 
-def plot( source, name:str = None, chart_name:str = None ):
+def plot( source, name:str = None, chart_name:str = None )->plot_c:
     '''
     source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
     chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
     '''
-    active.timeframe.plot( source, name, chart_name )
+    return active.timeframe.plot( source, name, chart_name )
     
 
 
