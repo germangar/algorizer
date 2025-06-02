@@ -5,8 +5,9 @@
 # The output doesn't seem correct, but I guess I'll work it from here.
 
 from candle import candle_c
-from algorizer import getRealtimeCandle, createMarker, isInitializing
-import active # Import active to get active.barindex
+from algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle
+from datetime import datetime, timezone
+import active # Corrected: Import active to get active.barindex
 
 # Define constants for position types
 SHORT = -1
@@ -30,6 +31,7 @@ class strategy_c:
         self.max_position_size = max_position_size # Maximum allowed total size for any single position (USD or BASE units)
         self.hedged = hedged # Controls whether multiple positions can be open simultaneously (True) or only one (False)
         self.currency_mode = currency_mode.upper() # NEW: 'USD' or 'BASE'
+        self.first_order_timestamp = None # NEW: To track the very first order timestamp in the strategy
 
         # Validate currency_mode
         if self.currency_mode not in ['USD', 'BASE']:
@@ -37,8 +39,25 @@ class strategy_c:
 
         # Validate parameters based on currency_mode
         if self.currency_mode == 'USD' and self.max_position_size > self.initial_liquidity:
-            raise ValueError(f"max_position_size ({self.max_position_size}) cannot be greater than initial_liquidity ({self.initial_liquidity}) when currency_mode is 'USD'.")
-        
+            # This check is more about "available capital" than "max position size" if max_position_size was meant as notional.
+            # But adhering to the previous discussions, max_position_size is the max notional value of a single position.
+            # The check `max_position_size > initial_liquidity` implies an over-allocation on a single position relative to total capital.
+            # However, `initial_liquidity` is available capital for *all* positions.
+            # Let's adjust this: max_position_size is how much capital can be risked in *one* position.
+            # This restriction should be applied at trade execution, not init.
+            # For now, keeping the validation as is based on the provided logic.
+            pass # Removed ValueError based on implicit agreement that max_position_size can be greater than initial_liquidity if it's notional and initial_liquidity is margin.
+                 # Reverted to previous thought: max_position_size is effectively a 'capital invested' limit per position, so it can't exceed initial_liquidity as total available capital *for that position*.
+                 # Re-instating stricter check if max_position_size is meant to be a direct deduction from initial_liquidity for a single position.
+            # If max_position_size is meant as the *capital invested* in a single position, it should not exceed initial_liquidity.
+            # If it's a notional size with leverage, it can be larger than initial_liquidity.
+            # Given `active_capital_invested` is `price * size * leverage`, `max_position_size` is a limit on this `active_capital_invested`.
+            # So, `max_position_size` as USD limit cannot be greater than `initial_liquidity` if it's supposed to represent a portion of the *account* capital for a single position.
+            # If it's just a "target notional size", it can be anything.
+            # Let's keep the user's intent: max_position_size acts as a capital limit per single position.
+            if self.max_position_size > self.initial_liquidity:
+                raise ValueError(f"max_position_size ({self.max_position_size}) cannot be greater than initial_liquidity ({self.initial_liquidity}) when currency_mode is 'USD', as it represents a capital limit per position.")
+
         if self.order_size <= 0:
             raise ValueError("order_size must be a positive value.")
         if self.max_position_size <= 0:
@@ -54,11 +73,15 @@ class strategy_c:
         pos.leverage = leverage # Set initial leverage for the position object
         pos.type = pos_type # Set the initial type of the position
         
+        # Record the timestamp of the first order of the entire strategy
+        if self.first_order_timestamp is None:
+            self.first_order_timestamp = getCandle(active.barindex).timestamp
+
         # Add the initial order to history with zero PnL
         pos.order_history.append({
             'type': pos_type,
-            'price': price,
-            'quantity': quantity,
+            'price': price, # Price in quote currency
+            'quantity': quantity, # Quantity in base units
             'barindex': active.barindex,
             'pnl_quantity': 0.0,
             'pnl_percentage': 0.0
@@ -148,15 +171,15 @@ class strategy_c:
 
             # Calculate potential USD cost/value of the incoming order, considering leverage
             # This is the cost basis for the amount of base units in this order.
-            incoming_order_usd_cost = quantity_in_base_units_input * current_price * leverage
+            # Using current_price * leverage for cost of 1 base unit for the order.
+            cost_per_base_unit_with_leverage = current_price * leverage
+            if cost_per_base_unit_with_leverage < EPSILON: # Avoid division by zero
+                cost_per_base_unit_with_leverage = EPSILON # Set to a small non-zero value
 
+            # Clamp incoming order quantity based on max_position_size (USD capital limit)
             if current_active_pos is None: # No active position, this is an opening order
                 # The total capital for this initial order must not exceed max_position_size (USD)
-                # Calculate max base units that can be bought given max_position_size USD capital
-                if (current_price * leverage) == 0: # Avoid division by zero
-                    max_base_units_from_usd_capital_limit = 0.0
-                else:
-                    max_base_units_from_usd_capital_limit = self.max_position_size / (current_price * leverage)
+                max_base_units_from_usd_capital_limit = self.max_position_size / cost_per_base_unit_with_leverage
                 
                 # Clamp the incoming order quantity
                 actual_quantity_to_process_base_units = min(quantity_in_base_units_input, max_base_units_from_usd_capital_limit)
@@ -176,10 +199,7 @@ class strategy_c:
                     return # Exit if no more USD capacity
 
                 # Calculate max base units that can be bought with remaining USD capacity
-                if (current_price * leverage) == 0: # Avoid division by zero
-                    max_base_units_from_usd_capital_capacity = 0.0
-                else:
-                    max_base_units_from_usd_capital_capacity = remaining_usd_capital_capacity / (current_price * leverage)
+                max_base_units_from_usd_capital_capacity = remaining_usd_capital_capacity / cost_per_base_unit_with_leverage
                 
                 # Clamp the incoming order quantity
                 actual_quantity_to_process_base_units = min(quantity_in_base_units_input, max_base_units_from_usd_capital_capacity)
@@ -190,8 +210,8 @@ class strategy_c:
                     return # Exit if clamped to zero
 
             # Note: For opposing orders (partial close/reversal), no capital clamping is applied here.
-            # They are meant to reduce/close the position.
-            # `actual_quantity_to_process_base_units` remains `quantity_in_base_units_input` in this case.
+            # They are meant to reduce/close the position, not increase capital exposure.
+            # `actual_quantity_to_process_base_units` remains `quantity_in_base_units_input` in this case for opposing orders.
 
 
         # --- General logic that applies to both modes after `actual_quantity_to_process_base_units` is determined ---
@@ -220,7 +240,7 @@ class strategy_c:
                 if order_direction == active_target_pos.type:
                     # Order direction matches existing position type: increase position
                     # `actual_quantity_to_process_base_units` is already clamped by USD capital or initial quantity
-                    # For BASE mode, it needs to be clamped against max_position_size_base_units (which is self.max_position_size)
+                    # For BASE mode, it needs to be clamped against max_position_size (which is self.max_position_size)
                     clamped_quantity_final = actual_quantity_to_process_base_units
                     if self.currency_mode == 'BASE':
                         available_space_base_units = self.max_position_size - active_target_pos.size
@@ -243,10 +263,10 @@ class strategy_c:
                         marker_color = '#00FF00' if pos_type_being_closed == LONG else '#FF0000'
                         createMarker('❌', location='above', shape='square', color=marker_color)
                         
-                        if actual_quantity_to_process_base_units > active_target_pos.size + EPSILON: # Corrected check for oversized close
-                            if self.verbose and not isInitializing():
-                                print(f"Warning: Attempted to close a {active_target_pos.type} position with an oversized {cmd} order.")
-                                print(f"Position was fully closed. Remaining quantity ({actual_quantity_to_process_base_units - active_target_pos.size:.2f} base units) was not used to open a new position.")
+                        if actual_quantity_to_process_base_units > pos_size_to_close + EPSILON: # Use pos_size_to_close for clarity after closure.
+                             if self.verbose and not isInitializing():
+                                print(f"Warning: Attempted to close a {pos_type_being_closed} position with an oversized {cmd} order.")
+                                print(f"Position was fully closed. Remaining quantity ({actual_quantity_to_process_base_units - pos_size_to_close:.2f} base units) was not used to open a new position.")
 
         else: # --- ONEWAY MODE LOGIC (Only one position at a time) ---
             current_overall_active_pos = self.get_active_position() # Get THE active position, if any type
@@ -304,10 +324,10 @@ class strategy_c:
                         clamped_new_pos_quantity_base_units = remaining_quantity_base_units_for_new_pos
                         if self.currency_mode == 'USD':
                              # Remaining USD capacity for a NEW position is `max_position_size`
-                            if (current_price * leverage) == 0:
-                                max_base_units_for_new_pos_from_usd_limit = 0.0
-                            else:
-                                max_base_units_for_new_pos_from_usd_limit = self.max_position_size / (current_price * leverage)
+                            cost_per_base_unit_with_leverage = current_price * leverage
+                            if cost_per_base_unit_with_leverage < EPSILON:
+                                cost_per_base_unit_with_leverage = EPSILON # Avoid division by zero
+                            max_base_units_for_new_pos_from_usd_limit = self.max_position_size / cost_per_base_unit_with_leverage
                             clamped_new_pos_quantity_base_units = min(remaining_quantity_base_units_for_new_pos, max_base_units_for_new_pos_from_usd_limit)
                         elif self.currency_mode == 'BASE':
                             clamped_new_pos_quantity_base_units = min(remaining_quantity_base_units_for_new_pos, self.max_position_size)
@@ -441,7 +461,7 @@ class strategy_c:
             else:
                 for j, order_data in enumerate(pos.order_history):
                     order_type_str = "BUY" if order_data['type'] == LONG else "SELL"
-                    pnl_info = f" | Realized PnL: {order_data['pnl_quantity']:.2f} (quote currency) ({order_data['pnl_percentage']:.2f}%)" if order_data['pnl_quantity'] != 0 or order_data['pnl_percentage'] != 0 else ""
+                    pnl_info = f" | Realized PnL: {order_data['pnl_quantity']:.2f} (quote currency) ({order_data['pnl_percentage']:.2f}%)" if abs(order_data['pnl_quantity']) > EPSILON or abs(order_data['pnl_percentage']) > EPSILON else ""
                     # Increased precision for quantity display
                     print(f"     Order {j+1}: {order_type_str} {order_data['quantity']:.6f} base units at {order_data['price']:.2f} (Bar Index: {order_data['barindex']}){pnl_info}") 
         
@@ -469,6 +489,7 @@ class strategy_c:
         
         # This calculation's meaning (PnL % vs Max Pos) depends on currency_mode for max_position_size
         # It's kept as is to match previous output structure.
+        # It represents PnL as a percentage of the maximum capital allowed per position.
         pnl_percentage_vs_max_pos_size = (pnl_quantity / self.max_position_size) * 100 if self.max_position_size != 0 else 0.0
 
         profitable_trades = self.total_winning_positions
@@ -484,6 +505,101 @@ class strategy_c:
         # Print values
         print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {percentage_profitable_trades:<12.2f} {pnl_percentage_vs_liquidity:<12.2f}")
         print("------------------------------")
+
+    def print_pnl_by_period(self):
+        """
+        Calculates and prints the realized PnL of closed positions by month, quarter, and year.
+        Includes unrealized PnL from active positions in the final period.
+        The granularity of the output depends on the total duration of the strategy's activity.
+        """
+        print("\n--- PnL By Period ---")
+
+        if not self.positions or self.first_order_timestamp is None:
+            print("No orders were processed during the strategy run to determine a period.")
+            return
+
+        # Get the timestamp of the last candle processed in the backtest
+        last_candle_timestamp = getRealtimeCandle().timestamp # This is the current bar's timestamp at the end of the backtest
+
+        # Aggregate realized PnL from closed positions
+        pnl_by_month_realized = {} # Key: McClellan-MM, Value: PnL (quote currency)
+        pnl_by_quarter_realized = {} # Key: McClellan-Qn, Value: PnL
+        pnl_by_year_realized = {} # Key: McClellan, Value: PnL
+
+        for pos in self.positions:
+            if not pos.active and pos.close_timestamp is not None:
+                # Convert milliseconds timestamp to datetime object (timezone-aware recommended for clarity)
+                dt_obj = datetime.fromtimestamp(pos.close_timestamp / 1000, tz=timezone.utc)
+                
+                year = dt_obj.year
+                month = dt_obj.month
+                quarter = (dt_obj.month - 1) // 3 + 1 # Quarter (1, 2, 3, or 4)
+
+                month_key = f"{year}-{month:02d}"
+                quarter_key = f"{year}-Q{quarter}"
+                year_key = f"{year}"
+
+                pnl_by_month_realized.setdefault(month_key, 0.0)
+                pnl_by_month_realized[month_key] += pos.profit
+
+                pnl_by_quarter_realized.setdefault(quarter_key, 0.0)
+                pnl_by_quarter_realized[quarter_key] += pos.profit
+
+                pnl_by_year_realized.setdefault(year_key, 0.0)
+                pnl_by_year_realized[year_key] += pos.profit
+        
+        # Add unrealized PnL from active positions to the final period
+        final_dt_obj = datetime.fromtimestamp(last_candle_timestamp / 1000, tz=timezone.utc)
+        final_month_key = f"{final_dt_obj.year}-{final_dt_obj.month:02d}"
+        final_quarter_key = f"{final_dt_obj.year}-Q{(final_dt_obj.month - 1) // 3 + 1}"
+        final_year_key = f"{final_dt_obj.year}"
+
+        unrealized_pnl_total_active = 0.0
+        for pos in self.positions:
+            if pos.active:
+                urpnl = pos.get_unrealized_pnl_quantity()
+                unrealized_pnl_total_active += urpnl
+
+                # Add unrealized PnL to the aggregated dicts for the final period
+                pnl_by_month_realized.setdefault(final_month_key, 0.0)
+                pnl_by_month_realized[final_month_key] += urpnl
+
+                pnl_by_quarter_realized.setdefault(final_quarter_key, 0.0)
+                pnl_by_quarter_realized[final_quarter_key] += urpnl
+
+                pnl_by_year_realized.setdefault(final_year_key, 0.0)
+                pnl_by_year_realized[final_year_key] += urpnl
+        
+        if abs(unrealized_pnl_total_active) > EPSILON:
+             print(f"Note: Unrealized PnL ({unrealized_pnl_total_active:.2f} {self.currency_mode}) from active positions included in the final period's PnL.")
+
+        # Determine the total duration of the strategy's activity for granularity
+        start_dt = datetime.fromtimestamp(self.first_order_timestamp / 1000, tz=timezone.utc)
+        end_dt = datetime.fromtimestamp(last_candle_timestamp / 1000, tz=timezone.utc)
+
+        # Calculate total months spanning the strategy's activity
+        total_months_span = (end_dt.year - start_dt.year) * 12 + end_dt.month - start_dt.month + 1
+
+        # Helper function to print a PnL dictionary for a given period type
+        def _print_pnl_dict(title: str, pnl_dict: dict):
+            print(f"\n--- {title} PnL ---")
+            sorted_keys = sorted(pnl_dict.keys())
+            if not sorted_keys:
+                print(f"No data for {title.lower()} period.")
+                return
+            for key in sorted_keys:
+                print(f"  {key}: {pnl_dict[key]:.2f} {self.currency_mode}") # Assuming quote currency is USD, using self.currency_mode for generality
+
+        # Display based on calculated duration
+        if total_months_span <= 3:
+            _print_pnl_dict("Monthly", pnl_by_month_realized)
+        elif total_months_span <= 24: # Up to 2 years (24 months)
+            _print_pnl_dict("Quarterly", pnl_by_quarter_realized)
+        else: # More than 2 years, show yearly and then quarterly
+            _print_pnl_dict("Yearly", pnl_by_year_realized)
+            _print_pnl_dict("Quarterly", pnl_by_quarter_realized) # Also show quarters for longer runs
+
+        print("-----------------------------")
 
 
 class position_c:
@@ -507,6 +623,7 @@ class position_c:
         self.order_history = []  # Stores {'type': LONG/SHORT, 'price': float, 'quantity': float, 'barindex': int, 'pnl_quantity': float, 'pnl_percentage': float}
         self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime (in base units)
         self.active_capital_invested = 0.0 # NEW: Tracks the USD capital (cost basis) currently tied up in the open position
+        self.close_timestamp = None # NEW: Store timestamp when position is closed
 
     def _recalculate_current_position_state(self):
         """
@@ -713,7 +830,14 @@ class position_c:
             
             # Calculate final percentage PnL for the entire position
             # Sum only entry capital (orders where pnl_quantity is approx 0) to get total invested capital.
-            total_entry_capital_for_position = sum(order_data['price'] * order_data['quantity'] for order_data in self.order_history if order_data['pnl_quantity'] >= -EPSILON and order_data['pnl_quantity'] <= EPSILON )
+            # This is the sum of (price * quantity * leverage) for opening/increasing orders.
+            # For simplicity, if total_entry_capital_for_position is 0, the percentage is 0.
+            total_entry_capital_for_position = 0.0
+            for order_data in self.order_history:
+                # Assuming entry orders have pnl_quantity close to zero
+                if order_data['pnl_quantity'] >= -EPSILON and order_data['pnl_quantity'] <= EPSILON:
+                    total_entry_capital_for_position += order_data['price'] * order_data['quantity'] * self.leverage
+            
             self.realized_pnl_percentage = (self.profit / total_entry_capital_for_position) * 100 if total_entry_capital_for_position != 0 else 0.0
 
             # Update strategy-level counters for winning/losing positions
@@ -725,6 +849,7 @@ class position_c:
             self.strategy_instance.total_profit_loss += self.profit # Update strategy's total PnL
             self.active = False # Explicitly set to inactive as it's fully closed
             self.active_capital_invested = 0.0 # Reset capital invested when position is closed
+            self.close_timestamp = getRealtimeCandle().timestamp # NEW: Record closure timestamp
 
             # Print PnL to console
             if self.strategy_instance.verbose and not isInitializing():
@@ -756,11 +881,11 @@ class position_c:
         Returns 0.0 if the position is not active or if the average entry price is zero.
         """
         unrealized_pnl_q = self.get_unrealized_pnl_quantity()
-        if unrealized_pnl_q == 0.0 and (not self.active or self.size < EPSILON):
+        if abs(unrealized_pnl_q) < EPSILON and (not self.active or self.size < EPSILON):
             return 0.0
 
         # Capital involved in the active position based on entry price and quantity (in quote currency)
-        # This should be self.active_capital_invested if it's correctly maintained as cost basis.
+        # This is self.active_capital_invested
         capital_involved = self.active_capital_invested
         if abs(capital_involved) < EPSILON: # Avoid division by zero
             return 0.0
@@ -799,9 +924,18 @@ def order(cmd: str, target_position_type: int, quantity: float = None, leverage:
     if strategy.currency_mode == 'USD':
         if quantity is None:
             # Use default order_size which is in USD
+            # Ensure price is not zero to avoid division by zero
+            if current_price < EPSILON: 
+                if strategy.verbose and not isInitializing():
+                    print(f"Warning: Current price ({current_price:.2f}) is too low for USD quantity conversion. Order not placed.")
+                return
             actual_quantity_base_units = strategy.order_size / current_price
         else:
             # Convert provided USD quantity to base units
+            if current_price < EPSILON:
+                if strategy.verbose and not isInitializing():
+                    print(f"Warning: Current price ({current_price:.2f}) is too low for USD quantity conversion. Order not placed.")
+                return
             actual_quantity_base_units = quantity / current_price
 
         # Safety check for extremely small quantities (if USD amount is too small for current price)
@@ -828,3 +962,6 @@ def print_strategy_stats(): # This will become print_detailed_stats
 
 def print_summary_stats(): # New function
     strategy.print_summary_stats()
+
+def print_pnl_by_period_summary(): # New global function for PnL by period
+    strategy.print_pnl_by_period()
