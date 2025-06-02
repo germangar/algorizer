@@ -267,15 +267,14 @@ class timeframe_c:
 
             if self.shadowcopy:
                 if( self.barindex == 0 and self.timestamp == 0 ): # setup the first row
-                    self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
+                    # self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
+                    self.timestamp = int(self.df.iat[self.barindex, 0]) # trying to win performance in every corner
 
                 if newrow_timestamp > self.timestamp :
-                    # if ALLOW_NEGATIVE_ILOC:
-                    #     self.df = pd.concat( [self.df, self.initdata.iloc[self.barindex+1].to_frame().T], ignore_index=True )
-
                     self.barindex = self.df.iloc[self.barindex].name + 1
                     active.barindex = self.barindex
-                    self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
+                    # self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
+                    self.timestamp = int(self.df.iat[self.barindex, 0]) # trying to win performance in every corner
 
                     if( newrow_timestamp != self.timestamp ):
                         print( "** NEWROW TIMESTAMP != SELF TIMESTAMP")
@@ -299,16 +298,17 @@ class timeframe_c:
                     continue
 
             # NOT SHADOWCOPY: This is realtime
-            if( newrow_timestamp < int(self.df.iloc[self.barindex]['timestamp']) ):
+            last_timestamp = int(self.df.iloc[self.barindex]['timestamp']) 
+            if( newrow_timestamp < last_timestamp ):
                 # print( f"SKIPPING {self.timeframeStr}: {int( newrow.timestamp)}")
                 continue
 
-            if( newrow_timestamp == int(self.df.iloc[self.barindex]['timestamp']) ): # special case. We got an unfinished candle from the server
+            if( newrow_timestamp == last_timestamp ): # special case. We got an unfinished candle from the server
                 if verbose : print( f"VERIFY CANDLE {self.timeframeStr}: {int( newrow_timestamp)}")
                 continue
 
-            if( self.realtimeCandle.timestamp == int(self.df.iloc[self.barindex]['timestamp']) ): # FIX incorrect realtimeCandle
-                self.realtimeCandle.timestamp = int(self.df.iloc[self.barindex]['timestamp']) + self.timeframeMsec
+            if( self.realtimeCandle.timestamp == last_timestamp ): # FIX incorrect realtimeCandle
+                self.realtimeCandle.timestamp = last_timestamp + self.timeframeMsec
                 if verbose : print( f"FIXING {self.timeframeStr} REALTIME CANDLE TIMESTAMP")
 
             # has it reached a new candle yet?
@@ -436,7 +436,7 @@ class timeframe_c:
         
         candle = candle_c()
         candle.timeframemsec = self.timeframeMsec
-        row = self.df.iloc[index]
+        row = self.df.iloc[index].values  # Get as a NumPy array
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume = ( int(row[0]), row[1], row[2], row[3], row[4], row[5] )
         candle.bottom = min( candle.open, candle.close )
         candle.top = max( candle.open, candle.close )
@@ -585,9 +585,10 @@ class stream_c:
 
 
 def getRealtimeCandle()->candle_c:
-    if( active.timeframe == None ):
-        return None
     return active.timeframe.realtimeCandle
+
+def getCandle( index = None )->candle_c:
+    return active.timeframe.candle(index)
 
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''
