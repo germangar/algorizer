@@ -128,7 +128,7 @@ def plot( source, name:str = None, chart_name:str = None ):
     
 
 
-class markers_c:
+class marker_c:
     def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
         # MARKER_POSITION = Literal['above', 'below', 'inside']
         # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
@@ -458,7 +458,7 @@ class stream_c:
         self.timestampFetch = -1
         self.timeframes: dict[str, timeframe_c] = {}
 
-        self.markers:markers_c = []
+        self.markers:marker_c = []
 
         #################################################
         # Validate de timeframes list and find 
@@ -578,7 +578,7 @@ class stream_c:
         if timestamp == -1:
             timestamp = self.timeframes[self.timeframeFetch].timestamp
 
-        self.markers.append( markers_c( text, timestamp, location, shape, color, chart_name ) )
+        self.markers.append( marker_c( text, timestamp, location, shape, color, chart_name ) )
 
 
     def createWindow( self, timeframeStr ):
