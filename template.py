@@ -15,29 +15,24 @@ import trade
 rsi30m = None
 def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
     global rsi30m
-    rsi30m = calc.RSI(close, 14)
+    rsi30m = calc.IFTrsi(close, 14)
     rsi30m.plot('panel')
 
 
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
 
     # bollinger bands
-    BBlen = 350
-    BBmult = 2.0
-    BBbasis = calc.SMA(close, BBlen)
-    BBdev = BBmult * calc.STDEV(close, BBlen)
-    BBupper = BBbasis + BBdev
-    BBlower = BBbasis - BBdev
-    plot( BBupper, "BBupper" )
-    plot( BBlower, "BBlower" )
+    BBbasis, BBupper, BBlower = calc.BollingerBands( close, 250 )
     BBbasis.plot()
+    BBupper.plot()
+    BBlower.plot()
 
     rsi14 = calc.RSI(close, 14)
     rsi30min = requestValue( rsi30m.name, '30m' )
     plot( rsi30min, 'rsi30m', 'panel' )
 
-    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsi30min < 35
-    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsi30min > 60
+    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsi30min < -0.7
+    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsi30min > 0.65
 
     shortpos = trade.getActivePosition(trade.SHORT)
     longpos = trade.getActivePosition(trade.LONG)
@@ -90,7 +85,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 100000, False )
+    stream = stream_c( 'BTC/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 25000, False )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()

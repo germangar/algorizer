@@ -1,6 +1,7 @@
 
 import pandas as pd
 import pandas_ta as pt
+import numpy as np
 import time
 import active
 import tools
@@ -279,6 +280,45 @@ def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataF
 def _generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFrame ) -> pd.Series:
     return pt.cci( df['high'], df['low'], df['close'], period )
 
+def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame) -> pd.Series:
+    BBmult = 2.0
+    sma_name = tools.generatedSeriesNameFormat('sma', series, period)
+    stdev_name = tools.generatedSeriesNameFormat('stdev', series, period)
+
+    if len(series) == period:
+        # Real-time update case — return just last value
+        upper = df[sma_name].iloc[-1] + BBmult * df[stdev_name].iloc[-1]
+        return pd.Series([upper], index=[df.index[-1]])
+
+    # Initialization case — full series calculation
+    return df[sma_name] + (BBmult * df[stdev_name])
+
+def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame) -> pd.Series:
+    BBmult = 2.0
+    sma_name = tools.generatedSeriesNameFormat('sma', series, period)
+    stdev_name = tools.generatedSeriesNameFormat('stdev', series, period)
+
+    if len(series) == period:
+        # Real-time update case — compute only the last value
+        lower = df[sma_name].iloc[-1] - BBmult * df[stdev_name].iloc[-1]
+        return pd.Series([lower], index=[df.index[-1]])
+
+    # Initialization case — full series
+    return df[sma_name] - (BBmult * df[stdev_name])
+
+def _generatedseries_calculate_inverse_fisher_rsi(series: pd.Series, period: int, df: pd.DataFrame) -> pd.Series:
+    rsi = df[tools.generatedSeriesNameFormat("rsi", series, period)]
+    v1 = 0.1 * (rsi - 50)
+
+    weights = np.arange(1, period + 1)
+    wma = v1.rolling(window=period).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+
+    # Clip v2 before exponentiation to prevent overflow
+    v2_clipped = wma.clip(lower=-10, upper=10)
+    exp_val = np.exp(2 * v2_clipped)
+    iftrsi = (exp_val - 1) / (exp_val + 1)
+    return iftrsi
+
 
 
 class generatedSeries_c:
@@ -320,7 +360,7 @@ class generatedSeries_c:
             return
 
         # has this row already been updated?
-        if( self.timestamp >= self.timeframe.df['timestamp'].iloc[self.timeframe.barindex] ):
+        if( self.timestamp >= self.timeframe.df.iat[self.timeframe.barindex, 0] ): # same as self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
             return
 
         # if non existant try to create new. A few need to be made new every time
@@ -424,8 +464,10 @@ class generatedSeries_c:
     #     return self.__eq__(other)
 
     def plot( self, chart = None ):
+        '''it returns the generatedSeries even when calling plot from the timeframe and the function returns the plot_c'''
         if( self.timestamp > 0 ):
             self.timeframe.plot( self.series(), self.name, chart )
+            return self
     
     def crossingUp( self, other ):
         df = self.timeframe.df
@@ -570,10 +612,32 @@ def FWMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'fwma', source, period, _generatedseries_calculate_fwma )
 
+def BBu( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    if timeframe == None : timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper )
+
+def BBl( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    if timeframe == None : timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower )
+
+def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    if timeframe == None : timeframe = active.timeframe
+    rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
+    return timeframe.calcGeneratedSeries( 'iftrsi', source, period, _generatedseries_calculate_inverse_fisher_rsi )
+
+
 
 # #
 # # OTHER NOT GENERATED SERIES
 # #
+
+def BollingerBands( source:pd.Series, period:int ):
+    BBbasis = SMA(source, period)
+    STDEV(source, period)
+    BBupper = active.timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper )
+    BBlower = active.timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower )
+    return BBbasis, BBupper, BBlower
+
 
 
 def indexWhenTrue( source ):
