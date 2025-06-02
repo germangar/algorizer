@@ -339,13 +339,93 @@ class generatedSeries_c:
         self.timeframe.df.loc[self.timeframe.df.index[-1], self.name] = newval
         self.timestamp = self.timeframe.timestamp
 
+    def value( self, backindex = 0 ):
+        if( backindex >= len(self.timeframe.df) ):
+            raise SystemError( "generatedseries_c.value() : backindex out of bounds")
+
+        return self.timeframe.df[self.name].iloc[self.timeframe.barindex - backindex]
+
+    def series( self ):
+        return self.timeframe.df[self.name]
+    
+    # direct operations will always operate the last value.
+    # If you want to operate the whole series do it with the .series() method.
+    def __add__(self, other):
+        if isinstance(other, generatedSeries_c):
+            return self.value() + other.value()
+        if isinstance(other, pd.Series):
+            return self.value() + other.iloc[active.barindex]
+        return self.value() + other
+    
+    def __radd__(self, other):
+        return self.__add__(other)
+    
+    def __sub__(self, other):
+        if isinstance(other, generatedSeries_c):
+            return self.value() - other.value()
+        if isinstance(other, pd.Series):
+            return self.value() - other.iloc[active.barindex]
+        return self.value() - other
+    
+    def __rsub__(self, other):
+        return self.__sub__(other)
+    
+    def __mul__(self, other):
+        if isinstance(other, generatedSeries_c):
+            return self.value() * other.value()
+        elif isinstance(other, pd.Series):
+            return self.value() * other.iloc[active.barindex]
+        else:
+            return self.value() * other
+        
+    def __rmul__(self, other):
+        return self.__mul__(other)
+    
+    def __truediv__(self, other):
+        if isinstance(other, generatedSeries_c):
+            return self.value() / other.value()
+        if isinstance(other, pd.Series):
+            return self.value() / other.iloc[active.barindex]
+        return self.value() / other
+    
+    def __rtruediv__(self, other):
+        return self.__truediv__(other)
+    
+    def __lt__(self, other):
+        if isinstance(other, generatedSeries_c):
+            return self.value() < other.value()
+        if isinstance(other, pd.Series):
+            return self.value() < other.iloc[active.barindex]
+        return self.value() < other
+    
+    def __rlt__(self, other):
+        return self.__lt__(other)
+    
+    def __gt__(self, other):
+        if isinstance(other, generatedSeries_c):
+            return self.value() > other.value()
+        if isinstance(other, pd.Series):
+            return self.value() > other.iloc[active.barindex]
+        return self.value() > other
+    
+    def __rgt__(self, other):
+        return self.__gt__(other)
+    
+    def __eq__(self, other):
+        if other is None:
+            return False
+        if isinstance(other, generatedSeries_c):
+            return self.value() == other.value()
+        if isinstance(other, pd.Series):
+            return self.value() == other.iloc[active.barindex]
+        return self.value() == other
+    
+    # def __req__(self, other):
+    #     return self.__eq__(other)
 
     def plot( self, chart = None ):
         if( self.timestamp > 0 ):
             self.timeframe.plot( self.series(), self.name, chart )
-    
-    def series( self ):
-        return self.timeframe.df[self.name]
     
     def crossingUp( self, other ):
         df = self.timeframe.df
@@ -392,11 +472,7 @@ class generatedSeries_c:
     def crossing( self, other ):
         return self.crossingUp(other) or self.crossingDown(other)
     
-    def value( self, backindex = 0 ):
-        if( backindex >= len(self.timeframe.df) ):
-            raise SystemError( "generatedseries_c.value() : backindex out of bounds")
-
-        return self.timeframe.df[self.name].iloc[self.timeframe.barindex - backindex]
+    
     
 
 
@@ -547,6 +623,16 @@ def crossingUp( self, other ):
     if isinstance( self, generatedSeries_c ):
         return self.crossingUp( other )
     
+    if isinstance( self, int ):
+        self = float(self)
+
+    if isinstance( other, int ):
+        other = float(other)
+
+    if( isinstance(self, float) and isinstance(other, float) ):
+        print( "* WARNING: crossinUp: Two static values can never cross" )
+        return False
+    
     self_old = 0
     self_new = 0
     other_old = 0
@@ -589,6 +675,16 @@ def crossingUp( self, other ):
 def crossingDown( self, other ):
     if isinstance( self, generatedSeries_c ):
         return self.crossingDown( other )
+    
+    if isinstance( self, int ):
+        self = float(self)
+
+    if isinstance( other, int ):
+        other = float(other)
+
+    if( isinstance(self, float) and isinstance(other, float) ):
+        print( "* WARNING: crossinDown: Two static values can never cross" )
+        return False
     
     self_old = 0
     self_new = 0
