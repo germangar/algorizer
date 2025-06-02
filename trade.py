@@ -7,6 +7,7 @@
 from candle import candle_c
 from algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle
 from datetime import datetime, timezone
+
 import active # Corrected: Import active to get active.barindex
 
 # Define constants for position types
@@ -39,16 +40,6 @@ class strategy_c:
 
         # Validate parameters based on currency_mode
         if self.currency_mode == 'USD' and self.max_position_size > self.initial_liquidity:
-            # This check is more about "available capital" than "max position size" if max_position_size was meant as notional.
-            # But adhering to the previous discussions, max_position_size is the max notional value of a single position.
-            # The check `max_position_size > initial_liquidity` implies an over-allocation on a single position relative to total capital.
-            # However, `initial_liquidity` is available capital for *all* positions.
-            # Let's adjust this: max_position_size is how much capital can be risked in *one* position.
-            # This restriction should be applied at trade execution, not init.
-            # For now, keeping the validation as is based on the provided logic.
-            pass # Removed ValueError based on implicit agreement that max_position_size can be greater than initial_liquidity if it's notional and initial_liquidity is margin.
-                 # Reverted to previous thought: max_position_size is effectively a 'capital invested' limit per position, so it can't exceed initial_liquidity as total available capital *for that position*.
-                 # Re-instating stricter check if max_position_size is meant to be a direct deduction from initial_liquidity for a single position.
             # If max_position_size is meant as the *capital invested* in a single position, it should not exceed initial_liquidity.
             # If it's a notional size with leverage, it can be larger than initial_liquidity.
             # Given `active_capital_invested` is `price * size * leverage`, `max_position_size` is a limit on this `active_capital_invested`.
@@ -244,7 +235,7 @@ class strategy_c:
                     clamped_quantity_final = actual_quantity_to_process_base_units
                     if self.currency_mode == 'BASE':
                         available_space_base_units = self.max_position_size - active_target_pos.size
-                        clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_base_units)
+                        clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_units)
 
                     if clamped_quantity_final > EPSILON:
                         active_target_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
@@ -257,15 +248,26 @@ class strategy_c:
                         active_target_pos.update(order_direction, current_price, actual_quantity_to_process_base_units, leverage)
                     elif actual_quantity_to_process_base_units >= active_target_pos.size - EPSILON:
                         # Full close: close the existing position (or oversized order that just closes)
-                        pos_type_being_closed = active_target_pos.type # Get type before closing
-                        active_target_pos.close(current_price)
-                        # Determine marker color based on the type of position that was closed
-                        marker_color = '#00FF00' if pos_type_being_closed == LONG else '#FF0000'
-                        createMarker('❌', location='above', shape='square', color=marker_color)
                         
-                        if actual_quantity_to_process_base_units > pos_size_to_close + EPSILON: # Use pos_size_to_close for clarity after closure.
+                        # Store current position reference before it gets closed for profit check
+                        closing_position_reference = active_target_pos
+                        
+                        # Get size BEFORE calling close for printing warnings
+                        pos_size_to_close = closing_position_reference.size 
+
+                        closing_position_reference.close(current_price) # This calculates and sets closing_position_reference.profit
+
+                        # Determine marker based on the position's profit after it's closed
+                        marker_text = 'W' if closing_position_reference.profit > EPSILON else ('L' if closing_position_reference.profit < -EPSILON else 'E') # 'E' for even/break-even
+                        
+                        # Determine marker color based on the TYPE of the position being closed
+                        marker_color = '#00CC00' if closing_position_reference.type == LONG else '#FF0000' # Green for LONG, Red for SHORT
+
+                        createMarker(marker_text, location='above', shape='square', color=marker_color)
+                        
+                        if actual_quantity_to_process_base_units > pos_size_to_close + EPSILON: 
                              if self.verbose and not isInitializing():
-                                print(f"Warning: Attempted to close a {pos_type_being_closed} position with an oversized {cmd} order.")
+                                print(f"Warning: Attempted to close a {'LONG' if closing_position_reference.type == LONG else 'SHORT'} position with an oversized {cmd} order.")
                                 print(f"Position was fully closed. Remaining quantity ({actual_quantity_to_process_base_units - pos_size_to_close:.2f} base units) was not used to open a new position.")
 
         else: # --- ONEWAY MODE LOGIC (Only one position at a time) ---
@@ -309,12 +311,19 @@ class strategy_c:
                 if actual_quantity_to_process_base_units >= current_overall_active_pos.size - EPSILON:
                     # Reversal: Close existing position and open new one with remaining quantity
                     pos_size_to_close = current_overall_active_pos.size
-                    pos_type_being_closed = current_overall_active_pos.type # Get type before closing
                     
-                    current_overall_active_pos.close(current_price)
-                    # Determine marker color based on the type of position that was closed
-                    marker_color = '#00FF00' if pos_type_being_closed == LONG else '#FF0000'
-                    createMarker('❌', location='above', shape='square', color=marker_color)
+                    # Store current position reference before it gets closed for profit check
+                    closing_position_reference = current_overall_active_pos 
+
+                    closing_position_reference.close(current_price) # This calculates and sets closing_position_reference.profit
+
+                    # Determine marker based on the position's profit after it's closed
+                    marker_text = 'W' if closing_position_reference.profit > EPSILON else ('L' if closing_position_reference.profit < -EPSILON else 'E')
+                    
+                    # Determine marker color based on the TYPE of the position being closed
+                    marker_color = '#00CC00' if closing_position_reference.type == LONG else '#FF0000' # Green for LONG, Red for SHORT
+
+                    createMarker(marker_text, location='above', shape='square', color=marker_color)
                     
                     # Remaining quantity after closing the old position
                     remaining_quantity_base_units_for_new_pos = actual_quantity_to_process_base_units - pos_size_to_close
@@ -335,11 +344,11 @@ class strategy_c:
                         if clamped_new_pos_quantity_base_units > EPSILON:
                             self.open_position(order_direction, current_price, clamped_new_pos_quantity_base_units, leverage)
                             if self.verbose and not isInitializing():
-                                print(f"Position reversed: Closed {pos_type_being_closed} position and opened new {order_direction} position with {clamped_new_pos_quantity_base_units:.2f} base units.")
+                                print(f"Position reversed: Closed {'LONG' if closing_position_reference.type == LONG else 'SHORT'} position and opened new {order_direction} position with {clamped_new_pos_quantity_base_units:.2f} base units.")
                         elif self.verbose and not isInitializing():
                             print(f"Warning: Position closed. Remaining quantity ({remaining_quantity_base_units_for_new_pos:.2f} base units) clamped to 0 because it exceeds max_position_size or is too small. No new position opened.")
                     elif self.verbose and not isInitializing():
-                        print(f"Position of type {'LONG' if pos_type_being_closed == LONG else 'SHORT'} was fully closed by an exact or slightly oversized order. No new position opened.")
+                        print(f"Position of type {'LONG' if closing_position_reference.type == LONG else 'SHORT'} was fully closed by an exact or slightly oversized order. No new position opened.")
                 else:
                     # Partial close of the existing position
                     current_overall_active_pos.update(order_direction, current_price, actual_quantity_to_process_base_units, leverage)
@@ -522,9 +531,9 @@ class strategy_c:
         last_candle_timestamp = getRealtimeCandle().timestamp # This is the current bar's timestamp at the end of the backtest
 
         # Aggregate realized PnL from closed positions
-        pnl_by_month_realized = {} # Key: McClellan-MM, Value: PnL (quote currency)
-        pnl_by_quarter_realized = {} # Key: McClellan-Qn, Value: PnL
-        pnl_by_year_realized = {} # Key: McClellan, Value: PnL
+        pnl_by_month_realized = {} # Key: YYYY-MM, Value: PnL (quote currency)
+        pnl_by_quarter_realized = {} # Key: YYYY-Qn, Value: PnL
+        pnl_by_year_realized = {} # Key: YYYY, Value: PnL
 
         for pos in self.positions:
             if not pos.active and pos.close_timestamp is not None:
