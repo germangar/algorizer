@@ -94,6 +94,7 @@ if __name__ == '__main__':
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
+    trade.print_pnl_by_period_summary()
 
     # Call only if you want to open the chart window. It's not needed to run the algo
     stream.createWindow( '1m' )
