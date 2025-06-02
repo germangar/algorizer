@@ -21,37 +21,39 @@ def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, l
 
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
 
-    sma = calc.SMA( close, 75 )
-    plot( sma.series(), sma.name )
+    # bollinger bands
+    BBlen = 350
+    BBmult = 2.0
+    BBbasis = calc.SMA(close, BBlen)
+    BBdev = BBmult * calc.STDEV(close, BBlen)
+    BBupper = BBbasis + BBdev
+    BBlower = BBbasis - BBdev
+    plot( BBupper, "BBupper" )
+    plot( BBlower, "BBlower" )
+    BBbasis.plot()
 
-    lr = calc.LINREG( close, 300 )
-    lr.plot()
-
+    rsi14 = calc.RSI(close, 14)
     rsi30min = requestValue( rsi30m.name, '30m' )
     plot( rsi30min, 'rsi30m', 'panel' )
 
+    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsi30min < 35
+    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsi30min > 60
+
     shortpos = trade.getActivePosition(trade.SHORT)
-    if shortpos :
-        pnl = shortpos.get_unrealized_pnl_percentage()
-        if pnl < -0.5 or pnl > 10.0:
-            trade.close(trade.SHORT)
-
-    if( sma.crossingUp(lr) ):
-        if(shortpos and len(shortpos.order_history) > 1 ):
-            trade.close(trade.SHORT)
-        if rsi30min < 45:
-            trade.order( 'buy', trade.LONG )
-
     longpos = trade.getActivePosition(trade.LONG)
-    if longpos and longpos.get_unrealized_pnl_percentage()  < -0.5:
-        trade.close(trade.LONG)
 
-    if calc.crossingDown( sma.series(), lr ):
-        if( longpos and len(longpos.order_history) > 1 ):
+    if buySignal:
+        if shortpos is not None:
+            trade.close(trade.SHORT)
+
+        trade.order( 'buy', trade.LONG )
+
+    if sellSignal:
+        if longpos is not None:
             trade.close(trade.LONG)
 
-        if rsi30min > 55 :
-            trade.order( 'sell', trade.SHORT )
+        trade.order( 'sell', trade.SHORT )
+        
 
 
 
@@ -64,8 +66,10 @@ if __name__ == '__main__':
 
     # configure the strategy before creating the stream
     trade.strategy.hedged = False
-    trade.strategy.order_size = 100 # set to smaller than max_position_size for pyramiding
-    trade.strategy.max_position_size = 100
+    trade.strategy.currency_mode = 'USD'
+    trade.strategy.order_size = 1000 # should allow only pyramiding of 5 orders
+    trade.strategy.max_position_size = 5000
+    
 
     # Start the candles stream:
     #
@@ -83,11 +87,10 @@ if __name__ == '__main__':
     #   The functions that will be called when each timeframe closes a candle. That's where the heart of your algo resides.
     #
     # - Amount of history candles *from the last timeframe in the list* to calculate. The other timeframes will adjust to it.
+    #
+    # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 10000 )
-
-    print( stream.timeframes[stream.timeframeFetch].df )
-    print( stream.timeframes['30m'].df )
+    stream = stream_c( 'BTC/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 100000, False )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()

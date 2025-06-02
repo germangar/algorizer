@@ -28,6 +28,7 @@ class plot_c:
         self.chartName = chart_name
         self.line = None
         self.initialized = False
+        self.iat_index = -1
 
         if name is None:
             raise SystemError( "ERROR: plot_c: Can't create a plot without a name" )
@@ -52,11 +53,8 @@ class plot_c:
             if( timeframe.window is None ):
                 # if it's plotting a generated series reference its column in the dataframe
                 if( isinstance(source, pd.Series) ):
-                    if self.name.startswith('_'):
-                        if self.name not in timeframe.df.columns:
-                            raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
-                        # self.source = timeframe.df[self.name] # we don't really need to do this
-
+                    if self.name not in timeframe.df.columns:
+                        raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
                     # I don't support series which are not in the dataframe yet
                     return
 
@@ -65,16 +63,14 @@ class plot_c:
                     if source != None:
                         print( f"* WARNING: plot_c: Unrecognized type {type(source)}." )
                         return
-                    
-                if source != None:
-                    source = float(source)
 
                 # Create a column in the dataframe for it if there's none, and keep updating it
                 if self.name not in timeframe.df.columns:
                     timeframe.df[self.name] = None
+                    self.iat_index = timeframe.df.columns.get_loc(self.name)
                     
-                column_index = timeframe.df.columns.get_loc(self.name)
-                timeframe.df.iloc[timeframe.barindex, column_index] = source
+                # timeframe.df.at[timeframe.barindex, self.name] = source
+                timeframe.df.iat[timeframe.barindex, self.iat_index] = source
                 return
             
 
@@ -86,6 +82,7 @@ class plot_c:
             chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
             self.line = chart.create_line( self.name, price_line=False, price_label=False )
             self.line.set( pd.DataFrame({'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries}) )
+            self.iat_index = timeframe.df.columns.get_loc(self.name)
             self.initialized = True
             return
 
@@ -94,27 +91,24 @@ class plot_c:
         if( timeframe.window is None ):
             self.initialized = False
             return
-        
+
         # if it's not a series update the value into the dataframe
-        if( isinstance(source, int) or isinstance(source, float) ):
-            source = float(source)
+        if( isinstance(source, float) or isinstance(source, int) ):
             if self.name not in timeframe.df.columns: 
                 # This would never happen. Maybe I should just raise an error
                 print( f'* WARNING plot_c: New plot [{self.name}] was created after initialization' )
                 timeframe.df[self.name] = None
-
-            column_index = timeframe.df.columns.get_loc(self.name)
-            timeframe.df.iloc[timeframe.barindex, column_index] = source
+            timeframe.df.iat[timeframe.barindex, self.iat_index] = source
 
             ### fall through ###
 
         # I don't support series not in the dataframe yet
         if( isinstance(source, pd.Series) ):
-            if not self.name.startswith('_'):
+            if self.name not in timeframe.df.columns:
                 return
 
         # update the chart
-        newval = timeframe.df[self.name].iloc[timeframe.barindex]
+        newval = timeframe.df.iat[self.iat_index, timeframe.barindex]
         self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 
 
@@ -399,6 +393,7 @@ class timeframe_c:
 
 
     def plot( self, source, name:str = None, chart_name:str = None )->plot_c:
+        if self.stream.noplots : return
         plot = self.registeredPlots.get( name )
 
         if( plot == None ):
@@ -451,9 +446,10 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, callbackList, max_amount = 5000 ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbackList, max_amount = 5000, noplots:bool = False ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
+        self.noplots = noplots
         self.timeframeFetch = None
         self.timestampFetch = -1
         self.timeframes: dict[str, timeframe_c] = {}
