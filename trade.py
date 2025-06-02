@@ -19,20 +19,26 @@ class strategy_c:
     """
     Represents the overall trading strategy, managing positions and global statistics.
     """
-    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False):
+    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False, currency_mode: str = 'USD'):
         self.positions = []   # List to hold all positions (both active and closed, Long and Short)
         self.total_profit_loss = 0.0 # Global variable to keep track of the total profit/loss for the entire strategy
         self.initial_liquidity = initial_liquidity # Starting capital for the strategy
         self.total_winning_positions = 0 # Counter for winning closed positions
         self.total_losing_positions = 0   # Counter for losing closed positions
         self.verbose = verbose # Controls whether warning prints are displayed
-        self.order_size = order_size # Default quantity to use when none is provided
-        self.max_position_size = max_position_size # Maximum allowed total size for any single position
-        self.hedged = hedged # NEW: Controls whether multiple positions can be open simultaneously (True) or only one (False)
+        self.order_size = order_size # Default quantity to use when none is provided (USD or BASE units depending on currency_mode)
+        self.max_position_size = max_position_size # Maximum allowed total size for any single position (USD or BASE units)
+        self.hedged = hedged # Controls whether multiple positions can be open simultaneously (True) or only one (False)
+        self.currency_mode = currency_mode.upper() # NEW: 'USD' or 'BASE'
 
-        # Validate parameters
-        if self.max_position_size > self.initial_liquidity:
-            raise ValueError(f"max_position_size ({self.max_position_size}) cannot be greater than initial_liquidity ({self.initial_liquidity}).")
+        # Validate currency_mode
+        if self.currency_mode not in ['USD', 'BASE']:
+            raise ValueError(f"Invalid currency_mode: {currency_mode}. Must be 'USD' or 'BASE'.")
+
+        # Validate parameters based on currency_mode
+        if self.currency_mode == 'USD' and self.max_position_size > self.initial_liquidity:
+            raise ValueError(f"max_position_size ({self.max_position_size}) cannot be greater than initial_liquidity ({self.initial_liquidity}) when currency_mode is 'USD'.")
+        
         if self.order_size <= 0:
             raise ValueError("order_size must be a positive value.")
         if self.max_position_size <= 0:
@@ -42,6 +48,7 @@ class strategy_c:
     def open_position(self, pos_type: int, price: float, quantity: float, leverage: int) -> 'position_c':
         """
         Creates and opens a new position, associated with this strategy instance.
+        Quantity must always be in base units.
         """
         pos = position_c(self) # Pass self (strategy_c instance) to position_c
         pos.leverage = leverage # Set initial leverage for the position object
@@ -98,9 +105,9 @@ class strategy_c:
             return 0
         return pos.type
 
-    def execute_order(self, cmd: str, target_position_type: int, quantity: float = None, leverage: int = 1): # Removed price parameter
+    def execute_order(self, cmd: str, target_position_type: int, quantity_in_base_units: float, leverage: int = 1):
         """
-        Executes a trading order. Behavior depends on the 'hedged' flag.
+        Executes a trading order. All internal calculations use base units.
         The price is retrieved from getRealtimeCandle().close internally.
 
         If hedged=True: Allows simultaneous LONG and SHORT positions.
@@ -110,20 +117,28 @@ class strategy_c:
         Args:
             cmd (str): The command ('buy' or 'sell').
             target_position_type (int): Specifies which position (LONG or SHORT) this order targets.
-            quantity (float, optional): The quantity for the order. If None or 0, uses self.order_size.
+            quantity_in_base_units (float): The quantity for the order, always in base currency units.
             leverage (int, optional): The leverage. Defaults to 1.
         """
         if cmd is None:
             return
 
-        # Retrieve the current price directly
-        current_price = getRealtimeCandle().close # Price is now retrieved here
-
+        current_price = getRealtimeCandle().close
         cmd = cmd.lower()
         
-        # Use default order_size if quantity is not provided or zero
-        if quantity is None or quantity <= EPSILON:
-            quantity = self.order_size
+        # Safety check for extremely small quantities after any potential conversion
+        if quantity_in_base_units < EPSILON:
+            if self.verbose and not isInitializing():
+                print(f"Warning: Order quantity ({quantity_in_base_units:.6f} base units) is effectively zero. No order placed.")
+            return
+
+        # Determine the effective max_position_size in BASE UNITS for clamping
+        max_position_size_base_units = 0.0
+        if self.currency_mode == 'USD':
+            max_position_size_base_units = self.max_position_size / current_price
+        else: # 'BASE' mode
+            max_position_size_base_units = self.max_position_size
+
 
         # Determine the direction of the order itself (BUY or SELL)
         order_direction = 0
@@ -142,12 +157,13 @@ class strategy_c:
             if active_target_pos is None:
                 # No active position of the target_position_type, so open a new one
                 if order_direction == target_position_type:
-                    # Clamp quantity to max_position_size if opening a new position
-                    clamped_quantity = min(quantity, self.max_position_size)
+                    # Clamp quantity_in_base_units to max_position_size_base_units
+                    clamped_quantity = min(quantity_in_base_units, max_position_size_base_units)
+                    
                     if clamped_quantity > EPSILON:
-                        self.open_position(target_position_type, current_price, clamped_quantity, leverage) # Pass current_price
+                        self.open_position(target_position_type, current_price, clamped_quantity, leverage)
                     elif self.verbose and not isInitializing():
-                        print(f"Warning: Order quantity ({quantity:.2f}) clamped to 0 because it exceeds max_position_size ({self.max_position_size:.2f}) for opening a new position. No position opened.")
+                        print(f"Warning: Attempted to open new position, but calculated quantity ({clamped_quantity:.2f} base units) is effectively zero after clamping. No position opened.")
                 else:
                     if self.verbose and not isInitializing():
                         print(f"Warning: In hedged mode, cannot open a {target_position_type} position with a {cmd} order without an active position. Please ensure order direction matches target position type for opening.")
@@ -155,26 +171,26 @@ class strategy_c:
             else: # An active position of the target_position_type exists
                 if order_direction == active_target_pos.type:
                     # Order direction matches existing position type: increase position
-                    available_space = self.max_position_size - active_target_pos.size
-                    clamped_quantity = min(quantity, available_space)
+                    available_space = max_position_size_base_units - active_target_pos.size
+                    clamped_quantity = min(quantity_in_base_units, available_space)
 
                     if clamped_quantity > EPSILON:
-                        active_target_pos.update(order_direction, current_price, clamped_quantity, leverage) # Pass current_price
+                        active_target_pos.update(order_direction, current_price, clamped_quantity, leverage)
                     elif self.verbose and not isInitializing():
-                        print(f"Warning: Attempted to increase {active_target_pos.type} position but order quantity ({quantity:.2f}) clamped to 0 because it would exceed max_position_size ({self.max_position_size:.2f}). No change to position.")
+                        print(f"Warning: Attempted to increase {active_target_pos.type} position but calculated quantity ({clamped_quantity:.2f} base units) is effectively zero after clamping. No change to position.")
                 else:
                     # Order direction opposes existing position type: reduce or close
-                    if quantity < active_target_pos.size - EPSILON:
+                    if quantity_in_base_units < active_target_pos.size - EPSILON:
                         # Partial close: reduce the existing position
-                        active_target_pos.update(order_direction, current_price, quantity, leverage) # Pass current_price
-                    elif quantity >= active_target_pos.size - EPSILON:
+                        active_target_pos.update(order_direction, current_price, quantity_in_base_units, leverage)
+                    elif quantity_in_base_units >= active_target_pos.size - EPSILON:
                         # Full close: close the existing position (or oversized order that just closes)
-                        active_target_pos.close(current_price) # Pass current_price
+                        active_target_pos.close(current_price)
                         createMarker('❌', location='above', shape='square', color='#808080') # Grey square for full close
-                        if quantity > active_target_pos.size + EPSILON:
+                        if quantity_in_base_units > active_target_pos.size + EPSILON:
                             if self.verbose and not isInitializing():
                                 print(f"Warning: Attempted to close a {active_target_pos.type} position with an oversized {cmd} order.")
-                                print(f"Position was fully closed. Remaining quantity ({quantity - active_target_pos.size:.2f}) was not used to open a new position.")
+                                print(f"Position was fully closed. Remaining quantity ({quantity_in_base_units - active_target_pos.size:.2f} base units) was not used to open a new position.")
 
         else: # --- ONEWAY MODE LOGIC (Only one position at a time) ---
             current_overall_active_pos = self.get_active_position() # Get THE active position, if any type
@@ -182,55 +198,54 @@ class strategy_c:
             if current_overall_active_pos is None:
                 # No active position, open a new one (only if order direction matches target type for consistency)
                 if order_direction == target_position_type:
-                    clamped_quantity = min(quantity, self.max_position_size)
+                    clamped_quantity = min(quantity_in_base_units, max_position_size_base_units)
                     if clamped_quantity > EPSILON:
-                        self.open_position(target_position_type, current_price, clamped_quantity, leverage) # Pass current_price
+                        self.open_position(target_position_type, current_price, clamped_quantity, leverage)
                     elif self.verbose and not isInitializing():
-                        print(f"Warning: Order quantity ({quantity:.2f}) clamped to 0 because it exceeds max_position_size ({self.max_position_size:.2f}) for opening a new position. No position opened.")
+                        print(f"Warning: Attempted to open new position, but calculated quantity ({clamped_quantity:.2f} base units) is effectively zero after clamping. No position opened.")
                 else:
                     if self.verbose and not isInitializing():
                         print(f"Warning: In one-way mode, no active position. Cannot {cmd} to target {target_position_type} type when opening a new position (order direction mismatch).")
             
             elif order_direction == current_overall_active_pos.type:
                 # Order direction matches current overall position: increase existing position
-                available_space = self.max_position_size - current_overall_active_pos.size
-                clamped_quantity = min(quantity, available_space)
+                available_space = max_position_size_base_units - current_overall_active_pos.size
+                clamped_quantity = min(quantity_in_base_units, available_space)
                 if clamped_quantity > EPSILON:
-                    current_overall_active_pos.update(order_direction, current_price, clamped_quantity, leverage) # Pass current_price
+                    current_overall_active_pos.update(order_direction, current_price, clamped_quantity, leverage)
                 elif self.verbose and not isInitializing():
-                    print(f"Warning: Attempted to increase {current_overall_active_pos.type} position but order quantity ({quantity:.2f}) clamped to 0 because it would exceed max_position_size ({self.max_position_size:.2f}). No change to position.")
+                    print(f"Warning: Attempted to increase {current_overall_active_pos.type} position but calculated quantity ({clamped_quantity:.2f} base units) is effectively zero after clamping. No change to position.")
 
             elif order_direction != current_overall_active_pos.type:
                 # Order direction opposes current overall position: close/reverse
                 
                 # Check if the order is large enough to close the existing position
-                if quantity >= current_overall_active_pos.size - EPSILON:
+                if quantity_in_base_units >= current_overall_active_pos.size - EPSILON:
                     # Reversal: Close existing position and open new one with remaining quantity
                     pos_size_to_close = current_overall_active_pos.size
                     
-                    # Close the existing position
                     # Note: pos.close() marks it inactive and calculates PnL
-                    current_overall_active_pos.close(current_price) # Pass current_price
+                    current_overall_active_pos.close(current_price)
                     createMarker('❌', location='above', shape='square', color='#808080') # Marker for full close
 
-                    remaining_quantity = quantity - pos_size_to_close
+                    remaining_quantity_base_units = quantity_in_base_units - pos_size_to_close
                     
-                    if remaining_quantity > EPSILON:
+                    if remaining_quantity_base_units > EPSILON:
                         # Open a new position in the opposite direction with the remaining quantity
-                        clamped_new_pos_quantity = min(remaining_quantity, self.max_position_size)
+                        clamped_new_pos_quantity = min(remaining_quantity_base_units, max_position_size_base_units)
                         if clamped_new_pos_quantity > EPSILON:
-                            self.open_position(order_direction, current_price, clamped_new_pos_quantity, leverage) # Pass current_price
+                            self.open_position(order_direction, current_price, clamped_new_pos_quantity, leverage)
                             if self.verbose and not isInitializing():
-                                print(f"Position reversed: Closed {current_overall_active_pos.type} position and opened new {order_direction} position with {clamped_new_pos_quantity:.2f} quantity.")
+                                print(f"Position reversed: Closed {current_overall_active_pos.type} position and opened new {order_direction} position with {clamped_new_pos_quantity:.2f} base units.")
                         elif self.verbose and not isInitializing():
-                            print(f"Warning: Position closed. Remaining quantity ({remaining_quantity:.2f}) clamped to 0 because it exceeds max_position_size ({self.max_position_size:.2f}) for opening a new position. No new position opened.")
+                            print(f"Warning: Position closed. Remaining quantity ({remaining_quantity_base_units:.2f} base units) clamped to 0 because it exceeds max_position_size. No new position opened.")
                     elif self.verbose and not isInitializing():
                         print(f"Position of type {'LONG' if current_overall_active_pos.type == LONG else 'SHORT'} was fully closed by an exact or slightly oversized order. No new position opened.")
                 else:
                     # Partial close of the existing position
-                    current_overall_active_pos.update(order_direction, current_price, quantity, leverage) # Pass current_price
+                    current_overall_active_pos.update(order_direction, current_price, quantity_in_base_units, leverage)
                     if self.verbose and not isInitializing():
-                        print(f"Partial close: Reduced {current_overall_active_pos.type} position by {quantity:.2f}.")
+                        print(f"Partial close: Reduced {current_overall_active_pos.type} position by {quantity_in_base_units:.2f} base units.")
 
     def close_position(self, pos_type: int = None): # pos_type is now optional
         """
@@ -268,13 +283,10 @@ class strategy_c:
                 print(f"No active{type_str} position to close.")
             return
         
-        # We no longer need to retrieve getRealtimeCandle().close here,
-        # as execute_order will retrieve it internally.
-        
         # Execute order to close the position
         # Determine the closing order type based on the position's type
         close_cmd = 'sell' if pos_to_close.type == LONG else 'buy'
-        # Call execute_order without price parameter
+        # Call execute_order with quantity_in_base_units (pos_to_close.size is already in base units)
         self.execute_order(close_cmd, pos_to_close.type, pos_to_close.size) 
 
     def get_total_profit_loss(self) -> float:
@@ -282,6 +294,37 @@ class strategy_c:
         Returns the total accumulated profit or loss for the strategy.
         """
         return self.total_profit_loss
+
+    # NEW: Method to calculate average winning trade PnL
+    def get_average_winning_trade_pnl(self) -> float:
+        """
+        Calculates the average realized PnL (in quote currency) for all closed winning trades.
+        Returns 0.0 if there are no winning trades.
+        """
+        total_winning_pnl = 0.0
+        winning_trade_count = 0
+        for pos in self.positions:
+            if not pos.active and pos.profit > EPSILON: # Only consider closed and profitable positions
+                total_winning_pnl += pos.profit
+                winning_trade_count += 1
+        
+        return total_winning_pnl / winning_trade_count if winning_trade_count > 0 else 0.0
+
+    # NEW: Method to calculate average losing trade PnL
+    def get_average_losing_trade_pnl(self) -> float:
+        """
+        Calculates the average realized PnL (in quote currency) for all closed losing trades.
+        Returns 0.0 if there are no losing trades. The returned value is positive.
+        """
+        total_losing_pnl = 0.0 # Will sum up negative profits
+        losing_trade_count = 0
+        for pos in self.positions:
+            if not pos.active and pos.profit < -EPSILON: # Only consider closed and losing positions
+                total_losing_pnl += pos.profit # This will be a negative number
+                losing_trade_count += 1
+        
+        # Return the absolute value to represent average loss as a positive number
+        return abs(total_losing_pnl / losing_trade_count) if losing_trade_count > 0 else 0.0
 
     def print_detailed_stats(self):
         """
@@ -307,11 +350,11 @@ class strategy_c:
             unrealized_pnl_qty = pos.get_unrealized_pnl_quantity() if pos.active else 0.0
             unrealized_pnl_pct = pos.get_unrealized_pnl_percentage() if pos.active else 0.0
             
-            print(f"\nPosition #{i+1} (Status: {status}, Type: {position_type_str}, Current Size: {pos.size:.2f}, Avg Price: {pos.priceAvg:.2f}, Max Size Held: {pos.max_size_held:.2f})")
+            print(f"\nPosition #{i+1} (Status: {status}, Type: {position_type_str}, Current Size: {pos.size:.2f} base units, Avg Price: {pos.priceAvg:.2f}, Max Size Held: {pos.max_size_held:.2f} base units)")
             if pos.active:
-                print(f"   Unrealized PnL: {unrealized_pnl_qty:.2f} ({unrealized_pnl_pct:.2f}%)")
+                print(f"   Unrealized PnL: {unrealized_pnl_qty:.2f} (quote currency) ({unrealized_pnl_pct:.2f}%)")
             else:
-                print(f"   Realized PnL: {pos.profit:.2f} ({pos.realized_pnl_percentage:.2f}%)")
+                print(f"   Realized PnL: {pos.profit:.2f} (quote currency) ({pos.realized_pnl_percentage:.2f}%)")
 
             print("   Order History:")
 
@@ -320,15 +363,15 @@ class strategy_c:
             else:
                 for j, order_data in enumerate(pos.order_history):
                     order_type_str = "BUY" if order_data['type'] == LONG else "SELL"
-                    pnl_info = f" | Realized PnL: {order_data['pnl_quantity']:.2f} ({order_data['pnl_percentage']:.2f}%)" if order_data['pnl_quantity'] != 0 or order_data['pnl_percentage'] != 0 else ""
-                    print(f"     Order {j+1}: {order_type_str} {order_data['quantity']:.2f} at {order_data['price']:.2f} (Bar Index: {order_data['barindex']}){pnl_info}")
+                    pnl_info = f" | Realized PnL: {order_data['pnl_quantity']:.2f} (quote currency) ({order_data['pnl_percentage']:.2f}%)" if order_data['pnl_quantity'] != 0 or order_data['pnl_percentage'] != 0 else ""
+                    print(f"     Order {j+1}: {order_type_str} {order_data['quantity']:.2f} base units at {order_data['price']:.2f} (Bar Index: {order_data['barindex']}){pnl_info}")
         
         print("\n--- Position Summary ---")
         print(f"Active LONG positions: {active_long_count}")
         print(f"Active SHORT positions: {active_short_count}")
         print(f"Closed LONG positions: {closed_long_count}")
         print(f"Closed SHORT positions: {closed_short_count}")
-        print(f"Total Strategy PnL: {self.total_profit_loss:.2f}")
+        print(f"Total Strategy PnL: {self.total_profit_loss:.2f} (quote currency)")
         print("------------------------------------------")
 
     def print_summary_stats(self):
@@ -340,12 +383,13 @@ class strategy_c:
         # Calculate metrics
         total_closed_positions = self.total_winning_positions + self.total_losing_positions
         
-        pnl_quantity = self.total_profit_loss
+        pnl_quantity = self.total_profit_loss # Already in quote currency
         
-        # PnL percentage compared to initial_liquidity
+        # PnL percentage compared to initial_liquidity (initial_liquidity is always in USD)
         pnl_percentage_vs_liquidity = (pnl_quantity / self.initial_liquidity) * 100 if self.initial_liquidity != 0 else 0.0
         
-        # PnL percentage compared to max_position_size
+        # This calculation's meaning (PnL % vs Max Pos) depends on currency_mode for max_position_size
+        # It's kept as is to match previous output structure.
         pnl_percentage_vs_max_pos_size = (pnl_quantity / self.max_position_size) * 100 if self.max_position_size != 0 else 0.0
 
         profitable_trades = self.total_winning_positions
@@ -353,10 +397,14 @@ class strategy_c:
         
         percentage_profitable_trades = (profitable_trades / total_closed_positions) * 100 if total_closed_positions > 0 else 0.0
 
-        # Print labels
-        print(f"{'PnL %':<10} {'PnL (Qty)':<15} {'Trades':<10} {'Trades+':<10} {'Trades-':<10} {'Win Rate %':<15} {'Account PnL %':<20}")
+        # NEW: Calculate average PnL for winning and losing trades
+        avg_winning_pnl = self.get_average_winning_trade_pnl()
+        avg_losing_pnl = self.get_average_losing_trade_pnl()
+
+        # Print header
+        print(f"{'Pos PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Win Rate %':<12} {'Acct PnL %':<12}")
         # Print values
-        print(f"{pnl_percentage_vs_max_pos_size:<10.2f} {pnl_quantity:<15.2f} {total_closed_positions:<10} {profitable_trades:<10} {losing_trades:<10} {percentage_profitable_trades:<15.2f} {pnl_percentage_vs_liquidity:<20.2f}")
+        print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {percentage_profitable_trades:<12.2f} {pnl_percentage_vs_liquidity:<12.2f}")
         print("------------------------------")
 
 
@@ -372,27 +420,27 @@ class position_c:
         # self.type will be 1 for LONG or -1 for SHORT, even when closed.
         # It's initialized to 0, but will be set to LONG/SHORT on the first order.
         self.type = 0            
-        self.size = 0.0          # Current size of the position (absolute value)
-        self.priceAvg = 0.0      # Average entry price of the position
+        self.size = 0.0          # Current size of the position (absolute value, always in base units)
+        self.priceAvg = 0.0      # Average entry price of the position (in quote currency)
         self.leverage = 1        # Leverage applied to the position (assumed constant for this position object)
-        self.profit = 0.0        # Total realized PnL for this position when it closes (final value)
-        self.realized_pnl_quantity = 0.0 # Cumulative realized PnL in quantity for this position
+        self.profit = 0.0        # Total realized PnL for this position when it closes (final value, in quote currency)
+        self.realized_pnl_quantity = 0.0 # Cumulative realized PnL in quantity (in quote currency)
         self.realized_pnl_percentage = 0.0 # Cumulative realized PnL in percentage for this position (final value)
         self.order_history = []  # Stores {'type': LONG/SHORT, 'price': float, 'quantity': float, 'barindex': int, 'pnl_quantity': float, 'pnl_percentage': float}
-        self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime
+        self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime (in base units)
 
     def _recalculate_current_position_state(self):
         """
-        Recalculates the position's current size and average price
+        Recalculates the position's current size (in base units) and average price (in quote currency)
         based on the accumulated order history.
         The 'type' is only set if the net quantity is non-zero,
         otherwise, it retains its last known direction or remains 0 if no orders.
         This method does not change `self.active`.
         """
         net_long_quantity = 0.0
-        net_long_value = 0.0
+        net_long_value = 0.0 # Value in quote currency
         net_short_quantity = 0.0
-        net_short_value = 0.0
+        net_short_value = 0.0 # Value in quote currency
 
         for order_data in self.order_history:
             if order_data['type'] == LONG:
@@ -402,9 +450,9 @@ class position_c:
                 net_short_quantity += order_data['quantity']
                 net_short_value += order_data['price'] * order_data['quantity']
 
-        # Determine the net position
+        # Determine the net position in base units
         net_quantity = net_long_quantity - net_short_quantity
-        net_value = net_long_value - net_short_value
+        net_value = net_long_value - net_short_value # Sum of value in quote currency
 
         if net_quantity > EPSILON: # Use EPSILON for comparison
             self.type = LONG
@@ -412,8 +460,8 @@ class position_c:
             self.priceAvg = net_value / net_quantity
         elif net_quantity < -EPSILON: # Use EPSILON for comparison
             self.type = SHORT
-            self.size = abs(net_quantity) # Size is always positive
-            self.priceAvg = abs(net_value / net_quantity) # Average price for short is also positive
+            self.size = abs(net_quantity) # Size is always positive (in base units)
+            self.priceAvg = abs(net_value / net_quantity) # Average price for short (in quote currency)
         else: # net_quantity is effectively zero, position is flat
             self.size = 0.0
             self.priceAvg = 0.0
@@ -422,7 +470,7 @@ class position_c:
 
     def get_average_entry_price_from_history(self) -> float:
         """
-        Calculates and returns the average entry price based on the current order history.
+        Calculates and returns the average entry price (in quote currency) based on the current order history.
         This is a public method for auditing/display.
         """
         net_long_quantity = 0.0
@@ -451,12 +499,12 @@ class position_c:
         the position's current state (type, size, average price).
         Handles markers based on the net change in position.
         This method is primarily for increasing or partially reducing a position.
-        Full closures and reversals are handled by the 'order' function.
+        Quantity must always be in base units.
         """
         # Store the state before the update for marker logic
         previous_active = self.active
         previous_type = self.type # Store previous type
-        previous_size = self.size
+        previous_size = self.size # Size in base units
 
         # Initialize PnL for this order
         pnl_q = 0.0
@@ -465,12 +513,13 @@ class position_c:
         # Calculate PnL if this order reduces the position size
         if previous_active and op_type != self.type and quantity > EPSILON:
             # This order is opposing the current position type, thus reducing it
-            reduced_quantity = min(quantity, previous_size) # The quantity being reduced
+            reduced_quantity = min(quantity, previous_size) # The quantity being reduced (in base units)
             if self.type == LONG:
                 pnl_q = (price - self.priceAvg) * reduced_quantity * self.leverage
             elif self.type == SHORT:
                 pnl_q = (self.priceAvg - price) * reduced_quantity * self.leverage
             
+            # Capital involved is in quote currency
             capital_involved = self.priceAvg * reduced_quantity
             if capital_involved > EPSILON:
                 pnl_pct = (pnl_q / capital_involved) * 100
@@ -483,8 +532,8 @@ class position_c:
         # Record the order in history with PnL
         self.order_history.append({
             'type': op_type,
-            'price': price,
-            'quantity': quantity,
+            'price': price, # Price in quote currency
+            'quantity': quantity, # Quantity in base units
             'barindex': active.barindex,
             'pnl_quantity': pnl_q,
             'pnl_percentage': pnl_pct
@@ -527,7 +576,7 @@ class position_c:
         if not self.active:
             return
 
-        closing_quantity = self.size
+        closing_quantity = self.size # This is in base units
         closing_op_type = SHORT if self.type == LONG else LONG # Use the position's current type to determine closing order type
 
         # Store previous state for PnL calculation on the closing order
@@ -538,8 +587,8 @@ class position_c:
         # Add the closing order to history
         self.order_history.append({
             'type': closing_op_type,
-            'price': price,
-            'quantity': closing_quantity,
+            'price': price, # Price in quote currency
+            'quantity': closing_quantity, # Quantity in base units
             'barindex': active.barindex,
             'pnl_quantity': 0.0, # Will be updated after full PnL calculation
             'pnl_percentage': 0.0 # Will be updated after full PnL calculation
@@ -558,10 +607,13 @@ class position_c:
             elif previous_position_type == SHORT:
                 final_close_pnl_q = (previous_avg_price - price) * closing_quantity * previous_leverage
             
+            # Capital involved is in quote currency
             final_close_capital_involved = previous_avg_price * closing_quantity
             final_close_pnl_pct = 0.0
             if final_close_capital_involved > EPSILON:
                 final_close_pnl_pct = (final_close_pnl_q / final_close_capital_involved) * 100
+            else:
+                final_close_pnl_pct = 0.0
             
             # Update the last order in history with its PnL
             self.order_history[-1]['pnl_quantity'] = final_close_pnl_q
@@ -573,7 +625,8 @@ class position_c:
             self.profit = self.realized_pnl_quantity # Total position PnL is the cumulative realized PnL
             
             # Calculate final percentage PnL for the entire position
-            total_entry_capital_for_position = sum(order_data['price'] * order_data['quantity'] for order_data in self.order_history if order_data['pnl_quantity'] >= -EPSILON and order_data['pnl_quantity'] <= EPSILON ) # Sum only entry capital. If PnL is 0, it means it was an entry order.
+            # Sum only entry capital (orders where pnl_quantity is approx 0) to get total invested capital.
+            total_entry_capital_for_position = sum(order_data['price'] * order_data['quantity'] for order_data in self.order_history if order_data['pnl_quantity'] >= -EPSILON and order_data['pnl_quantity'] <= EPSILON )
             self.realized_pnl_percentage = (self.profit / total_entry_capital_for_position) * 100 if total_entry_capital_for_position != 0 else 0.0
 
             # Update strategy-level counters for winning/losing positions
@@ -587,12 +640,13 @@ class position_c:
 
             # Print PnL to console
             if self.strategy_instance.verbose and not isInitializing():
-                print(f"CLOSED POSITION ({'LONG' if previous_position_type == LONG else 'SHORT'}): PnL: {self.profit:.2f} | PnL %: {self.realized_pnl_percentage:.2f}% | Total Strategy PnL: {self.strategy_instance.total_profit_loss:.2f}")
+                print(f"CLOSED POSITION ({'LONG' if previous_position_type == LONG else 'SHORT'}): PnL: {self.profit:.2f} (quote currency) | PnL %: {self.realized_pnl_percentage:.2f}% | Total Strategy PnL: {self.strategy_instance.total_profit_loss:.2f} (quote currency)")
 
     def get_unrealized_pnl_quantity(self) -> float:
         """
-        Calculates and returns the current unrealized Profit and Loss in quantity for this active position.
-        Returns 0.0 if the position is not active or if current price is not available.
+        Calculates and returns the current unrealized Profit and Loss in quantity (quote currency)
+        for this active position.
+        Returns 0.0 if the position is not active.
         """
         if not self.active or self.size < EPSILON:
             return 0.0
@@ -617,7 +671,7 @@ class position_c:
         if unrealized_pnl_q == 0.0 and (not self.active or self.size < EPSILON):
             return 0.0
 
-        # Capital involved in the active position based on entry price and quantity
+        # Capital involved in the active position based on entry price and quantity (in quote currency)
         capital_involved = self.priceAvg * self.size * self.leverage
 
         if abs(capital_involved) < EPSILON: # Avoid division by zero
@@ -627,12 +681,15 @@ class position_c:
 
 
 # Global instance of the strategy.
-# You can now initialize it with hedged=True for hedged mode or hedged=False for one-way mode
-strategy = strategy_c(hedged=False) # Defaulting to one-way mode as per request. Change to True for hedged mode.
+# Initialized with currency_mode='USD' as requested.
+strategy = strategy_c(hedged=False, currency_mode='USD') # Defaulting to one-way mode and USD currency mode.
 
 # The following global functions will now call methods on the 'strategy' instance.
 # This maintains compatibility with existing calls from other modules (e.g., algorizer.py).
 def openPosition(pos_type: int, price: float, quantity: float, leverage: int) -> position_c:
+    """
+    Opens a new position. Quantity must be in base units.
+    """
     return strategy.open_position(pos_type, price, quantity, leverage)
 
 def getActivePosition(pos_type: int = None) -> position_c:
@@ -641,8 +698,36 @@ def getActivePosition(pos_type: int = None) -> position_c:
 def direction() -> int:
     return strategy.get_direction()
 
-def order(cmd: str, target_position_type: int, quantity: float = None, leverage: int = 1): # Removed price parameter
-    strategy.execute_order(cmd, target_position_type, quantity, leverage) # Removed price argument
+def order(cmd: str, target_position_type: int, quantity: float = None, leverage: int = 1):
+    """
+    Places a trading order.
+    The 'quantity' parameter's interpretation depends on strategy.currency_mode:
+    - If currency_mode is 'USD', quantity is interpreted as a notional USD amount.
+    - If currency_mode is 'BASE', quantity is interpreted as base currency units.
+    """
+    actual_quantity_base_units = 0.0
+    current_price = getRealtimeCandle().close # Get price here for conversion if needed
+
+    if strategy.currency_mode == 'USD':
+        if quantity is None:
+            # Use default order_size which is in USD
+            actual_quantity_base_units = strategy.order_size / current_price
+        else:
+            # Convert provided USD quantity to base units
+            actual_quantity_base_units = quantity / current_price
+
+        # Safety check for extremely small quantities (if USD amount is too small for current price)
+        if actual_quantity_base_units < EPSILON:
+            if strategy.verbose and not isInitializing():
+                print(f"Warning: Calculated order quantity ({actual_quantity_base_units:.6f} base units) is effectively zero based on current price ({current_price:.2f}). Order not placed.")
+            return
+    else: # strategy.currency_mode == 'BASE'
+        if quantity is None:
+            actual_quantity_base_units = strategy.order_size
+        else:
+            actual_quantity_base_units = quantity
+
+    strategy.execute_order(cmd, target_position_type, actual_quantity_base_units, leverage)
 
 def close(pos_type: int = None):
     strategy.close_position(pos_type)
