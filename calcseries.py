@@ -18,6 +18,21 @@ __all__ = [name for name in globals() if not (name.startswith('_') or name in _e
 # # GENERATED SERIES : These are series of values that are calculated always using the same formula
 # #
 
+def _generatedseries_calculate_highest(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    return series.rolling(window=period, min_periods=period).max()
+
+def _generatedseries_calculate_lowest(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    return series.rolling(window=period, min_periods=period).min()
+
+def _generatedseries_calculate_highestbars(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    def offset_to_max(x):
+        return (period - 1) - np.argmax(x)
+    return series.rolling(window=period, min_periods=period).apply(offset_to_max, raw=True)
+
+def _generatedseries_calculate_lowestbars(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    def offset_to_min(x):
+        return (period - 1) - np.argmin(x)
+    return series.rolling(window=period, min_periods=period).apply(offset_to_min, raw=True)
 
 def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.sma( series, period )
@@ -560,7 +575,22 @@ class generatedSeries_c:
     
 
 
-# this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
+def highest(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+    if timeframe is None: timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('highest', source, period, _generatedseries_calculate_highest)
+
+def lowest(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+    if timeframe is None: timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('lowest', source, period, _generatedseries_calculate_lowest)
+
+def highestbars(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+    if timeframe is None: timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('highestbars', source, period, _generatedseries_calculate_highestbars)
+
+def lowestbars(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+    if timeframe is None: timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('lowestbars', source, period, _generatedseries_calculate_lowestbars)
+
 def falling( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'falling', source, period, _generatedseries_calculate_falling )
@@ -687,6 +717,7 @@ def BRAR( period:int, signal:float=None, timeframe = None )->generatedSeries_c:
 def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', source, period, _generatedseries_calculate_cg )
+
 
 
 
