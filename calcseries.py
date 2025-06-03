@@ -628,7 +628,7 @@ def ATR2( period:int, timeframe = None )->generatedSeries_c: # The other one usi
 
 def TR( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'tr', timeframe.df['close'], period, _generatedseries_calculate_tr )
+    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
 
 def ATR( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
