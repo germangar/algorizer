@@ -222,23 +222,6 @@ class timeframe_c:
     
         # run the script logic accross all the rows
         
-        # if ALLOW_NEGATIVE_ILOC:
-        #     self.initdata = self.df
-        #     self.df = pd.DataFrame( pd.DataFrame(self.initdata.iloc[0]).T, columns=self.initdata.columns )
-            
-        #     # run the script logic accross all the rows
-        #     self.shadowcopy = True
-        #     self.barindex = 0
-        #     self.timestamp = 0
-        #     self.realtimeCandle.timestamp = 0 # This forces parseCandleUpdate to reset realtimeCandle
-        #     self.parseCandleUpdate(self.initdata)
-        #     self.shadowcopy = False
-        #     ###############################################################################
-
-        #     print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
-        #     self.initdata = [] # free memory
-        #     return
-        
         self.shadowcopy = True
         self.barindex = 0
         self.timestamp = 0
@@ -350,6 +333,8 @@ class timeframe_c:
             self.df.loc[self.barindex+1, 'low'] = self.realtimeCandle.low
             self.df.loc[self.barindex+1, 'close'] = self.realtimeCandle.close
             self.df.loc[self.barindex+1, 'volume'] = self.realtimeCandle.volume
+            self.df.loc[self.barindex+1, 'top'] = max( self.realtimeCandle.open, self.realtimeCandle.close )
+            self.df.loc[self.barindex+1, 'bottom'] = min( self.realtimeCandle.open, self.realtimeCandle.close )
 
             # copy newrow into realtimeCandle
             self.realtimeCandle.timestamp = newrow_timestamp
@@ -358,8 +343,8 @@ class timeframe_c:
             self.realtimeCandle.low = newrow_low
             self.realtimeCandle.close = newrow_close
             self.realtimeCandle.volume = newrow_volume
-            self.realtimeCandle.bottom = min( self.realtimeCandle.open, self.realtimeCandle.close )
-            self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
+            self.realtimeCandle.bottom = min( newrow_open, newrow_close )
+            self.realtimeCandle.top = max( newrow_open, newrow_close )
             self.realtimeCandle.updateRemainingTime()
 
             self.barindex = self.barindex+ 1
@@ -434,9 +419,7 @@ class timeframe_c:
         candle = candle_c()
         candle.timeframemsec = self.timeframeMsec
         row = self.df.iloc[index].values  # Get as a NumPy array
-        candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume = ( int(row[0]), row[1], row[2], row[3], row[4], row[5] )
-        candle.bottom = min( candle.open, candle.close )
-        candle.top = max( candle.open, candle.close )
+        candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.top, candle.bottom = ( int(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], row[7] )
         return candle
 
 
@@ -494,6 +477,10 @@ class stream_c:
                 candles = ohlcvDF
             else:
                 candles = tools.resample_ohlcv( ohlcvDF, t )
+
+            # create top and bottom columns
+            candles['top'] = candles[['open', 'close']].max(axis=1)
+            candles['bottom'] = candles[['open', 'close']].min(axis=1)
 
             timeframe = timeframe_c( self, t )
 

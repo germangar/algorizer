@@ -944,15 +944,15 @@ def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSe
     sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.df['close'], period, _generatedseries_calculate_fisher_signal, signal )
     return fish, sig
     
-def AO( period: int = 0, timeframe = None, fast: int = 5, slow: int = 34 ) -> generatedSeries_c:
+def AO( period: int = 0, fast: int = 5, slow: int = 34, timeframe = None ) -> generatedSeries_c:
     """
     Calculates the Awesome Oscillator (AO) for the given period, using specified fast and slow periods.
 
     Args:
         period (int, optional): The period/window for the AO calculation (unused, may be for interface compatibility).
-        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
         fast (int, optional): The fast period for the AO calculation. Defaults to 5.
         slow (int, optional): The slow period for the AO calculation. Defaults to 34.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
 
     Returns:
         generatedSeries_c: An object representing the Awesome Oscillator series.
