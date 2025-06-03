@@ -562,30 +562,107 @@ class generatedSeries_c:
 
 # this can be done to any pandas_ta function that returns a series and takes as arguments a series and a period.
 def falling( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Returns a generatedSeries_c object that indicates where the source series has been falling (decreasing) for the specified period.
+
+    Args:
+        source (pd.Series): The input pandas Series to analyze.
+        period (int): The number of bars to check for a falling trend.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the falling condition over the specified period.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'falling', source, period, _generatedseries_calculate_falling )
 
 def rising( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Returns a generatedSeries_c object that indicates where the source series has been rising (increasing) for the specified period.
+
+    Args:
+        source (pd.Series): The input pandas Series to analyze.
+        period (int): The number of bars to check for a rising trend.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the rising condition over the specified period.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rising', source, period, _generatedseries_calculate_rising )
 
 def SMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Simple Moving Average (SMA) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the SMA on.
+        period (int): The period/window for the SMA calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the SMA series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'sma', source, period, _generatedseries_calculate_sma )
 
 def EMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Exponential Moving Average (EMA) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the EMA on.
+        period (int): The period/window for the EMA calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the EMA series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "ema", source, period, _generatedseries_calculate_ema )
 
 def DEMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Double Exponential Moving Average (DEMA) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the DEMA on.
+        period (int): The period/window for the DEMA calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the DEMA series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "dema", source, period, _generatedseries_calculate_dema, always_reset=True )
 
 def WMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Weighted Moving Average (WMA) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the WMA on.
+        period (int): The period/window for the WMA calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the WMA series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "wma", source, period, _generatedseries_calculate_wma )
 
 def HMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Hull Moving Average (HMA) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the HMA on.
+        period (int): The period/window for the HMA calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the HMA series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "hma", source, period, _generatedseries_calculate_hma, always_reset=True )
 
@@ -598,93 +675,321 @@ def HMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 #     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
 
 def LINREG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Linear Regression (LINREG) value for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the linear regression on.
+        period (int): The period/window for the calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the linear regression series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "linreg", source, period, _generatedseries_calculate_linreg )
 
 def RSI( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Relative Strength Index (RSI) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the RSI on.
+        period (int): The period/window for the RSI calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the RSI series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
 
 def DEV( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the mean absolute deviation (DEV) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the deviation on.
+        period (int): The period/window for the calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the deviation series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'dev', source, period, _generatedseries_calculate_dev )
 
 def STDEV( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the standard deviation (STDEV) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the standard deviation on.
+        period (int): The period/window for the calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the standard deviation series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'stdev', source, period, _generatedseries_calculate_stdev )
 
 def RMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Running Moving Average (RMA) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the RMA on.
+        period (int): The period/window for the calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the RMA series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rma', source, period, _generatedseries_calculate_rma, always_reset=True )
 
 def WPR( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Williams %R (WPR) indicator over the specified period using OHLC data from the current timeframe.
+
+    Args:
+        source (pd.Series): Placeholder series (not used directly).
+        period (int): The period/window for the Williams %R calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the Williams %R series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
+def TR( period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the True Range (TR) for the current timeframe over the specified period.
+
+    Args:
+        period (int): The period/window for the True Range calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the True Range series.
+    """
+    if timeframe == None : timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
+
 def ATR2( period:int, timeframe = None )->generatedSeries_c: # The other one using pt is much faster
+    """
+    Calculates the Average True Range (ATR) using the running moving average of the True Range (TR).
+
+    Args:
+        period (int): The period/window for the ATR calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the ATR series.
+    """
     if timeframe == None : timeframe = active.timeframe
     tr = timeframe.calcGeneratedSeries( 'tr', timeframe.df['close'], period, _generatedseries_calculate_tr )
     return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, _generatedseries_calculate_rma )
 
-def TR( period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
-
 def ATR( period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Average True Range (ATR) using the pandas_ta implementation for the current timeframe and period.
+
+    Args:
+        period (int): The period/window for the ATR calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the ATR series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'atr', timeframe.df['close'], period, _generatedseries_calculate_atr )
 
 def SLOPE( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the slope of the source series over the given period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the slope on.
+        period (int): The period/window for the slope calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the slope series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'slope', source, period, _generatedseries_calculate_slope, always_reset=True )
 
 def BIAS( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the bias indicator for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the bias on.
+        period (int): The period/window for the bias calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the bias series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bias', source, period, _generatedseries_calculate_bias )
 
 def CCI( period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Commodity Channel Index (CCI) for the current timeframe and period.
+
+    Args:
+        period (int): The period/window for the CCI calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the CCI series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cci', timeframe.df['close'], period, _generatedseries_calculate_cci )
 
 def CFO( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Chande Forecast Oscillator (CFO) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the CFO on.
+        period (int): The period/window for the CFO calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the CFO series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cfo', source, period, _generatedseries_calculate_cfo )
 
 def FWMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Forward Weighted Moving Average (FWMA) for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the FWMA on.
+        period (int): The period/window for the FWMA calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the FWMA series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'fwma', source, period, _generatedseries_calculate_fwma )
 
 def BBu( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the upper Bollinger Band for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the upper band on.
+        period (int): The period/window for the Bollinger Bands calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the upper Bollinger Band series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
 
 def BBl( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the lower Bollinger Band for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the lower band on.
+        period (int): The period/window for the Bollinger Bands calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the lower Bollinger Band series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
 
 def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Inverse Fisher Transform of the RSI for the given source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the Inverse Fisher RSI on.
+        period (int): The period/window for the calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the Inverse Fisher RSI series.
+    """
     if timeframe == None : timeframe = active.timeframe
     rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
     return timeframe.calcGeneratedSeries( 'iftrsi', timeframe.df['close'], period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
+    """
+    Calculates the Fisher Transform and its signal line for the given period.
+
+    Args:
+        period (int): The period/window for the Fisher Transform calculation.
+        signal (float, optional): The signal smoothing parameter. Defaults to None.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the Fisher Transform series and its signal series.
+    """
     if timeframe == None : timeframe = active.timeframe
     fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.df['close'], period, _generatedseries_calculate_fisher )
     sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.df['close'], period, _generatedseries_calculate_fisher_signal, signal )
     return fish, sig
     
 def AO( period: int = 0, timeframe = None, fast: int = 5, slow: int = 34 ) -> generatedSeries_c:
+    """
+    Calculates the Awesome Oscillator (AO) for the given period, using specified fast and slow periods.
+
+    Args:
+        period (int, optional): The period/window for the AO calculation (unused, may be for interface compatibility).
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+        fast (int, optional): The fast period for the AO calculation. Defaults to 5.
+        slow (int, optional): The slow period for the AO calculation. Defaults to 34.
+
+    Returns:
+        generatedSeries_c: An object representing the Awesome Oscillator series.
+    """
     if timeframe is None: timeframe = active.timeframe
     param = (fast, slow)
     return timeframe.calcGeneratedSeries('ao', timeframe.df['close'], period, _generatedseries_calculate_ao, param)
 
 def BRAR( period:int, signal:float=None, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the BR (Buying Power Ratio) and AR (Acceptance Ratio) indicators for the given period.
+
+    Args:
+        period (int): The period/window for the BR and AR calculation.
+        signal (float, optional): Unused, included for interface compatibility.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the BR and AR series.
+    """
     if timeframe == None : timeframe = active.timeframe
     br = timeframe.calcGeneratedSeries( 'br', timeframe.df['close'], period, _generatedseries_calculate_br )
     ar = timeframe.calcGeneratedSeries( 'ar', timeframe.df['close'], period, _generatedseries_calculate_ar )
     return br, ar
 
 def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    """
+    Calculates the Center of Gravity (CG) indicator for the provided source series and period.
+
+    Args:
+        source (pd.Series): The input pandas Series to calculate the CG on.
+        period (int): The period/window for the CG calculation.
+        timeframe: The timeframe context to use. If None, defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: An object representing the Center of Gravity series.
+    """
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', source, period, _generatedseries_calculate_cg )
 
@@ -697,19 +1002,14 @@ def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 
 def BollingerBands( source:pd.Series, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
-    Calculates Bollinger Bands for a given price series.
-    
+    Returns the Bollinger Bands (basis, upper, lower) for the given source series and period.
+
     Args:
-        source (pd.Series): Input price data (e.g., closing prices).
-        period (int): Lookback period for the moving average and standard deviation.
-        mult (float, optional): Multiplier for the standard deviation bands. Defaults to 2.0.
-    
+        source (pd.Series): The input pandas Series to calculate the Bollinger Bands on.
+        period (int): The period/window for the Bollinger Bands calculation.
+
     Returns:
-        tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: 
-            A tuple containing three series:
-            - BBbasis: Simple Moving Average (SMA) of the source over the period.
-            - BBupper: Upper Bollinger Band (SMA + mult * standard deviation).
-            - BBlower: Lower Bollinger Band (SMA - mult * standard deviation).
+        Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
     """
     BBbasis = SMA(source, period)
     STDEV(source, period)
@@ -718,8 +1018,16 @@ def BollingerBands( source:pd.Series, period:int, mult:float = 2.0 )->tuple[gene
     return BBbasis, BBupper, BBlower
 
 
-
 def indexWhenTrue( source ):
+    """
+    Returns the index of the most recent (from the end) True value in the given series.
+
+    Args:
+        source: The input series or generatedSeries_c to inspect.
+
+    Returns:
+        int or None: The index position of the most recent True value, or None if not found.
+    """
     if( not isinstance(source, pd.Series ) ):
         if( isinstance( source, generatedSeries_c) ):
             source = source.series()
@@ -730,6 +1038,15 @@ def indexWhenTrue( source ):
 
 
 def barsSince( source ):
+    """
+    Returns the number of bars since the last True value in the given series.
+
+    Args:
+        source: The input series or generatedSeries_c to inspect.
+
+    Returns:
+        int or None: The number of bars since the last True value, or None if not found.
+    """
     index_when_true = indexWhenTrue( source )
     if( index_when_true == None ):
         return None
@@ -737,6 +1054,15 @@ def barsSince( source ):
 
 
 def indexWhenFalse( source ):
+    """
+    Returns the index of the most recent (from the end) False value in the given series.
+
+    Args:
+        source: The input series or generatedSeries_c to inspect.
+
+    Returns:
+        int: The index position of the most recent False value, or 0 if not found or series is empty.
+    """
     if( not isinstance(source, pd.Series ) ):
         if( isinstance( source, generatedSeries_c) ):
             source = source.series()
@@ -756,6 +1082,16 @@ def indexWhenFalse( source ):
 
 
 def barsWhileTrue( barindex, source ):
+    """
+    Returns the number of bars for which the given series has continuously been True, up to the current barindex.
+
+    Args:
+        barindex: The current bar index.
+        source: The input series or generatedSeries_c to inspect.
+
+    Returns:
+        int or None: The number of bars while True, or None if not found.
+    """
     index_when_false = indexWhenFalse( source )
     if( index_when_false == None ):
         return None
@@ -763,6 +1099,16 @@ def barsWhileTrue( barindex, source ):
 
 
 def crossingUp( self, other ):
+    """
+    Determines if 'self' crosses up over 'other' between the previous and current bar.
+
+    Args:
+        self: The first value/series.
+        other: The second value/series to compare against.
+
+    Returns:
+        bool: True if a crossing up occurred, False otherwise.
+    """
     if isinstance( self, generatedSeries_c ):
         return self.crossingUp( other )
     
@@ -816,6 +1162,16 @@ def crossingUp( self, other ):
 
 
 def crossingDown( self, other ):
+    """
+    Determines if 'self' crosses down below 'other' between the previous and current bar.
+
+    Args:
+        self: The first value/series.
+        other: The second value/series to compare against.
+
+    Returns:
+        bool: True if a crossing down occurred, False otherwise.
+    """
     if isinstance( self, generatedSeries_c ):
         return self.crossingDown( other )
     
@@ -868,6 +1224,14 @@ def crossingDown( self, other ):
     return ( self_old >= other_old and self_new <= other_new and self_old != self_new )
 
 def crossing( self, other ):
+    """
+    Determines if 'self' crosses either up or down with respect to 'other' between the previous and current bar.
+
+    Args:
+        self: The first value/series.
+        other: The second value/series to compare against.
+
+    Returns:
+        bool: True if a crossing (up or down) occurred, False otherwise.
+    """
     return crossingUp( other, self ) or crossingDown( other, self )
-
-
