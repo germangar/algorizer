@@ -287,7 +287,7 @@ class timeframe_c:
                         self.stream.timestampFetch = self.realtimeCandle.timestamp
 
                     if( self.callback != None ):
-                        self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
+                        self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
 
                     if self.barindex % 5000 == 0:
                         print( self.barindex, "candles processed." )
@@ -374,15 +374,15 @@ class timeframe_c:
                     self.window.updateChart(self)
 
             if( self.callback != None ):
-                self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'] )
+                self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
 
 
-    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, always_reset:bool = False )->generatedSeries_c:
+    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
         name = tools.generatedSeriesNameFormat( type, source, period )
 
         gse = self.generatedSeries.get( name )
         if( gse == None ):
-            gse = generatedSeries_c( type, source, period, func, always_reset, self )
+            gse = generatedSeries_c( type, source, period, func, param, always_reset, self )
             self.generatedSeries[name] = gse
 
         gse.update( source )
@@ -639,19 +639,19 @@ async def cli_task(stream):
 
 if __name__ == '__main__':
 
-    def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
         pass
-    def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
         sma = calc.SMA( close, 350 )
         sma.plot()
         rsi = calc.RSI( close, 14 )
         rsiplot = plot( rsi.series(), rsi.name, 'panel' )
         return
 
-    def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
         return
 
-    def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+    def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
 
         ###########################
         # strategy code goes here #
