@@ -13,13 +13,13 @@ import trade
 # 
 
 rsi30m = None
-def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
     global rsi30m
     rsi30m = calc.IFTrsi(close, 14)
     rsi30m.plot('panel')
 
 
-def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series ):
+def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
 
     # bollinger bands
     BBbasis, BBupper, BBlower = calc.BollingerBands( close, 250 )

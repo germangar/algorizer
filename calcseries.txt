@@ -628,7 +628,7 @@ def ATR2( period:int, timeframe = None )->generatedSeries_c: # The other one usi
 
 def TR( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
+    return timeframe.calcGeneratedSeries( 'tr', timeframe.df['close'], period, _generatedseries_calculate_tr )
 
 def ATR( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
@@ -662,9 +662,9 @@ def BBl( source:pd.Series, period:int, mult:float, timeframe = None )->generated
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
 
-def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def IFTrsi( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
+    rsi = timeframe.calcGeneratedSeries( 'rsi', timeframe.df['close'], period, _generatedseries_calculate_rsi )
     return timeframe.calcGeneratedSeries( 'iftrsi', timeframe.df['close'], period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
