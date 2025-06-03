@@ -19,34 +19,34 @@ __all__ = [name for name in globals() if not (name.startswith('_') or name in _e
 # #
 
 
-def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.sma( series, period )
 
-def _generatedseries_calculate_ema(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_ema(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.ema( series, period )
 
-def _generatedseries_calculate_dema(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_dema(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.dema( series, period )
 
-def _generatedseries_calculate_linreg(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_linreg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.linreg( series, period )
 
-def _generatedseries_calculate_rma(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_rma(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
     return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean()
 
-def _generatedseries_calculate_stdev(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_stdev(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.stdev( series, period )
 
-def _generatedseries_calculate_bias(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_bias(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.bias( series, period )
 
-def _generatedseries_calculate_cfo(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_cfo(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.cfo( series, period )
 
-def _generatedseries_calculate_fwma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_fwma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.fwma( series, period )
 
-def _generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     if 1:
         return pt.mad( series, period )
     else:
@@ -61,7 +61,7 @@ def _generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFra
             deviations.append(deviation)
         return pd.Series(deviations, index=series.index).dropna()
 
-def _generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     """
         Calculate Williams %R for a given series using OHLC data from df over a period.
 
@@ -99,7 +99,7 @@ def _generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.
 
         return pd.Series(williams_r_values, index=df.index)
 
-def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame, param=None) -> pd.Series:
     deltas = series.diff()
     gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
     loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
@@ -108,7 +108,7 @@ def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame) -> pd.Series
     return rsi
 
 
-def _generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     """
     Calculate the True Range (TR) for a given series.
 
@@ -136,13 +136,13 @@ def _generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFram
         tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
         return tr
 
-def _generatedseries_calculate_atr(series, period, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_atr(series, period, df:pd.DataFrame, param=None) -> pd.Series:
     if len(series) < period:
         return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
     return pt.atr( df['high'], df['low'], df['close'], length=period )
     
 
-def _generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
     """
     Check if the series has been rising for the given length of time.
 
@@ -165,7 +165,7 @@ def _generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.Data
 
     return is_rising
 
-def _generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
     """
     Check if the series has been falling for the given length of time.
 
@@ -187,7 +187,7 @@ def _generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.Dat
     is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
     return is_falling
 
-def _generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     """
     Calculate the Weighted Moving Average (WMA) for a given series and length.
     
@@ -208,7 +208,7 @@ def _generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFra
         wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
         return wma
 
-def _generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     """
     Calculate the Hull Moving Average (HMA) for a given series and length.
     
@@ -239,7 +239,7 @@ def _generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFra
         
         return hma
 
-def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     """
     Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
 
@@ -277,11 +277,11 @@ def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataF
 
         return slope_series
     
-def _generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFrame ) -> pd.Series:
+def _generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.cci( df['high'], df['low'], df['close'], period )
 
-def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame) -> pd.Series:
-    BBmult = 2.0
+def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame, param=None) -> pd.Series:
+    BBmult = param
     sma_name = tools.generatedSeriesNameFormat('sma', series, period)
     stdev_name = tools.generatedSeriesNameFormat('stdev', series, period)
 
@@ -293,8 +293,8 @@ def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame) -> pd.S
     # Initialization case — full series calculation
     return df[sma_name] + (BBmult * df[stdev_name])
 
-def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame) -> pd.Series:
-    BBmult = 2.0
+def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame, param=None) -> pd.Series:
+    BBmult = param
     sma_name = tools.generatedSeriesNameFormat('sma', series, period)
     stdev_name = tools.generatedSeriesNameFormat('stdev', series, period)
 
@@ -306,7 +306,7 @@ def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame) -> pd.S
     # Initialization case — full series
     return df[sma_name] - (BBmult * df[stdev_name])
 
-def _generatedseries_calculate_inverse_fisher_rsi(series: pd.Series, period: int, df: pd.DataFrame) -> pd.Series:
+def _generatedseries_calculate_inverse_fisher_rsi(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
     rsi = df[tools.generatedSeriesNameFormat("rsi", series, period)]
     v1 = 0.1 * (rsi - 50)
 
@@ -319,13 +319,55 @@ def _generatedseries_calculate_inverse_fisher_rsi(series: pd.Series, period: int
     iftrsi = (exp_val - 1) / (exp_val + 1)
     return iftrsi
 
+def _generatedseries_calculate_fisher(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    high = df["high"]
+    low = df["low"]
+    fisher_df = pt.fisher(high, low, length=period, signal=1)  # Minimal signal to isolate Fisher line
+    return fisher_df.iloc[:, 0]  # Main Fisher line
+
+def _generatedseries_calculate_fisher_signal(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    high = df["high"]
+    low = df["low"]
+    fisher_df = pt.fisher(high, low, length=period, signal=param if param else 9)
+    return fisher_df.iloc[:, 1]  # Signal line
+
+def _generatedseries_calculate_ao(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    """
+    Calculate Awesome Oscillator: SMA(median_price, 5) - SMA(median_price, 34)
+    `period` is ignored; `param` can optionally override the two SMA lengths as a tuple: (fast, slow)
+    """
+    if 'high' not in df.columns or 'low' not in df.columns:
+        raise ValueError("DataFrame must contain 'high' and 'low' columns for AO calculation.")
+    
+    fast, slow = (5, 34)
+    if isinstance(param, tuple) and len(param) == 2:
+        fast, slow = param
+
+    median_price = (df['high'] + df['low']) / 2
+    sma_fast = median_price.rolling(window=fast).mean()
+    sma_slow = median_price.rolling(window=slow).mean()
+
+    ao = sma_fast - sma_slow
+    return ao
+
+def _generatedseries_calculate_br(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    brar_df = pt.brar(high=df['high'], low=df['low'], close=df['close'], length=period)
+    return brar_df['BR']
+
+def _generatedseries_calculate_ar(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    brar_df = pt.brar(high=df['high'], low=df['low'], close=df['close'], length=period)
+    return brar_df['AR']
+
+def _generatedseries_calculate_cg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
+    return pt.cg( series, period )
 
 
 class generatedSeries_c:
-    def __init__( self, type:str, source:pd.Series, period:int, func = None, always_reset:bool = False, timeframe = None ):
+    def __init__( self, type:str, source:pd.Series, period:int, func = None, param=None, always_reset:bool = False, timeframe = None ):
         self.name = tools.generatedSeriesNameFormat( type, source, period )
         self.sourceName = source.name
         self.period = period
+        self.param = param
         self.func = func
         self.timeframe = timeframe
         self.timestamp = 0
@@ -349,7 +391,7 @@ class generatedSeries_c:
             if( self.timeframe.shadowcopy ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
             start_time = time.time()
-            self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df).dropna()
+            self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df, self.param).dropna()
             self.timestamp = self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
             if( self.timeframe.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
@@ -375,7 +417,7 @@ class generatedSeries_c:
         # realtime updates
 
         # slice the required block of candles to calculate the current value of the generated series
-        newval = self.func(source[-self.period:], self.period, self.timeframe.df).loc[self.timeframe.barindex]
+        newval = self.func(source[-self.period:], self.period, self.timeframe.df, self.param).loc[self.timeframe.barindex]
         self.timeframe.df.loc[self.timeframe.df.index[-1], self.name] = newval
         self.timestamp = self.timeframe.timestamp
 
@@ -581,16 +623,16 @@ def WPR( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 
 def ATR2( period:int, timeframe = None )->generatedSeries_c: # The other one using pt is much faster
     if timeframe == None : timeframe = active.timeframe
-    tr = timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
+    tr = timeframe.calcGeneratedSeries( 'tr', timeframe.df['close'], period, _generatedseries_calculate_tr )
     return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, _generatedseries_calculate_rma )
 
 def TR( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
+    return timeframe.calcGeneratedSeries( 'tr', timeframe.df['close'], period, _generatedseries_calculate_tr )
 
 def ATR( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'atr', pd.Series([pd.NA] * period, name = 'atr'), period, _generatedseries_calculate_atr )
+    return timeframe.calcGeneratedSeries( 'atr', timeframe.df['close'], period, _generatedseries_calculate_atr )
 
 def SLOPE( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
@@ -602,7 +644,7 @@ def BIAS( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 
 def CCI( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'cci', pd.Series([pd.NA] * period, name = 'cci'), period, _generatedseries_calculate_cci )
+    return timeframe.calcGeneratedSeries( 'cci', timeframe.df['close'], period, _generatedseries_calculate_cci )
 
 def CFO( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
@@ -612,18 +654,40 @@ def FWMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'fwma', source, period, _generatedseries_calculate_fwma )
 
-def BBu( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def BBu( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper )
+    return timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
 
-def BBl( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def BBl( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower )
+    return timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
 
-def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def IFTrsi( period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
-    rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
-    return timeframe.calcGeneratedSeries( 'iftrsi', source, period, _generatedseries_calculate_inverse_fisher_rsi )
+    rsi = timeframe.calcGeneratedSeries( 'rsi', timeframe.df['close'], period, _generatedseries_calculate_rsi )
+    return timeframe.calcGeneratedSeries( 'iftrsi', timeframe.df['close'], period, _generatedseries_calculate_inverse_fisher_rsi )
+
+def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
+    if timeframe == None : timeframe = active.timeframe
+    fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.df['close'], period, _generatedseries_calculate_fisher )
+    sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.df['close'], period, _generatedseries_calculate_fisher_signal, signal )
+    return fish, sig
+    
+def AO( period: int = 0, timeframe = None, fast: int = 5, slow: int = 34 ) -> generatedSeries_c:
+    if timeframe is None: timeframe = active.timeframe
+    param = (fast, slow)
+    return timeframe.calcGeneratedSeries('ao', timeframe.df['close'], period, _generatedseries_calculate_ao, param)
+
+def BRAR( period:int, signal:float=None, timeframe = None )->generatedSeries_c:
+    if timeframe == None : timeframe = active.timeframe
+    br = timeframe.calcGeneratedSeries( 'br', timeframe.df['close'], period, _generatedseries_calculate_br )
+    ar = timeframe.calcGeneratedSeries( 'ar', timeframe.df['close'], period, _generatedseries_calculate_ar )
+    return br, ar
+
+def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+    if timeframe == None : timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'cg', source, period, _generatedseries_calculate_cg )
+
 
 
 
@@ -631,11 +695,26 @@ def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 # # OTHER NOT GENERATED SERIES
 # #
 
-def BollingerBands( source:pd.Series, period:int ):
+def BollingerBands( source:pd.Series, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+    """
+    Calculates Bollinger Bands for a given price series.
+    
+    Args:
+        source (pd.Series): Input price data (e.g., closing prices).
+        period (int): Lookback period for the moving average and standard deviation.
+        mult (float, optional): Multiplier for the standard deviation bands. Defaults to 2.0.
+    
+    Returns:
+        tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: 
+            A tuple containing three series:
+            - BBbasis: Simple Moving Average (SMA) of the source over the period.
+            - BBupper: Upper Bollinger Band (SMA + mult * standard deviation).
+            - BBlower: Lower Bollinger Band (SMA - mult * standard deviation).
+    """
     BBbasis = SMA(source, period)
     STDEV(source, period)
-    BBupper = active.timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper )
-    BBlower = active.timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower )
+    BBupper = active.timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
+    BBlower = active.timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
     return BBbasis, BBupper, BBlower
 
 
