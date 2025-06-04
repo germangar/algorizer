@@ -24,6 +24,34 @@ def get_screen_resolution():
     root.destroy()  # Destroy the window after getting the resolution
     return screen_width, screen_height
 
+def hx2rgba(hex_color):
+    """Converts a hex color code (with or without alpha) to an RGBA tuple.
+
+    Args:
+        hex_color: The hex color code (e.g., "#RRGGBB" or "#RRGGBBAA").
+
+    Returns:
+        a string with rgba(...) included
+    """
+    hex_color = hex_color.lstrip('#')
+    hex_length = len(hex_color)
+    if hex_length not in (6, 8):
+        return None  # Invalid hex code length
+
+    if hex_length == 6:
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        a = 100  # Default alpha value (fully opaque)
+    else:  # hex_length == 8
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        a = int(hex_color[6:8], 16) * 100 // 255  # Scale alpha to 0-100
+
+    return f'rgba({r},{g},{b},{a})'
+    #return (r, g, b, a)
+
 
 class window_c:
     def __init__( self, timeframe, precision = 4, bottompanel_precision = 2 ):
@@ -39,6 +67,8 @@ class window_c:
         [window_width, window_height] = get_screen_resolution()
         window_width = int(0.65 * window_width)
         window_height = int(0.65 * window_height)
+
+        price_column_width = 110
         
         
         self.chart = chart = Chart( window_width, window_height, inner_height=0.8, toolbox = False )
@@ -48,7 +78,12 @@ class window_c:
         chart.time_scale( visible=False )
         chart.layout( font_size=14 )
         chart.precision( self.precision )
+        chart.price_scale(minimum_width=price_column_width)
+        # chart.precision(2) # set to symbol precission later
         # chart.topbar.button('my_button', 'Off', func=on_button_press)
+        
+        # chart.set_visible_range() # the one to use for loading in blocks
+        # chart.price_line(True,)
         
         volume_alpha = 0.8 if SHOW_VOLUME else 0.0
         chart.volume_config(
@@ -71,6 +106,7 @@ class window_c:
         bottomPanel.price_line( label_visible=False, line_visible=False )
         bottomPanel.layout( font_size=14 )
         bottomPanel.precision( self.bottompanel_precision )
+        bottomPanel.price_scale(minimum_width=price_column_width)
         bottomPanel.set(tmpdf)
         bottomPanel.hide_data()
 
@@ -118,8 +154,9 @@ class window_c:
 
     def updateClock( self ):
         timeframe = self.timeframe
-        string1 = self.legendStr + " - " + timeframe.realtimeCandle.remainingTimeStr()
-        self.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=string1 )
+        self.chart.price_line(True,True,timeframe.realtimeCandle.remainingTimeStr())
+        # string1 = self.legendStr + " - " + timeframe.realtimeCandle.remainingTimeStr()
+        # self.chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=string1 )
 
 
 async def on_timeframe_selection(chart):
@@ -129,5 +166,6 @@ async def on_button_press(chart):
     new_button_value = 'On' if chart.topbar['my_button'].value == 'Off' else 'Off'
     chart.topbar['my_button'].set(new_button_value)
     print(f'Turned something {new_button_value.lower()}.')
+
 
 
