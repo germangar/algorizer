@@ -376,6 +376,84 @@ def _generatedseries_calculate_ar(series: pd.Series, period: int, df: pd.DataFra
 def _generatedseries_calculate_cg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.cg( series, period )
 
+def _generatedseries_calculate_barssince(series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None) -> pd.Series:
+    length = len(series)
+    max_lookback = period if (period is not None and period <= length) else length
+    out = []
+
+    for i in range(length):
+        start = max(0, i - max_lookback + 1)
+        window = series[start:i+1]
+
+        if window.any():
+            # Get index of last True in the window (from right)
+            last_true_idx = window[::-1].idxmax()
+            out.append(i - last_true_idx)
+        else:
+            out.append(np.nan)  # no True found in lookback window
+
+    return pd.Series(out, index=series.index)
+
+
+def _generatedseries_calculate_indexwhentrue(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    last_true = -1
+    out = []
+    for i, val in enumerate(series):
+        if val:
+            last_true = i
+        out.append(last_true if last_true != -1 else np.nan)
+    return pd.Series(out, index=series.index)
+
+def _generatedseries_calculate_indexwhenfalse(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    last_false = -1
+    out = []
+    for i, val in enumerate(series):
+        if not val:
+            last_false = i
+        out.append(last_false if last_false != -1 else np.nan)
+    return pd.Series(out, index=series.index)
+
+def _generatedseries_calculate_barswhiletrue(series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None) -> pd.Series:
+    length = len(series)
+    max_lookback = period if (period is not None and period <= length) else length
+    out = []
+    count = 0
+
+    for i in range(length):
+        val = series.iat[i]
+        if val:
+            count += 1
+        else:
+            count = 0
+
+        if period:
+            count = min(count, period)
+
+        out.append(count)
+
+    return pd.Series(out, index=series.index)
+
+def _generatedseries_calculate_barswhilefalse(series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None) -> pd.Series:
+    length = len(series)
+    max_lookback = period if (period is not None and period <= length) else length
+    out = []
+    count = 0
+
+    for i in range(length):
+        val = series.iat[i]
+        if not val:
+            count += 1
+        else:
+            count = 0
+
+        if period:
+            count = min(count, period)
+
+        out.append(count)
+
+    return pd.Series(out, index=series.index)
+
+
 
 class generatedSeries_c:
     def __init__( self, type:str, source:pd.Series, period:int, func = None, param=None, always_reset:bool = False, timeframe = None ):
@@ -718,6 +796,28 @@ def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', source, period, _generatedseries_calculate_cg )
 
+def barsSinceSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
+    if timeframe is None:
+        timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('barsSince', source, period or len(source), _generatedseries_calculate_barssince)
+
+def barsWhileTrueSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
+    if timeframe is None: timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('barsWhileTrue', source, period or len(source), _generatedseries_calculate_barswhiletrue)
+
+def barsWhileFalseSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
+    if timeframe is None: timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('barsWhileFalse', source, period or len(source), _generatedseries_calculate_barswhilefalse)
+
+def indexWhenTrueSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+    if timeframe is None:
+        timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('indexwhentrue_series', source, period, _generatedseries_calculate_indexwhentrue)
+
+def indexWhenFalseSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+    if timeframe is None:
+        timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('indexwhenfalse_series', source, period, _generatedseries_calculate_indexwhenfalse)
 
 
 
@@ -807,7 +907,7 @@ def indexWhenFalse( source ):
         return 0  # Return 0 if the series is empty or has no True values''
 
 
-def barsWhileTrue( barindex, source ):
+def barsWhileTrue( source ):
     """
     Returns the number of bars for which the given series has continuously been True, up to the current barindex.
 

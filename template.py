@@ -1,11 +1,12 @@
 import pandas as pd
-from algorizer import stream_c, timeframe_c, plot, requestValue
+from algorizer import stream_c, timeframe_c, plot, requestValue, createMarker
 import calcseries as calc
 from calcseries import generatedSeries_c
 from candle import candle_c
 import trade
 
 # from window import window_c # Importing window_c is only required if you want direct access to lightweight charts
+
 
 
 # 
@@ -48,7 +49,16 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
             trade.close(trade.LONG)
 
         trade.order( 'sell', trade.SHORT )
-        
+
+    # pivots = calc.pivots(high, low)
+
+    # hb = calc.lowestbars(low, 24)
+    # since = calc.barsSince(low>0.89)
+    
+    
+    #     createMarker('💛', 'above')
+    # if( not timeframe.shadowcopy ):
+        # print(timeframe.df)
 
 
 
@@ -91,7 +101,11 @@ if __name__ == '__main__':
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 
+    print(stream.timeframes[stream.timeframeFetch].df)
+
     # Call only if you want to open the chart window. It's not needed to run the algo
     stream.createWindow( '1m' )
+
+    
 
     stream.run()
