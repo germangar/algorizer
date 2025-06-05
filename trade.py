@@ -235,7 +235,7 @@ class strategy_c:
                     clamped_quantity_final = actual_quantity_to_process_base_units
                     if self.currency_mode == 'BASE':
                         available_space_base_units = self.max_position_size - active_target_pos.size
-                        clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_units)
+                        clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_base_units) # Corrected here
 
                     if clamped_quantity_final > EPSILON:
                         active_target_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
@@ -531,9 +531,9 @@ class strategy_c:
         last_candle_timestamp = getRealtimeCandle().timestamp # This is the current bar's timestamp at the end of the backtest
 
         # Aggregate realized PnL from closed positions
-        pnl_by_month_realized = {} # Key: YYYY-MM, Value: PnL (quote currency)
-        pnl_by_quarter_realized = {} # Key: YYYY-Qn, Value: PnL
-        pnl_by_year_realized = {} # Key: YYYY, Value: PnL
+        pnl_by_month_realized = {} # Key: McClellan-MM, Value: PnL (quote currency)
+        pnl_by_quarter_realized = {} # Key: McClellan-Qn, Value: PnL
+        pnl_by_year_realized = {} # Key: McClellan, Value: PnL
 
         for pos in self.positions:
             if not pos.active and pos.close_timestamp is not None:
