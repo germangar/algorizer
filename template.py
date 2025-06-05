@@ -30,7 +30,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 
     rsi14 = calc.RSI(close, 14)
     rsi30min = requestValue( rsi30m.name, '30m' )
-    plot( rsi30min, 'rsi30m', 'panel' )
+    # plot( rsi30min, 'rsi30m', 'panel' )
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsi30min < -0.7
     sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsi30min > 0.65
@@ -41,26 +41,22 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     if buySignal:
         if shortpos is not None:
             trade.close(trade.SHORT)
-
         trade.order( 'buy', trade.LONG )
 
     if sellSignal:
         if longpos is not None:
             trade.close(trade.LONG)
-
         trade.order( 'sell', trade.SHORT )
 
-    # pivots = calc.pivots(high, low)
+    pivots = calc.pivots(high, low)
+    if pivots.new != 0:
+        if pivots.new == -1 :
+            createMarker('💛', 'above', timestamp=pivots.last_pivot_timestamp)
+        elif pivots.new == 1 :
+            createMarker('💛', 'below', timestamp=pivots.last_pivot_timestamp)
 
-    # hb = calc.lowestbars(low, 24)
-    # since = calc.barsSince(low>0.89)
-    
-    
-    #     createMarker('💛', 'above')
-    # if( not timeframe.shadowcopy ):
-        # print(timeframe.df)
-
-
+    if not timeframe.stream.initializing:
+        print(timeframe.df)
 
 # 
 #   SETTING UP THE CANDLES FEED
@@ -95,7 +91,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 25000, False )
+    stream = stream_c( 'BTC/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 5000, False )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
@@ -105,7 +101,5 @@ if __name__ == '__main__':
 
     # Call only if you want to open the chart window. It's not needed to run the algo
     stream.createWindow( '1m' )
-
-    
 
     stream.run()

@@ -19,20 +19,68 @@ __all__ = [name for name in globals() if not (name.startswith('_') or name in _e
 # #
 
 def _generatedseries_calculate_highest(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    return series.rolling(window=period, min_periods=period).max()
+    values = series.to_numpy()
+    length = len(values)
+    result = np.full(length, np.nan)
+    
+    if length >= period:
+        # Create strided array view for rolling windows
+        strides = np.lib.stride_tricks.sliding_window_view(values, period)
+        
+        # Calculate max for each window
+        result[period-1:] = np.max(strides, axis=1)
+
+    return pd.Series(result, index=series.index)
 
 def _generatedseries_calculate_lowest(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    return series.rolling(window=period, min_periods=period).min()
+    values = series.to_numpy()
+    length = len(values)
+    result = np.full(length, np.nan)
+    
+    if length >= period:
+        # Create strided array view for rolling windows
+        strides = np.lib.stride_tricks.sliding_window_view(values, period)
+        
+        # Calculate min for each window
+        result[period-1:] = np.min(strides, axis=1)
+
+    return pd.Series(result, index=series.index)
 
 def _generatedseries_calculate_highestbars(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    def offset_to_max(x):
-        return (period - 1) - np.argmax(x)
-    return series.rolling(window=period, min_periods=period).apply(offset_to_max, raw=True)
+    values = series.to_numpy()
+    length = len(values)
+    result = np.full(length, np.nan)
+    
+    # Only process when we have enough data
+    if length >= period:
+        # Create strided array view for rolling windows
+        strides = np.lib.stride_tricks.sliding_window_view(values, period)
+        
+        # Calculate argmax for each window
+        indices = np.argmax(strides, axis=1)
+        
+        # Convert to offset from current position
+        result[period-1:] = (period - 1) - indices
+
+    return pd.Series(result, index=series.index)
 
 def _generatedseries_calculate_lowestbars(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    def offset_to_min(x):
-        return (period - 1) - np.argmin(x)
-    return series.rolling(window=period, min_periods=period).apply(offset_to_min, raw=True)
+    values = series.to_numpy()
+    length = len(values)
+    result = np.full(length, np.nan)
+    
+    # Only process when we have enough data
+    if length >= period:
+        # Create strided array view for rolling windows
+        strides = np.lib.stride_tricks.sliding_window_view(values, period)
+        
+        # Calculate argmin for each window
+        indices = np.argmin(strides, axis=1)
+        
+        # Convert to offset from current position
+        result[period-1:] = (period - 1) - indices
+
+    return pd.Series(result, index=series.index)
 
 def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.sma( series, period )
@@ -115,12 +163,42 @@ def _generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.
         return pd.Series(williams_r_values, index=df.index)
 
 def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame, param=None) -> pd.Series:
-    deltas = series.diff()
-    gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
-    loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    if 1:
+        # Convert to numpy array for faster operations
+        values = series.to_numpy()
+        deltas = np.diff(values, prepend=np.nan)
+        length = len(values)
+        result = np.full(length, np.nan)
+        
+        if length >= period:
+            # Separate gains and losses
+            gains = np.where(deltas > 0, deltas, 0)
+            losses = -np.where(deltas < 0, deltas, 0)
+            
+            # Create strided views for rolling windows
+            gains_windows = np.lib.stride_tricks.sliding_window_view(gains, period)
+            losses_windows = np.lib.stride_tricks.sliding_window_view(losses, period)
+            
+            # Calculate means for each window
+            avg_gains = np.mean(gains_windows, axis=1)
+            avg_losses = np.mean(losses_windows, axis=1)
+            
+            # Calculate RS and RSI
+            # Add small epsilon to avoid division by zero
+            rs = avg_gains / (avg_losses + 1e-10)  
+            rsi = 100 - (100 / (1 + rs))
+            
+            # Assign results
+            result[period-1:] = rsi
+
+        return pd.Series(result, index=series.index)
+    else:
+        deltas = series.diff()
+        gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
+        loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
 
 
 def _generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
@@ -291,6 +369,38 @@ def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataF
         slope_series = series.rolling(window=period).apply(slope_calc, raw=False)
 
         return slope_series
+
+def _generatedseries_calculate_vhma(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    """
+    Calculate the Vertical Horizontal Moving Average (VHMA) for a given series.
+
+    Args:
+        series (pd.Series): The input series (e.g., close price).
+        period (int): The period for the VHMA calculation.
+        df (pd.DataFrame): The DataFrame containing the data.
+        param (None): Not used.
+
+    Returns:
+        pd.Series: The calculated VHMA series.
+    """
+    highest = series.rolling(window=period).max()
+    lowest = series.rolling(window=period).min()
+    R = highest - lowest
+    change = series.diff().abs()
+    vhf = R / change.rolling(window=period).sum()
+    vhf = vhf.fillna(0)  # Replace NaN with 0 to avoid issues in calculation
+
+    vhma = np.zeros(len(series))
+    vhma[:] = np.nan # Initialize with NaN
+
+    for i in range(1, len(series)):
+        if np.isnan(vhma[i-1]):
+            vhma[i] = series.iloc[i]
+        else:
+            vhma[i] = vhma[i-1] + (vhf.iloc[i]**2) * (series.iloc[i] - vhma[i-1])
+    
+    vhma = pd.Series(vhma, index=series.index)
+    return vhma
     
 def _generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.cci( df['high'], df['low'], df['close'], period )
@@ -376,23 +486,31 @@ def _generatedseries_calculate_ar(series: pd.Series, period: int, df: pd.DataFra
 def _generatedseries_calculate_cg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.cg( series, period )
 
-def _generatedseries_calculate_barssince(series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None) -> pd.Series:
-    length = len(series)
-    max_lookback = period if (period is not None and period <= length) else length
-    out = []
-
-    for i in range(length):
-        start = max(0, i - max_lookback + 1)
-        window = series[start:i+1]
-
-        if window.any():
-            # Get index of last True in the window (from right)
-            last_true_idx = window[::-1].idxmax()
-            out.append(i - last_true_idx)
-        else:
-            out.append(np.nan)  # no True found in lookback window
-
-    return pd.Series(out, index=series.index)
+def _generatedseries_calculate_barssince(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    # Get array of indices where condition is True
+    true_indices = np.where(series)[0]
+    
+    if len(true_indices) == 0:
+        return pd.Series(np.nan, index=series.index)
+    
+    # Create array of all indices
+    all_indices = np.arange(len(series))
+    
+    # Find the closest previous True index for each position
+    insertions = np.searchsorted(true_indices, all_indices, side='right') - 1
+    
+    # Create result array
+    result = np.full(len(series), np.nan)
+    
+    # Calculate distances where we have a previous True index
+    valid_mask = insertions >= 0
+    result[valid_mask] = all_indices[valid_mask] - true_indices[insertions[valid_mask]]
+    
+    # Filter by period if specified
+    if period is not None:
+        result[result > period] = np.nan
+    
+    return pd.Series(result, index=series.index)
 
 
 def _generatedseries_calculate_indexwhentrue(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
@@ -474,6 +592,9 @@ class generatedSeries_c:
 
         if( self.func == None ):
             raise SystemError( f"Generated Series without a func [{self.name}]")
+        
+        if( self.period is None ):
+            self.period = len(source)
 
         if( self.period < 1 ):
             raise SystemError( f"Generated Series  with invalid period [{period}]")
@@ -746,6 +867,11 @@ def SLOPE( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'slope', source, period, _generatedseries_calculate_slope, always_reset=True )
 
+def VHMA(source: pd.Series, period: int, timeframe=None)->generatedSeries_c:
+    if timeframe is None:
+        timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('vhma', source, period, _generatedseries_calculate_vhma, always_reset = True)
+
 def BIAS( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bias', source, period, _generatedseries_calculate_bias )
@@ -796,20 +922,25 @@ def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     if timeframe == None : timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', source, period, _generatedseries_calculate_cg )
 
-def barsSinceSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
+def barsSinceSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+    import inspect
+    # Get caller info by going up 2 levels in the stack
+    caller_frame = inspect.currentframe().f_back.f_back
+    frame_info = inspect.getframeinfo(caller_frame)
+    caller_id = f"{frame_info.function}_{frame_info.lineno}"
     if timeframe is None:
         timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries('barsSince', source, period or len(source), _generatedseries_calculate_barssince)
+    return timeframe.calcGeneratedSeries('barsSince'+caller_id, source, period, _generatedseries_calculate_barssince)
 
 def barsWhileTrueSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
     if timeframe is None: timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries('barsWhileTrue', source, period or len(source), _generatedseries_calculate_barswhiletrue)
+    return timeframe.calcGeneratedSeries('barsWhileTrue', source, period, _generatedseries_calculate_barswhiletrue)
 
 def barsWhileFalseSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
     if timeframe is None: timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries('barsWhileFalse', source, period or len(source), _generatedseries_calculate_barswhilefalse)
+    return timeframe.calcGeneratedSeries('barsWhileFalse', source, period, _generatedseries_calculate_barswhilefalse)
 
-def indexWhenTrueSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
+def indexWhenTrueSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
     if timeframe is None:
         timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('indexwhentrue_series', source, period, _generatedseries_calculate_indexwhentrue)
@@ -818,8 +949,6 @@ def indexWhenFalseSeries(source: pd.Series, period: int, timeframe=None) -> gene
     if timeframe is None:
         timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('indexwhenfalse_series', source, period, _generatedseries_calculate_indexwhenfalse)
-
-
 
 
 # #
@@ -922,6 +1051,185 @@ def barsWhileTrue( source ):
     if( index_when_false == None ):
         return None
     return active.barindex - index_when_false
+
+class pivots_c:
+    def __init__(self, high: pd.Series, low: pd.Series, depth: int = 64, deviation: float = 2, backstep: int = 5):
+        self.depth = depth
+        self.deviation = deviation
+        self.backstep = backstep
+        self.precision = 100
+        
+        # State variables
+        self.direction = 0
+        self.heightDiffTopEnough = False
+        self.heightDiffBottomEnough = False
+
+        # Initialize tracking columns and get their indices
+        self.initializeTrackingColumns()
+
+        # State variables
+        self.zindex = active.barindex
+        self.z1index = active.barindex
+        self.z2index = active.barindex
+        self.last_update = -1
+        self.last_direction = 0
+
+        # confirmed pivots
+        self.new = 0
+        self.last_pivot_index = 0
+        self.last_pivot_price = 0.0
+        self.last_pivot_timestamp = 0
+        self.high_pivots = []
+        self.low_pivots = []
+
+    def makeName(self):
+        return f'OHDTE{active.timeframe.timeframeStr}{self.depth}{self.deviation}{self.backstep}'
+
+    def update2(self, high: pd.Series, low: pd.Series):
+        self.new = 0
+        barindex = active.barindex
+        if barindex < self.depth:
+            return (self.direction, self.z1index, self.z2index)
+        
+        hbGenSeries = highestbars(high, self.depth)
+        lbGenSeries = lowestbars(low, self.depth)
+        hb_offset = hbGenSeries.value()
+        lb_offset = lbGenSeries.value()
+
+        # store in dataframe columns the old results from heighDiffTopEnough and heightDiffBottomEnough for vectorized comparison
+        if( not active.timeframe.shadowcopy ):
+            active.timeframe.df.iat[barindex, self.OHDTEcolumnindex] = not self.heightDiffTopEnough
+            active.timeframe.df.iat[barindex, self.OHDBEcolumnindex] = not self.heightDiffBottomEnough
+
+        self.heightDiffTopEnough = high[barindex-hb_offset] - high[barindex] > self.deviation * self.precision
+        self.heightDiffBottomEnough = low[barindex] - low[barindex-lb_offset] > self.deviation * self.precision
+
+        hr_gs = barsSinceSeries(active.timeframe.df.iloc[:, self.OHDTEcolumnindex], self.depth)
+        lr_gs = barsSinceSeries(active.timeframe.df.iloc[:, self.OHDBEcolumnindex], self.depth)
+
+        condition = barsSinceSeries(hr_gs.series() <= lr_gs.series(), self.depth + 1).value()
+        if not condition:
+            condition = 0
+
+        new_direction = -1 if condition >= self.backstep else 1
+        
+        # print( f"HR:{hr_gs.value()} LR:{lr_gs.value()} direction:{self.direction}")
+
+        if new_direction != self.direction:
+            # self.newPivot(self.direction, high, low)
+            self.z1index = self.z2index
+            self.z2index = self.zindex
+            # self.zindex = active.barindex
+
+        high_now = high.at[barindex]
+        low_now = low.at[barindex]
+
+        if new_direction > 0:
+            if high_now > high.at[self.z2index]:
+                self.z2index = barindex
+                self.zindex = barindex
+            if low_now < low.at[self.zindex]:
+                self.zindex = barindex
+
+        if new_direction < 0:
+            if low_now < low.at[self.z2index]:
+                self.z2index = barindex
+                self.zindex = barindex
+            if high_now > high.at[self.zindex]:
+                self.zindex = barindex
+
+        self.direction = new_direction
+        return (self.direction, self.z1index, self.z2index)
+    
+    def update(self, high: pd.Series, low: pd.Series):
+        direction, confirmed, current = self.update2(high, low)
+        if( confirmed != self.last_pivot_index ):
+            self.last_pivot_index = confirmed
+            self.last_pivot_price = high[confirmed]
+            self.last_pivot_timestamp = active.timeframe.df['timestamp'].at[confirmed]
+            # if direction == -1 :
+            #     self.high_pivots.append((confirmed, high[confirmed]))
+            # elif self.direction == 1:
+            #     self.low_pivots.append((confirmed, low[confirmed]))
+            # self.confirmedLast = confirmed
+            self.new = direction
+
+    def initializeTrackingColumns(self):
+        """Initialize columns for tracking height differences and store their indices"""
+        df = active.timeframe.df
+        
+        # Initialize result arrays
+        height_diff_top = pd.Series(False, index=df.index)
+        height_diff_bottom = pd.Series(False, index=df.index)
+        
+        # Calculate only from depth onwards
+        for i in range(self.depth, len(df)):
+            window = slice(i - self.depth + 1, i + 1)
+            window_high = df.high.iloc[window]
+            window_low = df.low.iloc[window]
+            
+            # Find highest and lowest in window
+            highest_idx = i - self.depth + 1 + window_high.argmax()
+            lowest_idx = i - self.depth + 1 + window_low.argmin()
+            
+            # Calculate differences
+            height_diff_top.iloc[i] = df.high.iloc[highest_idx] - df.high.iloc[i] > self.deviation * self.precision
+            height_diff_bottom.iloc[i] = df.low.iloc[i] - df.low.iloc[lowest_idx] > self.deviation * self.precision
+
+        # Create and store columns
+        active.timeframe.df[self.makeName()+'T'] = ~height_diff_top
+        active.timeframe.df[self.makeName()+'B'] = ~height_diff_bottom
+        self.OHDTEcolumnindex = active.timeframe.df.columns.get_loc(self.makeName()+'T')
+        self.OHDBEcolumnindex = active.timeframe.df.columns.get_loc(self.makeName()+'B')
+
+'''
+    heighDiffTopEnough = (_high[-ta.highestbars(depth)] - _high > deviation*syminfo.mintick)
+    hr = ta.barssince(not heighDiffTopEnough[1] )
+    heightDiffBottomEnough = (_low - _low[-ta.lowestbars(depth)] > deviation*syminfo.mintick)
+    lr = ta.barssince(not heightDiffBottomEnough[1] )
+         
+    direction = ta.barssince(hr <= lr) >= backstep? -1: 1
+'''
+'''
+var last_h = 1
+last_h += 1
+var last_l = 1
+last_l += 1
+var lw = 1
+var hg = 1
+lw += 1
+hg += 1
+p_lw = -ta.lowestbars(bottom, Depth)
+p_hg = -ta.highestbars(top, Depth)
+lowing = lw == p_lw or bottom - bottom[p_lw] > Deviation * syminfo.mintick
+highing = hg == p_hg or top[p_hg] - top > Deviation * syminfo.mintick
+lh = ta.barssince(not highing[1])
+ll = ta.barssince(not lowing[1])
+down = ta.barssince(not(lh > ll)) >= Backstep
+lower = bottom[lw] > bottom[p_lw]
+higher = top[hg] < top[p_hg]
+if lw != p_lw and (not down[1] or lower)
+    lw := p_lw < hg ? p_lw : 0
+    lw
+if hg != p_hg and (down[1] or higher)
+    hg := p_hg < lw ? p_hg : 0
+    hg
+
+line zz = na
+label point = na
+x1 = down ? lw : hg
+y1 = down ? bottom[lw] : top[hg]'''
+
+
+pivotsNow:pivots_c = None
+def pivots( high:pd.Series, low:pd.Series )->pivots_c:
+    global pivotsNow
+    if pivotsNow == None:
+        pivotsNow = pivots_c(high, low)
+
+    pivotsNow.update(high, low)
+    return pivotsNow
+
 
 
 def crossingUp( self, other ):
