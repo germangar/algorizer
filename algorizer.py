@@ -552,10 +552,10 @@ class stream_c:
         await exchange.close()
 
 
-    def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = -1, chart_name:str = None ):
+    def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name:str = None ):
         # MARKER_POSITION = Literal['above', 'below', 'inside']
         # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
-        if timestamp == -1:
+        if timestamp == None:
             timestamp = self.timeframes[self.timeframeFetch].timestamp
 
         self.markers.append( marker_c( text, timestamp, location, shape, color, chart_name ) )
@@ -583,10 +583,10 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
     return targetTimeframe.valueAtTimestamp( column_name, timestamp )
     
 
-def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE" ):
+def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name = None ):
     if( active.timeframe == None ):
         return None
-    return active.timeframe.stream.createMarker( text, location, shape, color )
+    return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name )
 
 def isInitializing():
     return active.timeframe.stream.initializing
