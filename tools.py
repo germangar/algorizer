@@ -13,9 +13,7 @@ def stringToValue( arg )->float:
 # used to standarize the name given to a generated series (calcseries.py)
 # I probably should defined type pd.series for 'source' but I don't feel like importing pandas here
 def generatedSeriesNameFormat( type, source, period:int ):
-    if( source.name == None ):
-        raise SystemError( f"Generated Series has no valid name [{type}{period} {source.name}]")
-    return f'_{type}{period} {source.name}'
+    return f'_{type}{period}_{source.name}'
 
 def emptyFunction(func):
     return func.__code__.co_consts == (None,)
