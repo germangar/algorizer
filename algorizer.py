@@ -433,6 +433,8 @@ class stream_c:
         self.timeframeFetch = None
         self.timestampFetch = -1
         self.timeframes: dict[str, timeframe_c] = {}
+        self.precision = 0.0
+        self.mintick = 0.0
 
         self.markers:marker_c = []
 
@@ -462,11 +464,25 @@ class stream_c:
         #################################################
 
         fetcher = ohlcvs_c( exchangeID, self.symbol )
+
+        self.markets = fetcher.exchange.load_markets()
+        from pprint import pprint
+        pprint( self.markets[self.symbol] )
+        if( fetcher.exchange.id == 'binance' or fetcher.exchange.id == 'bingx' ):
+            self.precision = 1.0 / (10.0 ** self.markets[symbol]['precision'].get('amount'))
+            self.mintick = 1.0 / (10.0 ** self.markets[symbol]['precision'].get('price'))
+        else :
+            self.precision = self.markets[symbol]['precision'].get('amount')
+            self.mintickn = 1.0 / (10.0 ** self.markets[symbol]['precision'].get('price'))
+        print( 'PRECISION:', self.precision, 'MINTICK:', self.mintick )
+            
+        # fetch OHLCVs
         ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
         if( len(ohlcvs) == 0 ):
             raise SystemExit( f'No candles available in {exchangeID}. Aborting')
         ohlcvDF = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
         ohlcvs = []
+
 
         #################################################
         # Create the timeframe sets with their dataframes
