@@ -15,6 +15,25 @@ def stringToValue( arg )->float:
 def generatedSeriesNameFormat( type, source, period:int ):
     return f'_{type}{period}_{source.name}'
 
+def hx2rgba(hex_color):
+    """Converts a hex color code (with or without alpha) to an RGBA string for CSS."""
+    hex_color = hex_color.lstrip('#')
+    hex_length = len(hex_color)
+    if hex_length not in (6, 8):
+        return None  # Invalid hex code length
+
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    if hex_length == 6:
+        a = 1.0
+    else:
+        a = round(int(hex_color[6:8], 16) / 255, 3)
+
+    return f'rgba({r}, {g}, {b}, {a})'
+    #return (r, g, b, a)
+
+
 def emptyFunction(func):
     return func.__code__.co_consts == (None,)
 

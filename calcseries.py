@@ -717,13 +717,18 @@ class generatedSeries_c:
             return self.value() == other.iloc[active.barindex]
         return self.value() == other
     
-    # def __req__(self, other):
-    #     return self.__eq__(other)
 
-    def plot( self, chart = None ):
-        '''it returns the generatedSeries even when calling plot from the timeframe and the function returns the plot_c'''
+    def plot( self, chart = None, color = "#8FA7BBAA", style = 'solid', width = 1  ):
+        '''* it returns the generatedSeries. Calling plot from the timeframe and the function returns the plot_c but not here*
+
+        source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
+        chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+        color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
+        style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+        width: int
+        '''
         if( self.timestamp > 0 ):
-            self.timeframe.plot( self.series(), self.name, chart )
+            self.timeframe.plot( self.series(), self.name, chart, color, style, width )
             return self
     
     def crossingUp( self, other ):

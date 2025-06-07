@@ -24,9 +24,18 @@ verbose = False
 
 
 class plot_c:
-    def __init__( self, name:str, chart_name = None ):
+    def __init__( self, name:str, chart_name = None, color = "#8FA7BBAA", style = 'solid', width = 1 ):
+        '''name, color, style, width
+        color: str = 'rgba(200, 200, 200, 0.6)',
+        style: LINE_STYLE = 'solid', width: int = 2,
+        
+        LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+        '''
         self.name = name
         self.chartName = chart_name
+        self.color = color if color.startswith('rgba') else tools.hx2rgba(color)
+        self.style = style
+        self.width = width
         self.line = None
         self.initialized = False
         self.iat_index = -1
@@ -78,8 +87,8 @@ class plot_c:
                 return
             
             chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
-            self.line = chart.create_line( self.name, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame({'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries}) )
+            self.line = chart.create_line( self.name, self.color, self.style, self.width, price_line=False, price_label=False )
+            self.line.set( pd.DataFrame( {'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries} ) )
             self.iat_index = timeframe.df.columns.get_loc(self.name)
             self.initialized = True
             return
@@ -111,12 +120,15 @@ class plot_c:
 
 
 
-def plot( source, name:str = None, chart_name:str = None )->plot_c:
+def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
     '''
     source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
     chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+    color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
+    style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+    width: int
     '''
-    return active.timeframe.plot( source, name, chart_name )
+    return active.timeframe.plot( source, name, chart_name, color, style, width )
     
 
 
@@ -377,12 +389,19 @@ class timeframe_c:
         return gse
 
 
-    def plot( self, source, name:str = None, chart_name:str = None )->plot_c:
+    def plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
+        '''
+        source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
+        chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+        color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
+        style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+        width: int
+        '''
         if self.stream.noplots : return
         plot = self.registeredPlots.get( name )
 
         if( plot == None ):
-            plot = plot_c( name, chart_name )
+            plot = plot_c( name, chart_name, color, style, width )
             self.registeredPlots[name] = plot
         
         plot.update( source, self )
@@ -571,13 +590,14 @@ class stream_c:
         await exchange.close()
 
 
-    def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name:str = None ):
-        # MARKER_POSITION = Literal['above', 'below', 'inside']
-        # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
+    def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name:str = None )->marker_c:
+        '''MARKER_POSITION = Literal['above', 'below', 'inside']
+        MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
         if timestamp == None:
             timestamp = self.timeframes[self.timeframeFetch].timestamp
-
-        self.markers.append( marker_c( text, timestamp, location, shape, color, chart_name ) )
+        marker = marker_c( text, timestamp, location, shape, color, chart_name )
+        self.markers.append( marker )
+        return marker
 
 
     def createWindow( self, timeframeStr ):
@@ -602,7 +622,9 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
     return targetTimeframe.valueAtTimestamp( column_name, timestamp )
     
 
-def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name = None ):
+def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name = None )->marker_c:
+    '''MARKER_POSITION = Literal['above', 'below', 'inside']
+        MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
     if( active.timeframe == None ):
         return None
     return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name )

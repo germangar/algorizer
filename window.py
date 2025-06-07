@@ -24,33 +24,7 @@ def get_screen_resolution():
     root.destroy()  # Destroy the window after getting the resolution
     return screen_width, screen_height
 
-def hx2rgba(hex_color):
-    """Converts a hex color code (with or without alpha) to an RGBA tuple.
 
-    Args:
-        hex_color: The hex color code (e.g., "#RRGGBB" or "#RRGGBBAA").
-
-    Returns:
-        a string with rgba(...) included
-    """
-    hex_color = hex_color.lstrip('#')
-    hex_length = len(hex_color)
-    if hex_length not in (6, 8):
-        return None  # Invalid hex code length
-
-    if hex_length == 6:
-        r = int(hex_color[0:2], 16)
-        g = int(hex_color[2:4], 16)
-        b = int(hex_color[4:6], 16)
-        a = 100  # Default alpha value (fully opaque)
-    else:  # hex_length == 8
-        r = int(hex_color[0:2], 16)
-        g = int(hex_color[2:4], 16)
-        b = int(hex_color[4:6], 16)
-        a = int(hex_color[6:8], 16) * 100 // 255  # Scale alpha to 0-100
-
-    return f'rgba({r},{g},{b},{a})'
-    #return (r, g, b, a)
 
 
 class window_c:
@@ -95,6 +69,8 @@ class window_c:
         tmpdf = pd.DataFrame( { 'time':pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), 'open':timeframe.df['open'], 'high':timeframe.df['high'], 'low':timeframe.df['low'], 'close':timeframe.df['close'], 'volume': timeframe.df['volume']} )
 
         chart.set( tmpdf )
+
+        chart.create_line()
 
 
         # bottom panel

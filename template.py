@@ -27,9 +27,9 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 
     # bollinger bands
     BBbasis, BBupper, BBlower = calc.BollingerBands( close, 250 )
-    BBbasis.plot()
-    BBupper.plot()
-    BBlower.plot()
+    BBbasis.plot( color = "#769EB4AC", width=2 )
+    BBupper.plot( style='dotted' )
+    BBlower.plot( style='dotted' )
 
     rsi14 = calc.RSI(close, 14)
     rsi30min = requestValue( rsi30m.name, '30m' )
@@ -55,9 +55,9 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     if pivots.is_pivot:
         thisPivot = pivots.getLast()
         if thisPivot.type == c.PIVOT_HIGH:
-            createMarker('▽', 'above', timestamp=thisPivot.timestamp)
+            createMarker('▽', 'above', color = "#BDBDBD", timestamp=thisPivot.timestamp)
         else:
-            createMarker('△', 'below', timestamp=thisPivot.timestamp)
+            createMarker('△', 'below', color = "#BDBDBD", timestamp=thisPivot.timestamp)
 
 
     # if not timeframe.stream.initializing:
