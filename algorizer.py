@@ -6,6 +6,7 @@ import asyncio
 import ccxt.pro as ccxt
 import time
 
+from constants import c
 import tasks
 import tools
 from fetcher import ohlcvs_c
@@ -408,7 +409,10 @@ class timeframe_c:
         if column_name not in self.df.columns:
             raise ValueError(f"Column '{column_name}' not found in DataFrame.")
         return self.df[column_name].iloc[index]
-        
+
+    def valueByColumnIdx( self, column_index:int, index:int = None ):
+        if index == None: index = self.barindex
+        return self.df.iat[index, column_index]
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
