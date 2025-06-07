@@ -1,4 +1,5 @@
 import pandas as pd
+from constants import c
 from algorizer import stream_c, timeframe_c, plot, requestValue, createMarker
 import calcseries as calc
 from calcseries import generatedSeries_c
@@ -19,6 +20,8 @@ def runCloseCandle_30m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, l
     rsi30m = calc.IFTrsi(close, 14)
     rsi30m.plot('panel')
 
+    
+
 
 def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
 
@@ -30,33 +33,35 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 
     rsi14 = calc.RSI(close, 14)
     rsi30min = requestValue( rsi30m.name, '30m' )
-    # plot( rsi30min, 'rsi30m', 'panel' )
+    plot( rsi30min, 'rsi30m', 'panel' )
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsi30min < -0.7
     sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsi30min > 0.65
 
-    shortpos = trade.getActivePosition(trade.SHORT)
-    longpos = trade.getActivePosition(trade.LONG)
+    shortpos = trade.getActivePosition(c.SHORT)
+    longpos = trade.getActivePosition(c.LONG)
 
     if buySignal:
         if shortpos is not None:
-            trade.close(trade.SHORT)
-        trade.order( 'buy', trade.LONG )
+            trade.close(c.SHORT)
+        trade.order( 'buy', c.LONG )
 
     if sellSignal:
         if longpos is not None:
-            trade.close(trade.LONG)
-        trade.order( 'sell', trade.SHORT )
+            trade.close(c.LONG)
+        trade.order( 'sell', c.SHORT )
 
-    pivots = calc.pivots(high, low)
-    if pivots.new != 0:
-        if pivots.new == -1 :
-            createMarker('💛', 'above', timestamp=pivots.last_pivot_timestamp)
-        elif pivots.new == 1 :
-            createMarker('💛', 'below', timestamp=pivots.last_pivot_timestamp)
+    pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 4 )
+    if pivots.is_pivot:
+        thisPivot = pivots.getLast()
+        if thisPivot.type == c.PIVOT_HIGH:
+            createMarker('▽', 'above', timestamp=thisPivot.timestamp)
+        else:
+            createMarker('△', 'below', timestamp=thisPivot.timestamp)
 
-    if not timeframe.stream.initializing:
-        print(timeframe.df)
+
+    # if not timeframe.stream.initializing:
+    #     print(timeframe.df)
 
 # 
 #   SETTING UP THE CANDLES FEED
@@ -91,13 +96,13 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 5000, False )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 25000, False )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 
-    print(stream.timeframes[stream.timeframeFetch].df)
+    # print(stream.timeframes[stream.timeframeFetch].df)
 
     # Call only if you want to open the chart window. It's not needed to run the algo
     stream.createWindow( '1m' )

@@ -3,6 +3,7 @@ import pandas as pd
 import pandas_ta as pt
 import numpy as np
 import time
+from constants import c
 import active
 import tools
 
@@ -1052,183 +1053,159 @@ def barsWhileTrue( source ):
         return None
     return active.barindex - index_when_false
 
+from dataclasses import dataclass
+@dataclass
+class pivot_c:
+    index: int
+    type: int
+    price: float
+    timestamp: int
+
 class pivots_c:
-    def __init__(self, high: pd.Series, low: pd.Series, depth: int = 64, deviation: float = 2, backstep: int = 5):
-        self.depth = depth
-        self.deviation = deviation
-        self.backstep = backstep
-        self.precision = 100
+    def __init__(self, min_range_pct: float = 5.0, reversal_pct: float = 30.0):
+        # Configuration
+        self.min_range_pct = min_range_pct
+        self.reversal_pct = reversal_pct
         
         # State variables
-        self.direction = 0
-        self.heightDiffTopEnough = False
-        self.heightDiffBottomEnough = False
+        self.trend = 1  # Start assuming uptrend
+        self.current_HH = None
+        self.current_LL = None
+        self.current_HH_index = None
+        self.current_LL_index = None
+        self.last_pivot_price = None
+        self.last_pivot_move = None
+        self.last_pivot_index = None  # Added to store index of last confirmed pivot
 
-        # Initialize tracking columns and get their indices
-        self.initializeTrackingColumns()
-
-        # State variables
-        self.zindex = active.barindex
-        self.z1index = active.barindex
-        self.z2index = active.barindex
-        self.last_update = -1
-        self.last_direction = 0
-
-        # confirmed pivots
-        self.new = 0
-        self.last_pivot_index = 0
-        self.last_pivot_price = 0.0
-        self.last_pivot_timestamp = 0
-        self.high_pivots = []
-        self.low_pivots = []
-
-    def makeName(self):
-        return f'OHDTE{active.timeframe.timeframeStr}{self.depth}{self.deviation}{self.backstep}'
-
-    def update2(self, high: pd.Series, low: pd.Series):
-        self.new = 0
-        barindex = active.barindex
-        if barindex < self.depth:
-            return (self.direction, self.z1index, self.z2index)
+        self.is_pivot = False
+        self.pivots = []
         
-        hbGenSeries = highestbars(high, self.depth)
-        lbGenSeries = lowestbars(low, self.depth)
-        hb_offset = hbGenSeries.value()
-        lb_offset = lbGenSeries.value()
+    def process_candle(self, index: int, high: float, low: float) -> tuple[bool, float, int]:
+        self.is_pivot = False
 
-        # store in dataframe columns the old results from heighDiffTopEnough and heightDiffBottomEnough for vectorized comparison
-        if( not active.timeframe.shadowcopy ):
-            active.timeframe.df.iat[barindex, self.OHDTEcolumnindex] = not self.heightDiffTopEnough
-            active.timeframe.df.iat[barindex, self.OHDBEcolumnindex] = not self.heightDiffBottomEnough
-
-        self.heightDiffTopEnough = high[barindex-hb_offset] - high[barindex] > self.deviation * self.precision
-        self.heightDiffBottomEnough = low[barindex] - low[barindex-lb_offset] > self.deviation * self.precision
-
-        hr_gs = barsSinceSeries(active.timeframe.df.iloc[:, self.OHDTEcolumnindex], self.depth)
-        lr_gs = barsSinceSeries(active.timeframe.df.iloc[:, self.OHDBEcolumnindex], self.depth)
-
-        condition = barsSinceSeries(hr_gs.series() <= lr_gs.series(), self.depth + 1).value()
-        if not condition:
-            condition = 0
-
-        new_direction = -1 if condition >= self.backstep else 1
+        # Initialize on first candle
+        if self.current_HH is None:
+            self.current_HH = high
+            self.current_LL = low
+            self.current_HH_index = index
+            self.current_LL_index = index
+            return False, None, None
+            
+        if self.trend > 0:
+            # Track new high if we make one
+            if high >= self.current_HH:
+                self.current_HH = high
+                self.current_HH_index = index
+                return False, None, None
+            
+            # Check for potential reversal
+            min_range_threshold = self.current_HH * (1 - self.min_range_pct * 0.01)
+            
+            if low < min_range_threshold:
+                current_reversal = self.current_HH - low
+                
+                # If we have a previous pivot to compare to
+                if self.last_pivot_price is not None:
+                    reversal_threshold = self.last_pivot_move * (self.reversal_pct * 0.01)
+                    if current_reversal >= reversal_threshold:
+                        # Confirmed down pivot
+                        pivot_price = self.current_HH
+                        pivot_index = self.current_HH_index  # Store index where the high was formed
+                        self.trend = -1
+                        self.last_pivot_price = self.current_HH
+                        self.last_pivot_move = current_reversal
+                        self.last_pivot_index = self.current_HH_index
+                        self.current_LL = low
+                        self.current_LL_index = index
+                        return True, pivot_price, pivot_index
+                else:
+                    # First pivot, only use min_range
+                    pivot_price = self.current_HH
+                    pivot_index = self.current_HH_index  # Store index where the high was formed
+                    self.trend = -1
+                    self.last_pivot_price = self.current_HH
+                    self.last_pivot_move = current_reversal
+                    self.last_pivot_index = self.current_HH_index
+                    self.current_LL = low
+                    self.current_LL_index = index
+                    return True, pivot_price, pivot_index
+                    
+        else:  # Downtrend
+            # Track new low if we make one
+            if low <= self.current_LL:
+                self.current_LL = low
+                self.current_LL_index = index
+                return False, None, None
+                
+            # Check for potential reversal
+            min_range_threshold = self.current_LL * (1 + self.min_range_pct * 0.01)
+            
+            if high > min_range_threshold:
+                current_reversal = high - self.current_LL
+                
+                # If we have a previous pivot to compare to
+                if self.last_pivot_price is not None:
+                    reversal_threshold = self.last_pivot_move * (self.reversal_pct * 0.01)
+                    if current_reversal >= reversal_threshold:
+                        # Confirmed up pivot
+                        pivot_price = self.current_LL
+                        pivot_index = self.current_LL_index  # Store index where the low was formed
+                        self.trend = 1
+                        self.last_pivot_price = self.current_LL
+                        self.last_pivot_move = current_reversal
+                        self.last_pivot_index = self.current_LL_index
+                        self.current_HH = high
+                        self.current_HH_index = index
+                        return True, pivot_price, pivot_index
+                else:
+                    # First pivot, only use min_range
+                    pivot_price = self.current_LL
+                    pivot_index = self.current_LL_index  # Store index where the low was formed
+                    self.trend = 1
+                    self.last_pivot_price = self.current_LL
+                    self.last_pivot_move = current_reversal
+                    self.last_pivot_index = self.current_LL_index
+                    self.current_HH = high
+                    self.current_HH_index = index
+                    return True, pivot_price, pivot_index
         
-        # print( f"HR:{hr_gs.value()} LR:{lr_gs.value()} direction:{self.direction}")
+        return False, None, None
 
-        if new_direction != self.direction:
-            # self.newPivot(self.direction, high, low)
-            self.z1index = self.z2index
-            self.z2index = self.zindex
-            # self.zindex = active.barindex
+    def newPivot(self, index, price ):
+        pivot = pivot_c(
+                index=index,
+                type=self.trend,
+                price=price,
+                timestamp=int(active.timeframe.df.iat[index, c.DF_TIMESTAMP])
+                )
+        self.pivots.append(pivot)
 
-        high_now = high.at[barindex]
-        low_now = low.at[barindex]
-
-        if new_direction > 0:
-            if high_now > high.at[self.z2index]:
-                self.z2index = barindex
-                self.zindex = barindex
-            if low_now < low.at[self.zindex]:
-                self.zindex = barindex
-
-        if new_direction < 0:
-            if low_now < low.at[self.z2index]:
-                self.z2index = barindex
-                self.zindex = barindex
-            if high_now > high.at[self.zindex]:
-                self.zindex = barindex
-
-        self.direction = new_direction
-        return (self.direction, self.z1index, self.z2index)
+    def getLast(self, type:int = None, since:int = None):
+        if since is None:since = active.barindex
+        for pivot in reversed(self.pivots):
+            if pivot.index >= since:
+                continue
+            if type is not None and type != pivot.type:
+                continue
+            return pivot
     
     def update(self, high: pd.Series, low: pd.Series):
-        direction, confirmed, current = self.update2(high, low)
-        if( confirmed != self.last_pivot_index ):
-            self.last_pivot_index = confirmed
-            self.last_pivot_price = high[confirmed]
-            self.last_pivot_timestamp = active.timeframe.df['timestamp'].at[confirmed]
-            # if direction == -1 :
-            #     self.high_pivots.append((confirmed, high[confirmed]))
-            # elif self.direction == 1:
-            #     self.low_pivots.append((confirmed, low[confirmed]))
-            # self.confirmedLast = confirmed
-            self.new = direction
+        self.is_pivot, pivot_price, pivot_index = self.process_candle(active.barindex, high[active.barindex], low[active.barindex])
+        if( self.is_pivot ):
+            self.newPivot( pivot_index, pivot_price)
 
-    def initializeTrackingColumns(self):
-        """Initialize columns for tracking height differences and store their indices"""
-        df = active.timeframe.df
         
-        # Initialize result arrays
-        height_diff_top = pd.Series(False, index=df.index)
-        height_diff_bottom = pd.Series(False, index=df.index)
-        
-        # Calculate only from depth onwards
-        for i in range(self.depth, len(df)):
-            window = slice(i - self.depth + 1, i + 1)
-            window_high = df.high.iloc[window]
-            window_low = df.low.iloc[window]
-            
-            # Find highest and lowest in window
-            highest_idx = i - self.depth + 1 + window_high.argmax()
-            lowest_idx = i - self.depth + 1 + window_low.argmin()
-            
-            # Calculate differences
-            height_diff_top.iloc[i] = df.high.iloc[highest_idx] - df.high.iloc[i] > self.deviation * self.precision
-            height_diff_bottom.iloc[i] = df.low.iloc[i] - df.low.iloc[lowest_idx] > self.deviation * self.precision
-
-        # Create and store columns
-        active.timeframe.df[self.makeName()+'T'] = ~height_diff_top
-        active.timeframe.df[self.makeName()+'B'] = ~height_diff_bottom
-        self.OHDTEcolumnindex = active.timeframe.df.columns.get_loc(self.makeName()+'T')
-        self.OHDBEcolumnindex = active.timeframe.df.columns.get_loc(self.makeName()+'B')
-
-'''
-    heighDiffTopEnough = (_high[-ta.highestbars(depth)] - _high > deviation*syminfo.mintick)
-    hr = ta.barssince(not heighDiffTopEnough[1] )
-    heightDiffBottomEnough = (_low - _low[-ta.lowestbars(depth)] > deviation*syminfo.mintick)
-    lr = ta.barssince(not heightDiffBottomEnough[1] )
-         
-    direction = ta.barssince(hr <= lr) >= backstep? -1: 1
-'''
-'''
-var last_h = 1
-last_h += 1
-var last_l = 1
-last_l += 1
-var lw = 1
-var hg = 1
-lw += 1
-hg += 1
-p_lw = -ta.lowestbars(bottom, Depth)
-p_hg = -ta.highestbars(top, Depth)
-lowing = lw == p_lw or bottom - bottom[p_lw] > Deviation * syminfo.mintick
-highing = hg == p_hg or top[p_hg] - top > Deviation * syminfo.mintick
-lh = ta.barssince(not highing[1])
-ll = ta.barssince(not lowing[1])
-down = ta.barssince(not(lh > ll)) >= Backstep
-lower = bottom[lw] > bottom[p_lw]
-higher = top[hg] < top[p_hg]
-if lw != p_lw and (not down[1] or lower)
-    lw := p_lw < hg ? p_lw : 0
-    lw
-if hg != p_hg and (down[1] or higher)
-    hg := p_hg < lw ? p_hg : 0
-    hg
-
-line zz = na
-label point = na
-x1 = down ? lw : hg
-y1 = down ? bottom[lw] : top[hg]'''
-
-
 pivotsNow:pivots_c = None
-def pivots( high:pd.Series, low:pd.Series )->pivots_c:
+def pivots( high:pd.Series, low:pd.Series, amplitude: float = 1.0, reversal_percent: float = 32.0 )->pivots_c:
     global pivotsNow
     if pivotsNow == None:
-        pivotsNow = pivots_c(high, low)
+        pivotsNow = pivots_c(amplitude, reversal_percent)
 
     pivotsNow.update(high, low)
     return pivotsNow
+
+
+
 
 
 
