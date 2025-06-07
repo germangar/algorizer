@@ -13,6 +13,22 @@ class ohlcvs_c:
         self.exchange = getattr(ccxt, exchangeID)() 
         self.exchange.defaultType = type
         print( 'Connecting to exchange:', self.exchange.id )
+        self.exchange.load_markets()
+
+    def getMarkets( self ):
+        return self.exchange.load_markets()
+    
+    def getPrecision( self ):
+        if( self.exchange.id == 'binance' or self.exchange.id == 'bingx' ):
+            return 1.0 / (10.0 ** self.getMarkets()[self.symbol]['precision'].get('amount'))
+        return self.getMarkets()[self.symbol]['precision'].get('amount')
+    
+    def getMintick( self ):
+        if( self.exchange.id == 'binance' or self.exchange.id == 'bingx' ):
+            return 1.0 / (10.0 ** self.getMarkets()[self.symbol]['precision'].get('price'))
+        return self.getMarkets()[self.symbol]['precision'].get('price')
+
+    
 
 
     def filenameFromSymbol(self, symbol, timeframe ):
@@ -189,6 +205,10 @@ class ohlcvs_c:
             ohlcvs = ohlcvs[-grab_amount:]
         print( f'Returning {len(ohlcvs)} bars. ')
         return ohlcvs
+    
+    def loadCacheAndFetchUpdateWithMarkets( self, symbol, timeframe, grab_amount ):
+        ohlcvs = self.loadCacheAndFetchUpdate( self, symbol, timeframe, grab_amount )
+        self.markets = self.exchange.load_markets()
     
     def fetchAll(self, symbol, timeframe):
         return self.fetchRange( symbol, timeframe )

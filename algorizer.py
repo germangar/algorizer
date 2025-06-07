@@ -468,12 +468,8 @@ class stream_c:
         self.markets = fetcher.exchange.load_markets()
         from pprint import pprint
         pprint( self.markets[self.symbol] )
-        if( fetcher.exchange.id == 'binance' or fetcher.exchange.id == 'bingx' ):
-            self.precision = 1.0 / (10.0 ** self.markets[symbol]['precision'].get('amount'))
-            self.mintick = 1.0 / (10.0 ** self.markets[symbol]['precision'].get('price'))
-        else :
-            self.precision = self.markets[symbol]['precision'].get('amount')
-            self.mintickn = 1.0 / (10.0 ** self.markets[symbol]['precision'].get('price'))
+        self.precision = fetcher.getPrecision()
+        self.mintick = fetcher.getMintick()
         print( 'PRECISION:', self.precision, 'MINTICK:', self.mintick )
             
         # fetch OHLCVs
