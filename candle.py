@@ -11,8 +11,10 @@ class candle_c:
         self.bottom = 0.0
         self.top = 0.0
 
+        self.index = 0
         self.timeframemsec = 0
 
+        # This is only really used for the realtime candle. Closed candles ramining time is always zero
         self.remainingmsec = 0
         self.remainingseconds = 0
         self.remainingminutes = 0

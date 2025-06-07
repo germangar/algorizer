@@ -261,11 +261,12 @@ class timeframe_c:
                     
                     # copy the last row into the realtimeCandle row. This would be incorrect in realtime. Only for shadowcopying
                     self.realtimeCandle.timestamp = newrow_timestamp
-                    self.realtimeCandle.open = newrow_open
-                    self.realtimeCandle.high = newrow_high
-                    self.realtimeCandle.low = newrow_low
-                    self.realtimeCandle.close = newrow_close
-                    self.realtimeCandle.volume = newrow_volume
+                    # self.realtimeCandle.open = newrow_open
+                    # self.realtimeCandle.high = newrow_high
+                    # self.realtimeCandle.low = newrow_low
+                    # self.realtimeCandle.close = newrow_close
+                    # self.realtimeCandle.volume = newrow_volume
+                    self.realtimeCandle.index = self.barindex + 1
                     if self.timeframeStr == self.stream.timeframeFetch :
                         self.stream.timestampFetch = self.realtimeCandle.timestamp
 
@@ -345,6 +346,7 @@ class timeframe_c:
             self.realtimeCandle.volume = newrow_volume
             self.realtimeCandle.bottom = min( newrow_open, newrow_close )
             self.realtimeCandle.top = max( newrow_open, newrow_close )
+            self.realtimeCandle.index = self.barindex + 2
             self.realtimeCandle.updateRemainingTime()
 
             self.barindex = self.barindex+ 1
@@ -417,6 +419,7 @@ class timeframe_c:
             index = self.barindex + ( index + 1 ) # iloc style
         
         candle = candle_c()
+        candle.index = index
         candle.timeframemsec = self.timeframeMsec
         row = self.df.iloc[index].values  # Get as a NumPy array
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.top, candle.bottom = ( int(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], row[7] )
