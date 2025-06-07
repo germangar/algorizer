@@ -3,10 +3,11 @@
 from enum import IntEnum
 
 class c(IntEnum):  # Ultra-short class name
-    PIVOT_HIGH = -1
-    PIVOT_LOW = 1
-    SHORT = -1
+    PIVOT_HIGH = 1
+    PIVOT_LOW = -1
     LONG = 1
+    SHORT = -1
+    
 
     # Columns in the dataframe by index
     DF_TIMESTAMP = 0

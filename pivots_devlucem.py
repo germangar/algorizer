@@ -10,6 +10,7 @@ it's not imported anywhere in the algorizer code.
 
 
 
+
 class pivotsLucem_c:
     def __init__(self, high: pd.Series, low: pd.Series, depth: int = 64, deviation: float = 2, backstep: int = 32):
         self.depth = depth
@@ -138,11 +139,12 @@ class pivotsLucem_c:
         self.initialized = True
 
 
-pivotsNow:pivots_c = None
-def pivots( high:pd.Series, low:pd.Series, depth:int = None, deviation:float = None, backstep:int = None )->pivots_c:
-    global pivotsNow
+pivotsDNow:pivotsLucem_c = None
+def pivotsDevlucem( high:pd.Series, low:pd.Series, depth: int = 64, deviation: float = 2, backstep: int = 32)->pivotsLucem_c:
+    global pivotsDNow
     if pivotsNow == None:
-        pivotsNow = pivots_c(high, low, depth, deviation, backstep)
+        pivotsDNow = pivotsLucem_c(high, low, depth, deviation, backstep)
 
-    pivotsNow.update(high, low)
-    return pivotsNow
+    pivotsDNow.update(high, low)
+    return pivotsDNow
+
