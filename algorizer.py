@@ -458,6 +458,7 @@ class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframeList, callbackList, max_amount = 5000, noplots:bool = False ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
+        self.isRunning = False
         self.noplots = noplots
         self.timeframeFetch = None
         self.timestampFetch = -1
@@ -555,11 +556,16 @@ class stream_c:
         
         
         # We're done. Start fetching
+        # tasks.registerTask( 'cli', cli_task(self) )
+        # tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
+        # tasks.registerTask( 'clocks', update_clocks(self) )
+
+    def run(self):
+        # We're done. Start fetching
+        self.isRunning = True
         tasks.registerTask( 'cli', cli_task(self) )
         tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
         tasks.registerTask( 'clocks', update_clocks(self) )
-
-    def run(self):
         asyncio.run( tasks.runTasks() )
 
     def parseCandleUpdateMulti( self, rows ):

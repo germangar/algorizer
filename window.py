@@ -93,6 +93,10 @@ class window_c:
                 marker.chart = self.bottomPanel if marker.chartName == 'panel' else self.chart
             marker.refreshInChart()
 
+        if not self.timeframe.stream.isRunning:
+            self.chart.show()
+            return
+        
         self.task = self.chart.show_async()
         tasks.registerTask( 'window', self.task )
         
