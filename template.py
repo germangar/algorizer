@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
     stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 25000, False )
 
-    trade.print_strategy_stats()
+    # trade.print_strategy_stats()
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 

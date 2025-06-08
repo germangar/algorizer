@@ -1,5 +1,11 @@
 
 import pandas as pd
+try:
+    import talib
+    talib_available = True
+except ImportError:
+    talib_available = False
+    print("talib import failed")
 import pandas_ta as pt
 import numpy as np
 import time
@@ -7,6 +13,13 @@ from constants import c
 import active
 import tools
 
+if pt.Imports["talib"]:
+    print("pandas_ta is using talib")
+else:
+    print("pandas_ta is not using talib")
+    
+
+    
 
 # Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude
 _exclude = ['active']
@@ -620,26 +633,24 @@ class generatedSeries_c:
     def update( self, source:pd.Series ):
         if( self.timeframe.shadowcopy ):
             return
+        
+        timeframe = self.timeframe
 
         # has this row already been updated?
-        if( self.timestamp >= self.timeframe.df.iat[self.timeframe.barindex, 0] ): # same as self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
+        if( self.timestamp >= timeframe.df.iat[timeframe.barindex, 0] ): # same as self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
             return
 
         # if non existant try to create new. A few need to be made new every time
         if( self.timestamp == 0 or self.alwaysReset ):
             self.initialize( source )
             return
-        
-        
-        if( len(self.timeframe.df) < self.period ):
-            return
-        
+
         # realtime updates
 
         # slice the required block of candles to calculate the current value of the generated series
-        newval = self.func(source[-self.period:], self.period, self.timeframe.df, self.param).loc[self.timeframe.barindex]
-        self.timeframe.df.loc[self.timeframe.df.index[-1], self.name] = newval
-        self.timestamp = self.timeframe.timestamp
+        newval = self.func(source[-self.period:], self.period, timeframe.df, self.param).loc[timeframe.barindex]
+        timeframe.df.loc[timeframe.df.index[-1], self.name] = newval
+        self.timestamp = timeframe.timestamp
 
     def value( self, backindex = 0 ):
         if( backindex >= len(self.timeframe.df) ):
