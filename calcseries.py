@@ -18,7 +18,9 @@ if pt.Imports["talib"]:
 else:
     print("pandas_ta is not using talib")
     
-
+from talib import abstract
+from pprint import pprint
+pprint( abstract.Function("SUB").info )
     
 
 # Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude
@@ -95,6 +97,16 @@ def _generatedseries_calculate_lowestbars(series: pd.Series, period: int, df: pd
         result[period-1:] = (period - 1) - indices
 
     return pd.Series(result, index=series.index)
+
+def _generatedseries_calculate_subtract_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    if not isinstance(param, tuple) or len(param) != 2:
+        raise ValueError("subtract_series requires param=(colA, colB)")
+    
+    colA, colB = param
+    if colA not in df.columns or colB not in df.columns:
+        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
+
+    return df[colA] - df[colB]
 
 def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.sma( series, period )
@@ -675,13 +687,17 @@ class generatedSeries_c:
     
     def __sub__(self, other):
         if isinstance(other, generatedSeries_c):
-            return self.value() - other.value()
+            return subtractSeries(self.name, other.name)
         if isinstance(other, pd.Series):
-            return self.value() - other.iloc[active.barindex]
-        return self.value() - other
+            if( other.name not in active.timeframe.df.columns ):
+                raise ValueError( "generatedSeries_c can only substract series which are in the dataframe")
+            return subtractSeries(self.name, other.name)
+        raise ValueError( "WTF")
     
     def __rsub__(self, other):
-        return self.__sub__(other)
+        if isinstance(other, generatedSeries_c):
+            return other.__sub__(self)
+        raise ValueError( "WTF")
     
     def __mul__(self, other):
         if isinstance(other, generatedSeries_c):
@@ -819,6 +835,13 @@ def falling( source:pd.Series, period:int, timeframe = None )->generatedSeries_c
 def rising( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'rising', source, period, _generatedseries_calculate_rising )
+
+def subtractSeries(colA: str, colB: str, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    indexA = timeframe.df.columns.get_loc(colA)
+    indexB = timeframe.df.columns.get_loc(colB)
+    dummy_source = pd.Series([np.nan], name=f"{indexA}-{indexB}") # must have len of at least 1
+    return timeframe.calcGeneratedSeries( 'subtract', dummy_source, 1, _generatedseries_calculate_subtract_series, param=(colA, colB))
 
 def SMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
@@ -1009,12 +1032,17 @@ def MACD(source: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9, tim
     # Calculate the fast and slow EMAs
     fast_ema = EMA(source, fast, timeframe)
     slow_ema = EMA(source, slow, timeframe)
+
     # MACD line: difference between fast and slow EMA
-    macd_line = timeframe.calcGeneratedSeries('macd_line', fast_ema.series() - slow_ema.series(), 1, lambda s, p, d, x: s)
+    fastminusslow = fast_ema - slow_ema # Same as # fastminusslow = subtractSeries(fast_ema.name, slow_ema.name)
+    macd_line = timeframe.calcGeneratedSeries('macd_line', fastminusslow.series(), 1, lambda s, p, d, x: s)
+
     # Signal line: EMA of the MACD line
     signal_line = EMA(macd_line.series(), signal, timeframe)
+
     # Histogram: MACD line - Signal line
-    hist = timeframe.calcGeneratedSeries('macd_hist', macd_line.series() - signal_line.series(), 1, lambda s, p, d, x: s)
+    macdminussignal = macd_line - signal_line # Same as # macdminussignal = subtractSeries(macd_line.name, signal_line.name)
+    hist = timeframe.calcGeneratedSeries('macd_hist', macdminussignal.series(), 1, lambda s, p, d, x: s)
     return macd_line, signal_line, hist
 
 
