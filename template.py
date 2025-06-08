@@ -33,7 +33,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 
     rsi14 = calc.RSI(close, 14)
     rsi30min = requestValue( rsi30m.name, '30m' )
-    plot( rsi30min, 'rsi30m', 'panel' )
+    # plot( rsi30min, 'rsi30m', 'panel' )
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsi30min < -0.7
     sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsi30min > 0.65
@@ -72,6 +72,11 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 
     # if not timeframe.stream.initializing:
     #     print(timeframe.df)
+
+    macd_line, signal_line, histogram = calc.MACD(close)
+    macd_line.plot( 'panel', color = "#AB1212" )
+    signal_line.plot( 'panel', color = "#1BC573" )
+    histogram.plot( 'panel', color = "#735252" )
 
 # 
 #   SETTING UP THE CANDLES FEED

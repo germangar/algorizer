@@ -487,6 +487,7 @@ def _generatedseries_calculate_ar(series: pd.Series, period: int, df: pd.DataFra
 def _generatedseries_calculate_cg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.cg( series, period )
 
+
 def _generatedseries_calculate_barssince(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
     # Get array of indices where condition is True
     true_indices = np.where(series)[0]
@@ -514,43 +515,47 @@ def _generatedseries_calculate_barssince(series: pd.Series, period: int, df: pd.
     return pd.Series(result, index=series.index)
 
 
-def _generatedseries_calculate_indexwhentrue(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+def _generatedseries_calculate_indexwhentrue(
+    series: pd.Series, period: int, df: pd.DataFrame, param=None
+) -> pd.Series:
+    length = len(series)
+    out = np.full(length, np.nan)
     last_true = -1
-    out = []
     for i, val in enumerate(series):
         if val:
             last_true = i
-        out.append(last_true if last_true != -1 else np.nan)
+        if last_true != -1:
+            out[i] = last_true
     return pd.Series(out, index=series.index)
 
-def _generatedseries_calculate_indexwhenfalse(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+
+def _generatedseries_calculate_indexwhenfalse(
+    series: pd.Series, period: int, df: pd.DataFrame, param=None
+) -> pd.Series:
+    length = len(series)
+    out = np.full(length, np.nan)
     last_false = -1
-    out = []
     for i, val in enumerate(series):
         if not val:
             last_false = i
-        out.append(last_false if last_false != -1 else np.nan)
+        if last_false != -1:
+            out[i] = last_false
     return pd.Series(out, index=series.index)
 
-def _generatedseries_calculate_barswhiletrue(series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None) -> pd.Series:
-    length = len(series)
-    max_lookback = period if (period is not None and period <= length) else length
-    out = []
-    count = 0
 
-    for i in range(length):
-        val = series.iat[i]
-        if val:
-            count += 1
-        else:
-            count = 0
-
+def _generatedseries_calculate_barswhiletrue(
+    series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None
+) -> pd.Series:
+    arr = series.values.astype(bool)
+    counts = np.zeros_like(arr, dtype=int)
+    c = 0
+    for i, val in enumerate(arr):
+        c = c + 1 if val else 0
         if period:
-            count = min(count, period)
+            c = min(c, period)
+        counts[i] = c
+    return pd.Series(counts, index=series.index)
 
-        out.append(count)
-
-    return pd.Series(out, index=series.index)
 
 def _generatedseries_calculate_barswhilefalse(series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None) -> pd.Series:
     length = len(series)
@@ -974,6 +979,33 @@ def BollingerBands( source:pd.Series, period:int, mult:float = 2.0 )->tuple[gene
     BBupper = active.timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
     BBlower = active.timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
     return BBbasis, BBupper, BBlower
+
+
+def MACD(source: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9, timeframe=None) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+    """
+    Returns the MACD line, Signal line, and Histogram for given source and periods.
+    Args:
+        source (pd.Series): The price series (e.g. close).
+        fast (int): Fast EMA period.
+        slow (int): Slow EMA period.
+        signal (int): Signal EMA period.
+        timeframe: The timeframe context (defaults to active.timeframe).
+    Returns:
+        Tuple of (MACD line, Signal line, Histogram) as generatedSeries_c objects.
+    """
+    if timeframe is None:
+        timeframe = active.timeframe
+    # Calculate the fast and slow EMAs
+    fast_ema = EMA(source, fast, timeframe)
+    slow_ema = EMA(source, slow, timeframe)
+    # MACD line: difference between fast and slow EMA
+    macd_line = timeframe.calcGeneratedSeries('macd_line', fast_ema.series() - slow_ema.series(), 1, lambda s, p, d, x: s)
+    # Signal line: EMA of the MACD line
+    signal_line = EMA(macd_line.series(), signal, timeframe)
+    # Histogram: MACD line - Signal line
+    hist = timeframe.calcGeneratedSeries('macd_hist', macd_line.series() - signal_line.series(), 1, lambda s, p, d, x: s)
+    return macd_line, signal_line, hist
+
 
 
 def indexWhenTrue( source ):
