@@ -139,7 +139,7 @@ class strategy_c:
         
         # Quantity after initial filter for zero (before any clamping due to max_pos_size)
         if quantity_in_base_units_input < EPSILON:
-            if self.verbose and not isInitializing():
+            if self.verbose or not isInitializing():
                 print(f"Warning: Order quantity ({quantity_in_base_units_input:.6f} base units) is effectively zero. No order placed.")
             return
 
@@ -172,7 +172,7 @@ class strategy_c:
                 actual_quantity_to_process_base_units = min(quantity_in_base_units_input, max_base_units_from_usd_capital_limit)
 
                 if actual_quantity_to_process_base_units < EPSILON:
-                    if self.verbose and not isInitializing():
+                    if self.verbose or not isInitializing():
                         print(f"Warning: Calculated initial order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping. No position opened.")
                     return # Exit if clamped to zero
 
@@ -181,7 +181,7 @@ class strategy_c:
                 remaining_usd_capital_capacity = self.max_position_size - current_active_pos.active_capital_invested
 
                 if remaining_usd_capital_capacity <= EPSILON:
-                    if self.verbose and not isInitializing():
+                    if self.verbose or not isInitializing():
                         print(f"Warning: Max USD position size ({self.max_position_size}) based on capital invested reached. No new {cmd} order placed.")
                     return # Exit if no more USD capacity
 
@@ -192,7 +192,7 @@ class strategy_c:
                 actual_quantity_to_process_base_units = min(quantity_in_base_units_input, max_base_units_from_usd_capital_capacity)
 
                 if actual_quantity_to_process_base_units < EPSILON:
-                    if self.verbose and not isInitializing():
+                    if self.verbose or not isInitializing():
                         print(f"Warning: Calculated order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping. No order placed.")
                     return # Exit if clamped to zero
 
@@ -217,10 +217,10 @@ class strategy_c:
 
                     if clamped_quantity_final > EPSILON:
                         self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
-                    elif self.verbose and not isInitializing():
+                    elif self.verbose or not isInitializing():
                         print(f"Warning: Attempted to open new position, but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No position opened.")
                 else:
-                    if self.verbose and not isInitializing():
+                    if self.verbose or not isInitializing():
                         print(f"Warning: In hedged mode, cannot open a {target_position_type} position with a {cmd} order without an active position. Please ensure order direction matches target position type for opening.")
                     
             else: # An active position of the target_position_type exists
@@ -231,11 +231,11 @@ class strategy_c:
                     clamped_quantity_final = actual_quantity_to_process_base_units
                     if self.currency_mode == 'BASE':
                         available_space_base_units = self.max_position_size - active_target_pos.size
-                        clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_base_units) # Corrected here
+                        clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_base_units)
 
                     if clamped_quantity_final > EPSILON:
                         active_target_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
-                    elif self.verbose and not isInitializing():
+                    elif self.verbose or not isInitializing():
                         print(f"Warning: Attempted to increase {active_target_pos.type} position but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No change to position.")
                 else:
                     # Order direction opposes existing position type: reduce or close
@@ -262,7 +262,7 @@ class strategy_c:
                         createMarker(marker_text, location='above', shape='square', color=marker_color)
                         
                         if actual_quantity_to_process_base_units > pos_size_to_close + EPSILON: 
-                             if self.verbose and not isInitializing():
+                             if self.verbose or not isInitializing():
                                 print(f"Warning: Attempted to close a {'LONG' if closing_position_reference.type == c.LONG else 'SHORT'} position with an oversized {cmd} order.")
                                 print(f"Position was fully closed. Remaining quantity ({actual_quantity_to_process_base_units - pos_size_to_close:.2f} base units) was not used to open a new position.")
 
@@ -280,10 +280,10 @@ class strategy_c:
                         
                     if clamped_quantity_final > EPSILON:
                         self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
-                    elif self.verbose and not isInitializing():
+                    elif self.verbose or not isInitializing():
                         print(f"Warning: Attempted to open new position, but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No position opened.")
                 else:
-                    if self.verbose and not isInitializing():
+                    if self.verbose or not isInitializing():
                         print(f"Warning: In one-way mode, no active position. Cannot {cmd} to target {target_position_type} type when opening a new position (order direction mismatch).")
             
             elif order_direction == current_overall_active_pos.type:
@@ -297,7 +297,7 @@ class strategy_c:
 
                 if clamped_quantity_final > EPSILON:
                     current_overall_active_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
-                elif self.verbose and not isInitializing():
+                elif self.verbose or not isInitializing():
                     print(f"Warning: Attempted to increase {current_overall_active_pos.type} position but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No change to position.")
 
             elif order_direction != current_overall_active_pos.type:
@@ -339,16 +339,16 @@ class strategy_c:
 
                         if clamped_new_pos_quantity_base_units > EPSILON:
                             self.open_position(order_direction, current_price, clamped_new_pos_quantity_base_units, leverage)
-                            if self.verbose and not isInitializing():
+                            if self.verbose or not isInitializing():
                                 print(f"Position reversed: Closed {'LONG' if closing_position_reference.type == c.LONG else 'SHORT'} position and opened new {order_direction} position with {clamped_new_pos_quantity_base_units:.2f} base units.")
-                        elif self.verbose and not isInitializing():
+                        elif self.verbose or not isInitializing():
                             print(f"Warning: Position closed. Remaining quantity ({remaining_quantity_base_units_for_new_pos:.2f} base units) clamped to 0 because it exceeds max_position_size or is too small. No new position opened.")
-                    elif self.verbose and not isInitializing():
+                    elif self.verbose or not isInitializing():
                         print(f"Position of type {'LONG' if closing_position_reference.type == c.LONG else 'SHORT'} was fully closed by an exact or slightly oversized order. No new position opened.")
                 else:
                     # Partial close of the existing position
                     current_overall_active_pos.update(order_direction, current_price, actual_quantity_to_process_base_units, leverage)
-                    if self.verbose and not isInitializing():
+                    if self.verbose or not isInitializing():
                         print(f"Partial close: Reduced {current_overall_active_pos.type} position by {actual_quantity_to_process_base_units:.2f} base units.")
 
     def close_position(self, pos_type: int = None): # pos_type is now optional
@@ -363,7 +363,7 @@ class strategy_c:
         pos_to_close = None
         if self.hedged:
             if pos_type is None:
-                if self.verbose and not isInitializing():
+                if self.verbose or not isInitializing():
                     print("Warning: In hedged mode, 'close' requires a 'pos_type' (c.LONG or c.SHORT) to specify which position to close.")
                 return
             pos_to_close = self.get_active_position(pos_type)
@@ -375,13 +375,13 @@ class strategy_c:
                 current_active = self.get_active_position()
                 if current_active and current_active.type == pos_type:
                     pos_to_close = current_active
-                elif self.verbose and not isInitializing():
+                elif self.verbose or not isInitializing():
                     print(f"Warning: In one-way mode, attempted to close a { 'LONG' if pos_type == c.LONG else 'SHORT' } position, but the active position is {'LONG' if current_active.type == c.LONG else 'SHORT' if current_active.type == c.SHORT else 'None'}. No action taken.")
                     return
 
 
         if pos_to_close is None or not pos_to_close.active or pos_to_close.size < EPSILON:
-            if self.verbose and not isInitializing():
+            if self.verbose or not isInitializing():
                 # Adjusted message for clarity based on whether a type was requested
                 type_str = f" { 'LONG' if pos_type == c.LONG else 'SHORT' }" if pos_type is not None else ""
                 print(f"No active{type_str} position to close.")
@@ -809,7 +809,15 @@ class position_c:
 
         # If the position is now effectively closed (size is 0), calculate total PnL for this position object
         if abs(self.size) < EPSILON:
-            # Calculate PnL for the final closing order
+            # Add verbose logging for PnL calculation
+            if self.strategy_instance.verbose or not isInitializing():
+                print(f"DEBUG CLOSING PNL: prev_type={previous_position_type}, prev_avg_price={previous_avg_price:.6f}, close_price={price:.6f}, closing_qty={closing_quantity:.6f}, leverage={previous_leverage}")
+                if previous_position_type == c.LONG:
+                    print(f"DEBUG LONG PNL CALC: ({price:.6f} - {previous_avg_price:.6f}) * {closing_quantity:.6f} * {previous_leverage}")
+                elif previous_position_type == c.SHORT:
+                    print(f"DEBUG SHORT PNL CALC: ({previous_avg_price:.6f} - {price:.6f}) * {closing_quantity:.6f} * {previous_leverage}")
+
+
             final_close_pnl_q = 0.0
             if previous_position_type == c.LONG:
                 final_close_pnl_q = (price - previous_avg_price) * closing_quantity * previous_leverage
@@ -857,7 +865,7 @@ class position_c:
             self.close_timestamp = getRealtimeCandle().timestamp # NEW: Record closure timestamp
 
             # Print PnL to console
-            if self.strategy_instance.verbose and not isInitializing():
+            if self.strategy_instance.verbose or not isInitializing():
                 print(f"CLOSED POSITION ({'LONG' if previous_position_type == c.LONG else 'SHORT'}): PnL: {self.profit:.2f} (quote currency) | PnL %: {self.realized_pnl_percentage:.2f}% | Total Strategy PnL: {self.strategy_instance.total_profit_loss:.2f} (quote currency)")
 
     def get_unrealized_pnl_quantity(self) -> float:
@@ -897,6 +905,33 @@ class position_c:
         
         return (unrealized_pnl_q / abs(capital_involved)) * 100
 
+    def get_order_by_direction(self, order_direction: int, older_than_bar_index: int = None) -> dict:
+        """
+        Retrieves the last order of a specific direction (c.LONG or c.SHORT).
+        If older_than_bar_index is provided, it finds the first order of that direction
+        that occurred *before* the given bar index (i.e., closest older order).
+
+        Args:
+            order_direction (int): The type of order to find (c.LONG or c.SHORT).
+            older_than_bar_index (int, optional): If provided, returns the first order
+                                                of the specified direction that occurred
+                                                before this bar index. Defaults to None,
+                                                which returns the very last order of that direction.
+
+        Returns:
+            dict: The order dictionary if found, otherwise None.
+        """
+        # Iterate backward through the order history to find the most recent matching order
+        for order_data in reversed(self.order_history):
+            if order_data['type'] == order_direction:
+                if older_than_bar_index is None:
+                    # If no index is provided, return the very last order of this type
+                    return order_data
+                elif order_data['barindex'] < older_than_bar_index:
+                    # If an index is provided, return the first order of this type that is older than the index
+                    return order_data
+        return None # No matching order found
+
 
 # Global instance of the strategy.
 # Initialized with currency_mode='USD' as requested.
@@ -931,21 +966,21 @@ def order(cmd: str, target_position_type: int, quantity: float = None, leverage:
             # Use default order_size which is in USD
             # Ensure price is not zero to avoid division by zero
             if current_price < EPSILON: 
-                if strategy.verbose and not isInitializing():
+                if strategy.verbose or not isInitializing():
                     print(f"Warning: Current price ({current_price:.2f}) is too low for USD quantity conversion. Order not placed.")
                 return
             actual_quantity_base_units = strategy.order_size / current_price
         else:
             # Convert provided USD quantity to base units
             if current_price < EPSILON:
-                if strategy.verbose and not isInitializing():
+                if strategy.verbose or not isInitializing():
                     print(f"Warning: Current price ({current_price:.2f}) is too low for USD quantity conversion. Order not placed.")
                 return
             actual_quantity_base_units = quantity / current_price
 
         # Safety check for extremely small quantities (if USD amount is too small for current price)
         if actual_quantity_base_units < EPSILON:
-            if strategy.verbose and not isInitializing():
+            if strategy.verbose or not isInitializing():
                 print(f"Warning: Calculated order quantity ({actual_quantity_base_units:.6f} base units) is effectively zero based on current price ({current_price:.2f}). Order not placed.")
             return
     else: # strategy.currency_mode == 'BASE'
@@ -970,4 +1005,3 @@ def print_summary_stats(): # New function
 
 def print_pnl_by_period_summary(): # New global function for PnL by period
     strategy.print_pnl_by_period()
-

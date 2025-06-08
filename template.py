@@ -44,12 +44,22 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
     if buySignal:
         if shortpos is not None:
             trade.close(c.SHORT)
-        trade.order( 'buy', c.LONG )
+        offset = 50
+        if longpos:
+            lastorderindex = longpos.get_order_by_direction(c.LONG)['barindex']
+            offset = timeframe.barindex - lastorderindex
+        if offset > 40:
+            trade.order( 'buy', c.LONG )
 
     if sellSignal:
         if longpos is not None:
             trade.close(c.LONG)
-        trade.order( 'sell', c.SHORT )
+        offset = 50
+        if shortpos:
+            lastorderindex = shortpos.get_order_by_direction(c.SHORT)['barindex']
+            offset = timeframe.barindex - lastorderindex
+        if offset > 40:
+            trade.order( 'sell', c.SHORT )
 
     pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 4 )
     if pivots.is_pivot:
@@ -71,6 +81,7 @@ def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, lo
 if __name__ == '__main__':
 
     # configure the strategy before creating the stream
+    trade.strategy.verbose = False
     trade.strategy.hedged = False
     trade.strategy.currency_mode = 'USD'
     trade.strategy.order_size = 1000 # should allow only pyramiding of 5 orders
@@ -98,7 +109,7 @@ if __name__ == '__main__':
 
     stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_30m, runCloseCandle_1m], 25000, False )
 
-    # trade.print_strategy_stats()
+    trade.print_strategy_stats()
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 

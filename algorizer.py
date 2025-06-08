@@ -277,11 +277,11 @@ class timeframe_c:
                     
                     # copy the last row into the realtimeCandle row. This would be incorrect in realtime. Only for shadowcopying
                     self.realtimeCandle.timestamp = newrow_timestamp
-                    # self.realtimeCandle.open = newrow_open
-                    # self.realtimeCandle.high = newrow_high
-                    # self.realtimeCandle.low = newrow_low
-                    # self.realtimeCandle.close = newrow_close
-                    # self.realtimeCandle.volume = newrow_volume
+                    self.realtimeCandle.open = newrow_open
+                    self.realtimeCandle.high = newrow_high
+                    self.realtimeCandle.low = newrow_low
+                    self.realtimeCandle.close = newrow_close
+                    self.realtimeCandle.volume = newrow_volume
                     self.realtimeCandle.index = self.barindex + 1
                     if self.timeframeStr == self.stream.timeframeFetch :
                         self.stream.timestampFetch = self.realtimeCandle.timestamp
