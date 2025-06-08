@@ -175,6 +175,7 @@ class timeframe_c:
         self.barindex = -1
         self.timestamp = 0
         self.shadowcopy = False
+        self.jumpstart = False
         self.window = None
 
         self.df:pd.DataFrame = []
@@ -212,8 +213,10 @@ class timeframe_c:
         # set up to process the last row as a new update
         lastRowDF = ohlcvDF.loc[[len(ohlcvDF) - 1]]
         
+        self.jumpstart = True
         self.parseCandleUpdate(lastRowDF) # self.parseCandleUpdate(ohlcvDF.iloc[[-1]])
         print("Elapsed time: {:.2f} seconds".format(time.time() - start_time))
+        self.jumpstart = False
 
         print( f"Computing script logic {self.timeframeStr}" )
         # at this point we have the generatedSeries initialized for the whole dataframe
