@@ -781,151 +781,150 @@ class generatedSeries_c:
 
 
 def highest(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    if timeframe is None: timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('highest', source, period, _generatedseries_calculate_highest)
 
 def lowest(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    if timeframe is None: timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('lowest', source, period, _generatedseries_calculate_lowest)
 
 def highestbars(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    if timeframe is None: timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('highestbars', source, period, _generatedseries_calculate_highestbars)
 
 def lowestbars(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    if timeframe is None: timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('lowestbars', source, period, _generatedseries_calculate_lowestbars)
 
 def falling( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'falling', source, period, _generatedseries_calculate_falling )
 
 def rising( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'rising', source, period, _generatedseries_calculate_rising )
 
 def SMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'sma', source, period, _generatedseries_calculate_sma )
 
 def EMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "ema", source, period, _generatedseries_calculate_ema )
 
 def DEMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "dema", source, period, _generatedseries_calculate_dema, always_reset=True )
 
 def WMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "wma", source, period, _generatedseries_calculate_wma )
 
 def HMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "hma", source, period, _generatedseries_calculate_hma, always_reset=True )
 
 # def JMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-#     if timeframe == None : timeframe = active.timeframe
+#     timeframe = timeframe or active.timeframe
 #     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
 
 # def KAMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-#     if timeframe == None : timeframe = active.timeframe
+#     timeframe = timeframe or active.timeframe
 #     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
 
 def LINREG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "linreg", source, period, _generatedseries_calculate_linreg )
 
 def RSI( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
 
 def DEV( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'dev', source, period, _generatedseries_calculate_dev )
 
 def STDEV( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'stdev', source, period, _generatedseries_calculate_stdev )
 
 def RMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'rma', source, period, _generatedseries_calculate_rma, always_reset=True )
 
 def WPR( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
 def TR( period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
 
 def ATR2( period:int, timeframe = None )->generatedSeries_c: # The other one using pt is much faster
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     tr = timeframe.calcGeneratedSeries( 'tr', timeframe.df['close'], period, _generatedseries_calculate_tr )
     return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, _generatedseries_calculate_rma )
 
 def ATR( period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'atr', timeframe.df['close'], period, _generatedseries_calculate_atr )
 
 def SLOPE( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'slope', source, period, _generatedseries_calculate_slope, always_reset=True )
 
 def VHMA(source: pd.Series, period: int, timeframe=None)->generatedSeries_c:
-    if timeframe is None:
-        timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('vhma', source, period, _generatedseries_calculate_vhma, always_reset = True)
 
 def BIAS( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'bias', source, period, _generatedseries_calculate_bias )
 
 def CCI( period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'cci', timeframe.df['close'], period, _generatedseries_calculate_cci )
 
 def CFO( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'cfo', source, period, _generatedseries_calculate_cfo )
 
 def FWMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'fwma', source, period, _generatedseries_calculate_fwma )
 
 def BBu( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
 
 def BBl( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
 
 def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
     return timeframe.calcGeneratedSeries( 'iftrsi', timeframe.df['close'], period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.df['close'], period, _generatedseries_calculate_fisher )
     sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.df['close'], period, _generatedseries_calculate_fisher_signal, signal )
     return fish, sig
     
 def AO( period: int = 0, fast: int = 5, slow: int = 34, timeframe = None ) -> generatedSeries_c:
-    if timeframe is None: timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     param = (fast, slow)
     return timeframe.calcGeneratedSeries('ao', timeframe.df['close'], period, _generatedseries_calculate_ao, param)
 
 def BRAR( period:int, signal:float=None, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     br = timeframe.calcGeneratedSeries( 'br', timeframe.df['close'], period, _generatedseries_calculate_br )
     ar = timeframe.calcGeneratedSeries( 'ar', timeframe.df['close'], period, _generatedseries_calculate_ar )
     return br, ar
 
 def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    if timeframe == None : timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', source, period, _generatedseries_calculate_cg )
 
 def barsSinceSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
@@ -934,26 +933,24 @@ def barsSinceSeries(source: pd.Series, period: int, timeframe=None) -> generated
     caller_frame = inspect.currentframe().f_back
     frame_info = inspect.getframeinfo(caller_frame)
     caller_id = f"{frame_info.function}_{frame_info.lineno}"
-    if timeframe is None:
-        timeframe = active.timeframe
+
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('barsSince'+caller_id, source, period, _generatedseries_calculate_barssince)
 
 def barsWhileTrueSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
-    if timeframe is None: timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('barsWhileTrue', source, period, _generatedseries_calculate_barswhiletrue)
 
 def barsWhileFalseSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
-    if timeframe is None: timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('barsWhileFalse', source, period, _generatedseries_calculate_barswhilefalse)
 
 def indexWhenTrueSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
-    if timeframe is None:
-        timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('indexwhentrue_series', source, period, _generatedseries_calculate_indexwhentrue)
 
 def indexWhenFalseSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    if timeframe is None:
-        timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('indexwhenfalse_series', source, period, _generatedseries_calculate_indexwhenfalse)
 
 
