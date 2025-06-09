@@ -18,9 +18,9 @@ if pt.Imports["talib"]:
 else:
     print("pandas_ta is not using talib")
     
-from talib import abstract
-from pprint import pprint
-pprint( abstract.Function("SUB").info )
+# from talib import abstract
+# from pprint import pprint
+# pprint( abstract.Function("SUB").info )
     
 
 # Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude

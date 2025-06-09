@@ -495,12 +495,9 @@ class stream_c:
 
         fetcher = ohlcvs_c( exchangeID, self.symbol )
 
-        self.markets = fetcher.exchange.load_markets()
-        from pprint import pprint
-        pprint( self.markets[self.symbol] )
+        self.markets = fetcher.getMarkets()
         self.precision = fetcher.getPrecision()
         self.mintick = fetcher.getMintick()
-        print( 'PRECISION:', self.precision, 'MINTICK:', self.mintick )
             
         # fetch OHLCVs
         ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
