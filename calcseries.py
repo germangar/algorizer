@@ -167,6 +167,49 @@ def _generatedseries_calculate_divide_series(series: pd.Series, period: int, df:
 
     return df[colA] / df[colB]
 
+# def _generatedseries_calculate_series_const_lambda( series: pd.Series, period: int, df: pd.DataFrame, param: tuple[float, object] ) -> pd.Series:
+#     if not isinstance(param, tuple) or len(param) != 2:
+#         raise ValueError("series_const_operator requires param=(constant, op_func)")
+#     constant, op_func = param
+#     if not callable(op_func):
+#         raise ValueError("The second item in param must be a callable (e.g., lambda function)")
+
+#     return op_func(series, constant)
+
+def _generatedseries_calculate_series_const_lambda(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    if not isinstance(param, tuple) or len(param) != 2:
+        raise ValueError("SeriesConstOp param must be a tuple: (constant, op_func)")
+    constant, op_func = param
+    if not callable(op_func):
+        raise ValueError("The second item in param must be a callable (e.g., lambda function)")
+    
+    # Apply the operation safely with try/except in case of numeric errors
+    try:
+        result = op_func(series, constant)
+    except Exception as e:
+        raise RuntimeError(f"Error applying operation to Series: {e}")
+
+    # Replace inf with NaN to prevent polluting the result
+    return pd.Series(result).replace([np.inf, -np.inf], np.nan)
+
+# REVERSED!
+def _generatedseries_calculate_const_series_lambda(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    if not isinstance(param, tuple) or len(param) != 2:
+        raise ValueError("ConstSeriesOp param must be a tuple: (constant, op_func)")
+
+    constant, op_func = param
+    if not callable(op_func):
+        raise ValueError("The second item in param must be a callable (e.g., lambda function)")
+
+    try:
+        result = op_func(constant, series)
+    except Exception as e:
+        raise RuntimeError(f"Error applying const-series operation: {e}")
+
+    return pd.Series(result).replace([np.inf, -np.inf], np.nan)
+
+
+
 def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.sma( series, period )
 
@@ -732,88 +775,132 @@ class generatedSeries_c:
     def series( self ):
         return self.timeframe.df[self.name]
     
-    # direct operations will always operate the last value.
-    # If you want to operate the whole series do it with the .series() method.
+
     def __add__(self, other):
-        if isinstance(other, generatedSeries_c):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
             return addSeries(self.name, other.name)
-        if isinstance(other, pd.Series):
-            if( other.name not in active.timeframe.df.columns ):
-                raise ValueError( "generatedSeries_c can only add series which are in the dataframe")
-            return addSeries(self.name, other.name)
-        raise ValueError( "WTF def __add__(self, other)")
-    
+        if isinstance(other, (float, int)):
+            return addSeriesConst(self, other)
+        raise ValueError("WTF def __add__(self, other)")
+
     def __radd__(self, other):
+        if isinstance(other, (float, int)):
+            return addToConst(other, self)
         return self.__add__(other)
-    
+
     def __sub__(self, other):
-        if isinstance(other, generatedSeries_c):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
             return subtractSeries(self.name, other.name)
-        if isinstance(other, pd.Series):
-            if( other.name not in active.timeframe.df.columns ):
-                raise ValueError( "generatedSeries_c can only substract series which are in the dataframe")
-            return subtractSeries(self.name, other.name)
-        raise ValueError( "WTF def __sub__(self, other)")
-    
+        if isinstance(other, (float, int)):
+            return subtractSeriesConst(self, other)
+        raise ValueError("WTF def __sub__(self, other)")
+
     def __rsub__(self, other):
-        if isinstance(other, generatedSeries_c):
-            return other.__sub__(self)
-        raise ValueError( "WTF def __rsub__(self, other)")
-    
+        if isinstance(other, (float, int)):
+            return subtractFromConst(other, self)
+        raise ValueError("rsub only defined for const - series")
+
     def __mul__(self, other):
-        if isinstance(other, generatedSeries_c):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
             return multiplySeries(self.name, other.name)
-        if isinstance(other, pd.Series):
-            if( other.name not in active.timeframe.df.columns ):
-                raise ValueError( "generatedSeries_c can only substract series which are in the dataframe")
-            return multiplySeries(self.name, other.name)
-        raise ValueError( "WTF def __mul__(self, other)")
-        
+        if isinstance(other, (float, int)):
+            return mulSeriesConst(self, other)
+        raise ValueError("WTF def __mul__(self, other)")
+
     def __rmul__(self, other):
+        if isinstance(other, (float, int)):
+            return multFromConst(other, self)
         return self.__mul__(other)
-    
+
     def __truediv__(self, other):
-        if isinstance(other, generatedSeries_c):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
             return divideSeries(self.name, other.name)
-        if isinstance(other, pd.Series):
-            if( other.name not in active.timeframe.df.columns ):
-                raise ValueError( "generatedSeries_c can only substract series which are in the dataframe")
-            return divideSeries(self.name, other.name)
-        raise ValueError( "WTF def __truediv__(self, other)")
-    
+        if isinstance(other, (float, int)):
+            return divSeriesConst(self, other)
+        raise ValueError("WTF def __truediv__(self, other)")
+
     def __rtruediv__(self, other):
-        # FIXME
-        return self.__truediv__(other)
+        if isinstance(other, (float, int)):
+            return divFromConst(other, self)
+        raise ValueError("rtruediv only defined for const / series")
     
+
+
+
+
     def __lt__(self, other):
-        if isinstance(other, generatedSeries_c):
-            return self.value() < other.value()
-        if isinstance(other, pd.Series):
-            return self.value() < other.iloc[active.barindex]
-        return self.value() < other
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return compareSeries(self.name, other.name, lambda a, b: a < b, "<")
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: a < b, "<")
+        raise ValueError("Unsupported operand type for <")
     
     def __rlt__(self, other):
-        return self.__lt__(other)
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: b < a, "r<")
+        raise ValueError("Unsupported reversed operand for <")
+
+    def __le__(self, other):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return compareSeries(self.name, other.name, lambda a, b: a <= b, "<=")
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: a <= b, "<=")
+        raise ValueError("Unsupported operand type for <=")
     
+    def __rle__(self, other):
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: b <= a, "r<=")
+        raise ValueError("Unsupported reversed operand for <=")
+
     def __gt__(self, other):
-        if isinstance(other, generatedSeries_c):
-            return self.value() > other.value()
-        if isinstance(other, pd.Series):
-            return self.value() > other.iloc[active.barindex]
-        return self.value() > other
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return compareSeries(self.name, other.name, lambda a, b: a > b, ">")
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: a > b, ">")
+        raise ValueError("Unsupported operand type for >")
     
     def __rgt__(self, other):
-        return self.__gt__(other)
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: b > a, "r>")
+        raise ValueError("Unsupported reversed operand for >")
+
+    def __ge__(self, other):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return compareSeries(self.name, other.name, lambda a, b: a >= b, ">=")
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: a >= b, ">=")
+        raise ValueError("Unsupported operand type for >=")
     
+    def __rge__(self, other):
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: b >= a, "r>=")
+        raise ValueError("Unsupported reversed operand for >=")
+
     def __eq__(self, other):
-        if other is None:
-            return False
-        if isinstance(other, generatedSeries_c):
-            return self.value() == other.value()
-        if isinstance(other, pd.Series):
-            return self.value() == other.iloc[active.barindex]
-        return self.value() == other
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return compareSeries(self.name, other.name, lambda a, b: a == b, "==")
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: a == b, "==")
+        return NotImplemented
     
+    def __req__(self, other):
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: b == a, "r==")
+        return NotImplemented
+
+    def __ne__(self, other):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return compareSeries(self.name, other.name, lambda a, b: a != b, "!=")
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: a != b, "!=")
+        return NotImplemented
+
+    def __rne__(self, other):
+        if isinstance(other, (float, int)):
+            return SeriesConstOp(self, other, lambda a, b: b != a, "r!=")
+        return NotImplemented
+
+
 
     def plot( self, chart_name = None, color = "#8FA7BBAA", style = 'solid', width = 1  ):
         '''* it returns the generatedSeries. Calling plot from the timeframe and the function returns the plot_c but not here*
@@ -977,6 +1064,141 @@ def divideSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|gene
     indexB = timeframe.df.columns.get_loc(colB)
     dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
     return timeframe.calcGeneratedSeries( 'divi', dummy_source, 1, _generatedseries_calculate_divide_series, param=(colA, colB))
+
+def SeriesConstOp(col: str|pd.Series|generatedSeries_c, constant: float, op_func, op_label: str = "", timeframe=None) -> generatedSeries_c:
+    """
+    Apply a custom binary operation between a column and a constant.
+    
+    Args:
+        col (str): Name of the column (Series) in the DataFrame.
+        constant (float): The constant value.
+        op_func (Callable): The binary operation function, e.g., lambda s, c: s + c.
+        op_label (str): Optional label to differentiate multiple uses of same op_func.
+        timeframe: The timeframe context (defaults to active.timeframe).
+
+    Returns:
+        generatedSeries_c
+    """
+    if isinstance(col,(pd.Series, generatedSeries_c)):
+        col = col.name
+    timeframe = timeframe or active.timeframe
+    source = timeframe.df[col]
+    name_suffix = f"{col}{op_label or 'op'}_{str(constant).replace('.', '_')}"
+    return timeframe.calcGeneratedSeries(f"scop{name_suffix}", source, 1, _generatedseries_calculate_series_const_lambda, (constant, op_func))
+
+def addSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
+    return SeriesConstOp(col, constant, lambda s, c: s + c, "add", timeframe)
+
+def subtractSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
+    return SeriesConstOp(col, constant, lambda s, c: s - c, "sub", timeframe)
+
+def mulSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
+    return SeriesConstOp(col, constant, lambda s, c: s * c, "mul", timeframe)
+
+def divSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
+    return SeriesConstOp(col, constant, lambda s, c: s / c if c != 0 else np.nan, "div", timeframe)
+
+def powSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
+    return SeriesConstOp(col, constant, lambda s, c: np.power(s, c), "pow", timeframe)
+
+def compareSeries(colA: str, colB: str, op_func, op_label: str = "", timeframe=None):
+    timeframe = timeframe or active.timeframe
+    df = timeframe.df
+
+    if colA not in df.columns or colB not in df.columns:
+        raise ValueError(f"compareSeries: Columns '{colA}' or '{colB}' not found")
+
+    indexA = df.columns.get_loc(colA)
+    indexB = df.columns.get_loc(colB)
+    name = f"{indexA}-{indexB}"
+
+    return timeframe.calcGeneratedSeries(
+        f"cmp{name}_{op_label}",
+        df[colA],
+        1,
+        _generatedseries_calculate_binary_operator,
+        (colA, colB, op_func)
+    )
+
+# REVERSED!
+def ConstSeriesOp(
+    col: str | pd.Series | generatedSeries_c,
+    constant: float,
+    op_func,
+    op_label: str = "",
+    timeframe=None
+) -> generatedSeries_c:
+    """
+    Apply a binary operation between a constant and a series, where constant is left operand.
+
+    Args:
+        col: Column name, Series, or generatedSeries_c.
+        constant: The constant left operand.
+        op_func: Callable like lambda c, s: ...
+        op_label: Label to distinguish operations.
+        timeframe: Optional TimeFrame context (defaults to active.timeframe).
+
+    Returns:
+        generatedSeries_c
+    """
+    if isinstance(col, (pd.Series, generatedSeries_c)):
+        col = col.name
+
+    timeframe = timeframe or active.timeframe
+
+    if col not in timeframe.df.columns:
+        raise ValueError(f"ConstSeriesOp: Column '{col}' not found in DataFrame.")
+
+    source = timeframe.df[col]
+    clean_constant = str(constant).replace(".", "_")
+    name_suffix = f"{op_label}_{clean_constant}_{col}"
+
+    return timeframe.calcGeneratedSeries(
+        f"csop_{name_suffix}",
+        source,
+        1,
+        _generatedseries_calculate_const_series_lambda,
+        (constant, op_func)
+    )
+
+def subtractFromConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
+    return ConstSeriesOp(col, constant, lambda c, s: c - s, "subFrom", timeframe)
+
+def divFromConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
+    return ConstSeriesOp(col, constant, lambda c, s: c / s.replace(0, np.nan), "divFrom", timeframe)
+
+def constPowSeries(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
+    return ConstSeriesOp(col, constant, lambda c, s: np.power(c, s), "powFrom", timeframe)
+
+def constMinusLog(col:str|pd.Series|generatedSeries_c, constant=np.e, timeframe=None)->generatedSeries_c:
+    return ConstSeriesOp(col, constant, lambda c, s: np.log(c / s.replace(0, np.nan)), "logFrom", timeframe)
+
+def addToConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
+    return ConstSeriesOp(col, constant, lambda c, s: c + s, "addFrom", timeframe)
+
+def multFromConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
+    return ConstSeriesOp(col, constant, lambda c, s: c * s, "mulFrom", timeframe)
+
+def compareSeriesConst(col: str | pd.Series | generatedSeries_c, constant: float, op_func, op_label: str = "", timeframe=None):
+    if isinstance(col, (pd.Series, generatedSeries_c)):
+        col = col.name
+    timeframe = timeframe or active.timeframe
+    df = timeframe.df
+
+    if col not in df.columns:
+        raise ValueError(f"compareSeriesConst: Column '{col}' not found")
+
+    name_suffix = f"{col}{op_label}_{str(constant).replace('.', '_')}"
+
+    return timeframe.calcGeneratedSeries(
+        f"cmpc{name_suffix}",
+        df[col],
+        1,
+        _generatedseries_calculate_series_const_lambda,
+        (constant, op_func)
+    )
+
+
 
 def SMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
@@ -1178,6 +1400,7 @@ def MACD(source: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9, tim
     # Histogram: MACD line - Signal line
     macdminussignal = macd_line - signal_line # Same as # macdminussignal = subtractSeries(macd_line.name, signal_line.name)
     hist = timeframe.calcGeneratedSeries('macd_hist', macdminussignal.series(), 1, lambda s, p, d, x: s)
+
     return macd_line, signal_line, hist
 
 
