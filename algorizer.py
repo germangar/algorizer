@@ -24,7 +24,7 @@ verbose = False
 
 
 class plot_c:
-    def __init__( self, name:str, chart_name = None, color = "#8FA7BBAA", style = 'solid', width = 1 ):
+    def __init__( self, name:str, chart_name = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0 ):
         '''name, color, style, width
         color: str = 'rgba(200, 200, 200, 0.6)',
         style: LINE_STYLE = 'solid', width: int = 2,
@@ -32,11 +32,15 @@ class plot_c:
         LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
         '''
         self.name = name
+        self.type = type
         self.chartName = chart_name
         self.color = color if color.startswith('rgba') else tools.hx2rgba(color)
         self.style = style
         self.width = width
+        self.hist_margin_top = hist_margin_top
+        self.hist_margin_bottom = hist_margin_bottom
         self.line = None
+        self.hist = None
         self.initialized = False
         self.iat_index = -1
 
@@ -87,8 +91,14 @@ class plot_c:
                 return
             
             chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
-            self.line = chart.create_line( self.name, self.color, self.style, self.width, price_line=False, price_label=False )
-            self.line.set( pd.DataFrame( {'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries} ) )
+            if self.type == c.PLOT_LINE:
+                self.line = chart.create_line( self.name, self.color, self.style, self.width, price_line=False, price_label=False )
+                self.line.set( pd.DataFrame( {'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries} ) )
+
+            elif self.type == c.PLOT_HIST:
+                self.hist = chart.create_histogram( self.name, self.color, price_line = False, price_label = False, scale_margin_top = self.hist_margin_top, scale_margin_bottom = self.hist_margin_bottom )
+                self.hist.set( pd.DataFrame( {'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries} ) )
+
             self.iat_index = timeframe.df.columns.get_loc(self.name)
             self.initialized = True
             return
@@ -116,7 +126,10 @@ class plot_c:
 
         # update the chart
         newval = timeframe.df.iat[timeframe.barindex, self.iat_index]
-        self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
+        if self.type == c.PLOT_LINE:
+            self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
+        elif self.type == c.PLOT_HIST:
+            self.hist.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
 
 
 
@@ -129,8 +142,10 @@ def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", s
     width: int
     '''
     return active.timeframe.plot( source, name, chart_name, color, style, width )
-    
 
+
+def histogram( source, name:str = None, chart_name:str = None, color = "#4A545D", margin_top = 0.0, margin_bottom = 0.0 )->plot_c:
+        return active.timeframe.histogram( source, name, chart_name, color, margin_top, margin_bottom )
 
 class marker_c:
     def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
@@ -392,23 +407,46 @@ class timeframe_c:
         return gse
 
 
-    def plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
+    def register_plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0 )->plot_c:
         '''
         source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
         chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
         color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
-        style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
-        width: int
+        style: plots LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+        width: with of the line. For plots.
+        type: Is it a plot or a histogram
+        hist_margin_top: for histograms only. Scalar margin above the histogram.
+        hist_margin_bottom: for histograms only. Scalar margin below the histogram.
         '''
         if self.stream.noplots : return
         plot = self.registeredPlots.get( name )
 
         if( plot == None ):
-            plot = plot_c( name, chart_name, color, style, width )
+            plot = plot_c( name, chart_name, color, style, width, type, hist_margin_top, hist_margin_bottom )
             self.registeredPlots[name] = plot
         
         plot.update( source, self )
         return plot
+    
+    def plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1)->plot_c:
+        '''
+        source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
+        chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+        color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
+        style: plots LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+        width: with of the line. For plots.
+        '''
+        return self.register_plot( source, name, chart_name, color, style, width )
+    
+    def histogram( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", margin_top = 0.0, margin_bottom = 0.0 )->plot_c:
+        '''
+        source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
+        chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+        color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
+        hist_margin_top: for histograms only. Scalar margin above the histogram.
+        hist_margin_bottom: for histograms only. Scalar margin below the histogram.
+        '''
+        return self.register_plot( source, name, chart_name, color, type = c.PLOT_HIST, hist_margin_top= margin_top, hist_margin_bottom= margin_bottom )
     
 
     def jumpstartPlots( self ):

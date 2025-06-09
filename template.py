@@ -1,6 +1,6 @@
 import pandas as pd
 from constants import c
-from algorizer import stream_c, timeframe_c, plot, requestValue, createMarker
+from algorizer import stream_c, timeframe_c, plot, histogram, requestValue, createMarker
 import calcseries as calc
 from calcseries import generatedSeries_c
 from candle import candle_c
@@ -73,10 +73,13 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     # if not timeframe.stream.initializing:
     #     print(timeframe.df)
 
-    macd_line, signal_line, histogram = calc.MACD(close)
-    macd_line.plot( 'panel', color = "#AB1212" )
+    macd_line, signal_line, histo = calc.MACD(close)
+    # histogram.plot( 'panel', color = "#735252" )
+    # timeframe.histogram( histo.series(), histo.name, "panel", color = "#4A545D")
+    # histogram( histo.series(), histo.name, 'panel', "#4A545D" )
+    histo.histogram( 'panel', "#4A545D" )
+    macd_line.plot( 'panel', color = "#AB1212", width=2 )
     signal_line.plot( 'panel', color = "#1BC573" )
-    histogram.plot( 'panel', color = "#735252" )
 
 # 
 #   SETTING UP THE CANDLES FEED

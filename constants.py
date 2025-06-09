@@ -8,6 +8,8 @@ class c(IntEnum):  # Ultra-short class name
     LONG = 1
     SHORT = -1
     
+    PLOT_LINE = 0
+    PLOT_HIST = 1
 
     # Columns in the dataframe by index
     DF_TIMESTAMP = 0
