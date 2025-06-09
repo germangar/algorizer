@@ -98,6 +98,35 @@ def _generatedseries_calculate_lowestbars(series: pd.Series, period: int, df: pd
 
     return pd.Series(result, index=series.index)
 
+def _generatedseries_calculate_binary_operator(dummy_source: pd.Series, period: int, df: pd.DataFrame, param: tuple) -> pd.Series:
+    """
+    Apply a custom binary operation between two columns in the dataframe.
+
+    Args:
+        dummy_source (pd.Series): Ignored, only used for naming compatibility.
+        period (int): Minimum required length for initialization (usually 1).
+        df (pd.DataFrame): The dataframe containing the operands.
+        param (tuple): (colA, colB, op_func), where:
+            - colA (str): Name of first column.
+            - colB (str): Name of second column.
+            - op_func (Callable): A lambda or function taking two Series and returning a Series.
+
+    Returns:
+        pd.Series: Resulting series from applying op_func to colA and colB.
+    """
+    if not isinstance(param, tuple) or len(param) != 3:
+        raise ValueError("binary_operator series requires param=(colA, colB)")
+    
+    colA, colB, op_func = param
+
+    if colA not in df.columns or colB not in df.columns:
+        raise ValueError(f"binary_operator series: Columns '{colA}' or '{colB}' not found in DataFrame")
+
+    seriesA = df[colA]
+    seriesB = df[colB]
+    result = op_func(seriesA, seriesB)
+    return result
+
 def _generatedseries_calculate_subtract_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
     if not isinstance(param, tuple) or len(param) != 2:
         raise ValueError("subtract_series requires param=(colA, colB)")
@@ -107,6 +136,36 @@ def _generatedseries_calculate_subtract_series(series: pd.Series, period: int, d
         raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
 
     return df[colA] - df[colB]
+
+def _generatedseries_calculate_add_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    if not isinstance(param, tuple) or len(param) != 2:
+        raise ValueError("subtract_series requires param=(colA, colB)")
+    
+    colA, colB = param
+    if colA not in df.columns or colB not in df.columns:
+        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
+
+    return df[colA] + df[colB]
+
+def _generatedseries_calculate_multiply_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    if not isinstance(param, tuple) or len(param) != 2:
+        raise ValueError("subtract_series requires param=(colA, colB)")
+    
+    colA, colB = param
+    if colA not in df.columns or colB not in df.columns:
+        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
+
+    return df[colA] * df[colB]
+
+def _generatedseries_calculate_divide_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    if not isinstance(param, tuple) or len(param) != 2:
+        raise ValueError("subtract_series requires param=(colA, colB)")
+    
+    colA, colB = param
+    if colA not in df.columns or colB not in df.columns:
+        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
+
+    return df[colA] / df[colB]
 
 def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.sma( series, period )
@@ -677,10 +736,12 @@ class generatedSeries_c:
     # If you want to operate the whole series do it with the .series() method.
     def __add__(self, other):
         if isinstance(other, generatedSeries_c):
-            return self.value() + other.value()
+            return addSeries(self.name, other.name)
         if isinstance(other, pd.Series):
-            return self.value() + other.iloc[active.barindex]
-        return self.value() + other
+            if( other.name not in active.timeframe.df.columns ):
+                raise ValueError( "generatedSeries_c can only add series which are in the dataframe")
+            return addSeries(self.name, other.name)
+        raise ValueError( "WTF def __add__(self, other)")
     
     def __radd__(self, other):
         return self.__add__(other)
@@ -692,32 +753,36 @@ class generatedSeries_c:
             if( other.name not in active.timeframe.df.columns ):
                 raise ValueError( "generatedSeries_c can only substract series which are in the dataframe")
             return subtractSeries(self.name, other.name)
-        raise ValueError( "WTF")
+        raise ValueError( "WTF def __sub__(self, other)")
     
     def __rsub__(self, other):
         if isinstance(other, generatedSeries_c):
             return other.__sub__(self)
-        raise ValueError( "WTF")
+        raise ValueError( "WTF def __rsub__(self, other)")
     
     def __mul__(self, other):
         if isinstance(other, generatedSeries_c):
-            return self.value() * other.value()
-        elif isinstance(other, pd.Series):
-            return self.value() * other.iloc[active.barindex]
-        else:
-            return self.value() * other
+            return multiplySeries(self.name, other.name)
+        if isinstance(other, pd.Series):
+            if( other.name not in active.timeframe.df.columns ):
+                raise ValueError( "generatedSeries_c can only substract series which are in the dataframe")
+            return multiplySeries(self.name, other.name)
+        raise ValueError( "WTF def __mul__(self, other)")
         
     def __rmul__(self, other):
         return self.__mul__(other)
     
     def __truediv__(self, other):
         if isinstance(other, generatedSeries_c):
-            return self.value() / other.value()
+            return divideSeries(self.name, other.name)
         if isinstance(other, pd.Series):
-            return self.value() / other.iloc[active.barindex]
-        return self.value() / other
+            if( other.name not in active.timeframe.df.columns ):
+                raise ValueError( "generatedSeries_c can only substract series which are in the dataframe")
+            return divideSeries(self.name, other.name)
+        raise ValueError( "WTF def __truediv__(self, other)")
     
     def __rtruediv__(self, other):
+        # FIXME
         return self.__truediv__(other)
     
     def __lt__(self, other):
@@ -836,12 +901,70 @@ def rising( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'rising', source, period, _generatedseries_calculate_rising )
 
-def subtractSeries(colA: str, colB: str, timeframe=None) -> generatedSeries_c:
+def binaryOperationSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, op_func, timeframe=None) -> generatedSeries_c:
+    """
+    op_func: a lambda or function taking (Series a, Series b) and returning a Series. Example: 'lambda a, b: a + b'
+    """
+    if isinstance(colA,(pd.Series, generatedSeries_c)):
+        colA = colA.name
+    if isinstance(colB,(pd.Series, generatedSeries_c)):
+        colB = colB.name
+    import inspect
+    timeframe = timeframe or active.timeframe
+    # Get caller info by going up 2 levels in the stack
+    caller_frame = inspect.currentframe().f_back
+    frame_info = inspect.getframeinfo(caller_frame)
+    caller_id = f"{frame_info.function[:3]}{str(frame_info.lineno)[-3:]}"
+    indexA = timeframe.df.columns.get_loc(colA)
+    indexB = timeframe.df.columns.get_loc(colB)
+    dummy_name = f"{caller_id}{indexA}{indexB}"
+    dummy_source = pd.Series([np.nan], name=dummy_name) # must have len of at least 1
+    return timeframe.calcGeneratedSeries( 'biop', dummy_source, 1, _generatedseries_calculate_binary_operator, param=(colA, colB, op_func) )
+
+def subtractSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
+    # return binaryOperationSeries(colA, colB, lambda a, b: a - b) # for testing binaryOperationSeries
+    if isinstance(colA,(pd.Series, generatedSeries_c)):
+        colA = colA.name
+    if isinstance(colB,(pd.Series, generatedSeries_c)):
+        colB = colB.name
     timeframe = timeframe or active.timeframe
     indexA = timeframe.df.columns.get_loc(colA)
     indexB = timeframe.df.columns.get_loc(colB)
-    dummy_source = pd.Series([np.nan], name=f"{indexA}-{indexB}") # must have len of at least 1
+    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
     return timeframe.calcGeneratedSeries( 'sub', dummy_source, 1, _generatedseries_calculate_subtract_series, param=(colA, colB))
+
+def addSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
+    if isinstance(colA,(pd.Series, generatedSeries_c)):
+        colA = colA.name
+    if isinstance(colB,(pd.Series, generatedSeries_c)):
+        colB = colB.name
+    timeframe = timeframe or active.timeframe
+    indexA = timeframe.df.columns.get_loc(colA)
+    indexB = timeframe.df.columns.get_loc(colB)
+    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
+    return timeframe.calcGeneratedSeries( 'add', dummy_source, 1, _generatedseries_calculate_add_series, param=(colA, colB))
+
+def multiplySeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
+    if isinstance(colA,(pd.Series, generatedSeries_c)):
+        colA = colA.name
+    if isinstance(colB,(pd.Series, generatedSeries_c)):
+        colB = colB.name
+    timeframe = timeframe or active.timeframe
+    indexA = timeframe.df.columns.get_loc(colA)
+    indexB = timeframe.df.columns.get_loc(colB)
+    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
+    return timeframe.calcGeneratedSeries( 'mult', dummy_source, 1, _generatedseries_calculate_multiply_series, param=(colA, colB))
+
+def divideSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
+    if isinstance(colA,(pd.Series, generatedSeries_c)):
+        colA = colA.name
+    if isinstance(colB,(pd.Series, generatedSeries_c)):
+        colB = colB.name
+    timeframe = timeframe or active.timeframe
+    indexA = timeframe.df.columns.get_loc(colA)
+    indexB = timeframe.df.columns.get_loc(colB)
+    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
+    return timeframe.calcGeneratedSeries( 'divi', dummy_source, 1, _generatedseries_calculate_divide_series, param=(colA, colB))
 
 def SMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe

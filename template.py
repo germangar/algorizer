@@ -33,7 +33,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
 
     rsi14 = calc.RSI(close, 14)
     rsiSlow = requestValue( rsi30m.name, '30m' )
-    plot( rsiSlow, 'rsiSlow', 'panel' )
+    # plot( rsiSlow, 'rsiSlow', 'panel' )
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsiSlow < -0.7
     sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsiSlow > 0.65

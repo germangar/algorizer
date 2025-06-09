@@ -13,7 +13,7 @@ def stringToValue( arg )->float:
 # used to standarize the name given to a generated series (calcseries.py)
 # I probably should defined type pd.series for 'source' but I don't feel like importing pandas here
 def generatedSeriesNameFormat( type, source, period:int ):
-    return f'_{type}{period}_{source.name}'
+    return f'_{type}{period}{source.name}'
 
 def hx2rgba(hex_color):
     """Converts a hex color code (with or without alpha) to an RGBA string for CSS."""
