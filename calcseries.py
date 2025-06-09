@@ -841,7 +841,7 @@ def subtractSeries(colA: str, colB: str, timeframe=None) -> generatedSeries_c:
     indexA = timeframe.df.columns.get_loc(colA)
     indexB = timeframe.df.columns.get_loc(colB)
     dummy_source = pd.Series([np.nan], name=f"{indexA}-{indexB}") # must have len of at least 1
-    return timeframe.calcGeneratedSeries( 'subtract', dummy_source, 1, _generatedseries_calculate_subtract_series, param=(colA, colB))
+    return timeframe.calcGeneratedSeries( 'sub', dummy_source, 1, _generatedseries_calculate_subtract_series, param=(colA, colB))
 
 def SMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
@@ -971,7 +971,7 @@ def barsSinceSeries(source: pd.Series, period: int, timeframe=None) -> generated
     # Get caller info by going up 2 levels in the stack
     caller_frame = inspect.currentframe().f_back
     frame_info = inspect.getframeinfo(caller_frame)
-    caller_id = f"{frame_info.function}_{frame_info.lineno}"
+    caller_id = f"{frame_info.function[:5]}{frame_info.lineno}"
 
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('barsSince'+caller_id, source, period, _generatedseries_calculate_barssince)
