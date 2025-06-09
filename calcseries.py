@@ -715,6 +715,7 @@ class generatedSeries_c:
         self.func = func
         self.timeframe = timeframe
         self.timestamp = 0
+        self.current = 0
         self.alwaysReset = always_reset
 
         if( self.timeframe == None ):
@@ -740,6 +741,7 @@ class generatedSeries_c:
             start_time = time.time()
             self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df, self.param).dropna()
             self.timestamp = self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
+            self.current = self.timeframe.df[self.name].loc[self.timeframe.barindex]
             if( self.timeframe.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
@@ -765,6 +767,7 @@ class generatedSeries_c:
         newval = self.func(source[-self.period:], self.period, timeframe.df, self.param).loc[timeframe.barindex]
         timeframe.df.loc[timeframe.df.index[-1], self.name] = newval
         self.timestamp = timeframe.timestamp
+        self.current = newval
 
     def value( self, backindex = 0 ):
         if( backindex >= len(self.timeframe.df) ):
@@ -824,6 +827,8 @@ class generatedSeries_c:
             return divFromConst(other, self)
         raise ValueError("rtruediv only defined for const / series")
     
+    def __neg__(self):
+        return mulSeriesConst(self, -1)
 
 
 
