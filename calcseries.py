@@ -849,9 +849,6 @@ class generatedSeries_c:
     def __neg__(self):
         return mulSeriesConst(self, -1)
 
-
-
-
     def __lt__(self, other):
         if isinstance(other, (generatedSeries_c, pd.Series)):
             return compareSeries(self.name, other.name, lambda a, b: a < b, "<")
@@ -923,6 +920,45 @@ class generatedSeries_c:
         if isinstance(other, (float, int)):
             return SeriesConstOp(self, other, lambda a, b: b != a, "r!=")
         return NotImplemented
+    
+    def __and__(self, other):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return andSeries(self, other)
+        if isinstance(other, (bool, int, float)):
+            return andSeriesConst(self, bool(other))
+        raise ValueError("Unsupported operand for &")
+
+    def __rand__(self, other):
+        if isinstance(other, (bool, int, float)):
+            return andConstSeries(bool(other), self)
+        raise ValueError("Unsupported operand for &")
+
+    def __or__(self, other):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return orSeries(self, other)
+        if isinstance(other, (bool, int, float)):
+            return orSeriesConst(self, bool(other))
+        raise ValueError("Unsupported operand for |")
+
+    def __ror__(self, other):
+        if isinstance(other, (bool, int, float)):
+            return orConstSeries(bool(other), self)
+        raise ValueError("Unsupported operand for |")
+
+    def __xor__(self, other):
+        if isinstance(other, (generatedSeries_c, pd.Series)):
+            return xorSeries(self, other)
+        if isinstance(other, (bool, int, float)):
+            return xorSeriesConst(self, bool(other))
+        raise ValueError("Unsupported operand for ^")
+
+    def __rxor__(self, other):
+        if isinstance(other, (bool, int, float)):
+            return xorConstSeries(bool(other), self)
+        raise ValueError("Unsupported operand for ^")
+
+    def __invert__(self):
+        return notSeries(self)
 
 
 
@@ -1254,6 +1290,8 @@ def andConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, con
 def orConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c | s, "orFrom", timeframe)
 
 def xorConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c ^ s, "xorFrom", timeframe)
+
+
 
 
 
