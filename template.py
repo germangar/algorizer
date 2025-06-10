@@ -62,7 +62,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
             trade.order( 'sell', c.SHORT )
 
     pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 4 )
-    if pivots.is_pivot:
+    if pivots.isNewPivot:
         thisPivot = pivots.getLast()
         if thisPivot.type == c.PIVOT_HIGH:
             createMarker('▽', 'above', color = "#BDBDBD", timestamp=thisPivot.timestamp)

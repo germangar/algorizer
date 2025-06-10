@@ -1627,12 +1627,11 @@ class pivots_c:
         self.current_LL_index = None
         self.last_pivot_price = None
         self.last_pivot_move = None
-
-        self.is_pivot = False
+        self.isNewPivot = False # a new pivot was created in the last update
         self.pivots:list[pivot_c] = []
         
     def process_candle(self, index: int, high: float, low: float)->bool:
-        self.is_pivot = False
+        self.isNewPivot = False
         if self.barindex >= index:
             return False
         self.barindex = index
@@ -1663,7 +1662,7 @@ class pivots_c:
                     reversal_threshold = self.last_pivot_move * (self.reversal_pct * 0.01)
                     if current_reversal >= reversal_threshold:
                         # Confirmed down pivot
-                        self.newPivot(self.current_HH_index, self.trend, self.current_HH)
+                        self.addPivot(self.current_HH_index, self.trend, self.current_HH)
                         self.trend = c.SHORT
                         self.last_pivot_price = self.current_HH
                         self.last_pivot_move = current_reversal
@@ -1672,7 +1671,7 @@ class pivots_c:
                         return True
                 else:
                     # First pivot, only use min_range
-                    self.newPivot( self.current_HH_index, self.trend, self.current_HH)
+                    self.addPivot( self.current_HH_index, self.trend, self.current_HH)
                     self.trend = c.SHORT
                     self.last_pivot_price = self.current_HH
                     self.last_pivot_move = current_reversal
@@ -1698,7 +1697,7 @@ class pivots_c:
                     reversal_threshold = self.last_pivot_move * (self.reversal_pct * 0.01)
                     if current_reversal >= reversal_threshold:
                         # Confirmed up pivot
-                        self.newPivot( self.current_LL_index, self.trend, self.current_LL)
+                        self.addPivot( self.current_LL_index, self.trend, self.current_LL)
                         self.trend = c.LONG
                         self.last_pivot_price = self.current_LL
                         self.last_pivot_move = current_reversal
@@ -1707,7 +1706,7 @@ class pivots_c:
                         return True
                 else:
                     # First pivot, only use min_range
-                    self.newPivot( self.current_LL_index, self.trend, self.current_LL)
+                    self.addPivot( self.current_LL_index, self.trend, self.current_LL)
                     self.trend = c.LONG
                     self.last_pivot_price = self.current_LL
                     self.last_pivot_move = current_reversal
@@ -1717,7 +1716,7 @@ class pivots_c:
         
         return False
 
-    def newPivot(self, index, type, price):
+    def addPivot(self, index, type, price):
         pivot = pivot_c(
                 index=index,
                 type=type,
@@ -1741,7 +1740,7 @@ class pivots_c:
     
     def update(self, high: pd.Series, low: pd.Series):
         if( not active.timeframe.jumpstart ):
-            self.is_pivot = self.process_candle(active.barindex, high[active.barindex], low[active.barindex])
+            self.isNewPivot = self.process_candle(active.barindex, high[active.barindex], low[active.barindex])
 
         
 pivotsNow:pivots_c = None
