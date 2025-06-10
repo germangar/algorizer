@@ -504,7 +504,7 @@ class stream_c:
         self.precision = 0.0
         self.mintick = 0.0
 
-        self.markers:marker_c = []
+        self.markers:list[marker_c] = []
 
         #################################################
         # Validate de timeframes list and find 
