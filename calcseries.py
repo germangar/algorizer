@@ -167,15 +167,6 @@ def _generatedseries_calculate_divide_series(series: pd.Series, period: int, df:
 
     return df[colA] / df[colB]
 
-# def _generatedseries_calculate_series_const_lambda( series: pd.Series, period: int, df: pd.DataFrame, param: tuple[float, object] ) -> pd.Series:
-#     if not isinstance(param, tuple) or len(param) != 2:
-#         raise ValueError("series_const_operator requires param=(constant, op_func)")
-#     constant, op_func = param
-#     if not callable(op_func):
-#         raise ValueError("The second item in param must be a callable (e.g., lambda function)")
-
-#     return op_func(series, constant)
-
 def _generatedseries_calculate_series_const_lambda(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
     if not isinstance(param, tuple) or len(param) != 2:
         raise ValueError("SeriesConstOp param must be a tuple: (constant, op_func)")
@@ -207,6 +198,27 @@ def _generatedseries_calculate_const_series_lambda(series: pd.Series, period: in
         raise RuntimeError(f"Error applying const-series operation: {e}")
 
     return pd.Series(result).replace([np.inf, -np.inf], np.nan)
+
+def _generatedseries_calculate_logical_operator(dummy_source: pd.Series, period: int, df: pd.DataFrame, param: tuple) -> pd.Series:
+    """
+    Apply a logical operation between two boolean Series.
+    param: (colA, colB, op_func), where op_func is like `lambda a, b: a & b`
+    """
+    if not isinstance(param, tuple) or len(param) != 3:
+        raise ValueError("logical_operator series requires param=(colA, colB, op_func)")
+    
+    colA, colB, op_func = param
+
+    if colA not in df.columns or colB not in df.columns:
+        raise KeyError(f"Columns '{colA}' or '{colB}' not found in DataFrame")
+
+    seriesA = df[colA].astype(bool)
+    seriesB = df[colB].astype(bool)
+    return op_func(seriesA, seriesB)
+
+def _generatedseries_calculate_logical_not(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+    return ~series.astype(bool)
+
 
 
 
@@ -769,11 +781,18 @@ class generatedSeries_c:
         self.timestamp = timeframe.timestamp
         self.current = newval
 
-    def value( self, backindex = 0 ):
-        if( backindex >= len(self.timeframe.df) ):
-            raise SystemError( "generatedseries_c.value() : backindex out of bounds")
 
-        return self.timeframe.df[self.name].iloc[self.timeframe.barindex - backindex]
+    def iloc( self, index = -1 ):
+        barindex = self.timeframe.barindex
+        # Handle negative indices (Python-style: -1 = last, -2 = second last)
+        if index < 0:
+            index = barindex + 1 + index  # +1 because -1 is last element
+        else:
+            index = index
+        # Clamp to [0, max_idx] (no wrapping for out-of-bounds)
+        index = max( 0, min(index, barindex) )
+        return self.timeframe.df[self.name].iloc[index]
+
 
     def series( self ):
         return self.timeframe.df[self.name]
@@ -934,45 +953,45 @@ class generatedSeries_c:
     
     def crossingUp( self, other ):
         df = self.timeframe.df
-        if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
+        if( self.timestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
+            if( other.timestamp == 0  or other.current == None or other.iloc(-2) == None ):
                 return False
-            return ( self.value(1) <= other.value(1) and self.value() >= other.value() and self.value() != self.value(1) )
+            return ( self.iloc(-2) <= other.iloc(-2) and self.current >= other.current and self.current != self.iloc(-2) )
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
             if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
                 return False
-            return ( self.value(1) <= other.iloc[self.timeframe.barindex-1] and self.value() >= other.iloc[self.timeframe.barindex] and self.value() != self.value(1) )
+            return ( self.iloc(-2) <= other.iloc[self.timeframe.barindex-1] and self.current >= other.iloc[self.timeframe.barindex] and self.current != self.iloc(-2) )
         try:
             float(other)
         except ValueError:
             return False
         else:
-            return ( self.value(1) <= float(other) and self.value() >= float(other) and self.value() != self.value(1) )
+            return ( self.iloc(-2) <= float(other) and self.current >= float(other) and self.current != self.iloc(-2) )
     
     def crossingDown( self, other ):
         df = self.timeframe.df
-        if( self.timestamp == 0 or len(df)<2 or self.value() == None or self.value(1) == None ):
+        if( self.timestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0  or other.value() == None or other.value(1) == None ):
+            if( other.timestamp == 0  or other.current == None or other.iloc(-2) == None ):
                 return False
-            return ( self.value(1) >= other.value(1) and self.value() <= other.value() and self.value() != self.value(1) )
+            return ( self.iloc(-2) >= other.iloc(-2) and self.current <= other.current and self.current != self.iloc(-2) )
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
             if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
                 return False
-            return ( self.value(1) >= other.iloc[self.timeframe.barindex-1] and self.value() <= other.iloc[self.timeframe.barindex] and self.value() != self.value(1) )
+            return ( self.iloc(-2) >= other.iloc[self.timeframe.barindex-1] and self.current <= other.iloc[self.timeframe.barindex] and self.current != self.iloc(-2) )
         try:
             float(other)
         except ValueError:
             return False
         else:
-            return ( self.value(1) >= float(other) and self.value() <= float(other) and self.value() != self.value(1) )
+            return ( self.iloc(-2) >= float(other) and self.current <= float(other) and self.current != self.iloc(-2) )
     
     def crossing( self, other ):
         return self.crossingUp(other) or self.crossingDown(other)
@@ -1184,6 +1203,60 @@ def addToConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timefr
 def multFromConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
     return ConstSeriesOp(col, constant, lambda c, s: c * s, "mulFrom", timeframe)
 
+def logicalOperationSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, op_func, op_label="", timeframe=None) -> generatedSeries_c:
+    if isinstance(colA, (pd.Series, generatedSeries_c)):
+        colA = colA.name
+    if isinstance(colB, (pd.Series, generatedSeries_c)):
+        colB = colB.name
+
+    timeframe = timeframe or active.timeframe
+    indexA = timeframe.df.columns.get_loc(colA)
+    indexB = timeframe.df.columns.get_loc(colB)
+    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}")
+
+    return timeframe.calcGeneratedSeries(
+        f"log_{op_label}_{indexA}_{indexB}",
+        dummy_source,
+        1,
+        _generatedseries_calculate_logical_operator,
+        param=(colA, colB, op_func)
+    )
+
+def andSeries(colA:str|pd.Series|generatedSeries_c, colB:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c: return logicalOperationSeries(colA, colB, lambda a, b: a & b, "and", timeframe)
+def orSeries(colA:str|pd.Series|generatedSeries_c, colB:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c: return logicalOperationSeries(colA, colB, lambda a, b: a | b, "or", timeframe)
+def xorSeries(colA:str|pd.Series|generatedSeries_c, colB:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c: return logicalOperationSeries(colA, colB, lambda a, b: a ^ b, "xor", timeframe)
+
+def notSeries(col: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
+    if isinstance(col, (pd.Series, generatedSeries_c)):
+        col = col.name
+
+    timeframe = timeframe or active.timeframe
+    if col not in timeframe.df.columns:
+        raise ValueError(f"notSeries: Column '{col}' not found")
+
+    source = timeframe.df[col]
+    return timeframe.calcGeneratedSeries(
+        f"not_{col}",
+        source,
+        1,
+        _generatedseries_calculate_logical_not,
+        None
+    )
+
+def andSeriesConst(col, constant, timeframe=None): return SeriesConstOp(col, constant, lambda s, c: s & c, "and", timeframe)
+
+def orSeriesConst(col, constant, timeframe=None): return SeriesConstOp(col, constant, lambda s, c: s | c, "or", timeframe)
+
+def xorSeriesConst(col, constant, timeframe=None): return SeriesConstOp(col, constant, lambda s, c: s ^ c, "xor", timeframe)
+
+def andConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c & s, "andFrom", timeframe)
+
+def orConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c | s, "orFrom", timeframe)
+
+def xorConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c ^ s, "xorFrom", timeframe)
+
+
+
 def compareSeriesConst(col: str | pd.Series | generatedSeries_c, constant: float, op_func, op_label: str = "", timeframe=None):
     if isinstance(col, (pd.Series, generatedSeries_c)):
         col = col.name
@@ -1202,6 +1275,9 @@ def compareSeriesConst(col: str | pd.Series | generatedSeries_c, constant: float
         _generatedseries_calculate_series_const_lambda,
         (constant, op_func)
     )
+
+
+
 
 
 
@@ -1685,8 +1761,8 @@ def crossingUp( self, other ):
         elif isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
-            other_old = other.value(1)
-            other_new = other.value()
+            other_old = other.iloc(-2)
+            other_new = other.current
         else:
             try:
                 float(other)
@@ -1748,8 +1824,8 @@ def crossingDown( self, other ):
         elif isinstance( other, generatedSeries_c ):
             if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
-            other_old = other.value(1)
-            other_new = other.value()
+            other_old = other.iloc(-2)
+            other_new = other.current
         else:
             try:
                 float(other)

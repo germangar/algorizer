@@ -94,6 +94,8 @@ if __name__ == '__main__':
     trade.strategy.currency_mode = 'USD'
     trade.strategy.order_size = 1000 # should allow only pyramiding of 5 orders
     trade.strategy.max_position_size = 5000
+    trade.strategy.leverage_long = 1
+    trade.strategy.leverage_short = 1
     
 
     # Start the candles stream:

@@ -657,6 +657,12 @@ def getRealtimeCandle()->candle_c:
 def getCandle( index = None )->candle_c:
     return active.timeframe.candle(index)
 
+def getMintick()->float:
+    return active.timeframe.stream.mintick
+
+def getPrecision()->float:
+    return active.timeframe.stream.precision
+
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''
     if not timestamp : 
@@ -776,11 +782,11 @@ if __name__ == '__main__':
         # plot( slope1000.series(), slope1000.name, 'panel' )
 
         # hma_rising = rising( hma.series(), 30 )
-        # if( hma_rising.value() and not hma_rising.value(1) ):
+        # if( hma_rising.current and not hma_rising.iloc(timeframe.barindex-1) ):
         #     timeframe.stream.createMarker( '🔼' )
 
         # hma_falling = falling( hma.series(), 30 )
-        # if( hma_falling.value() and not hma_falling.value(1) ):
+        # if( hma_falling.current and not hma_falling.iloc(timeframe.barindex-1) ):
         #     timeframe.stream.createMarker( '🔽' )
 
 

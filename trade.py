@@ -1,11 +1,10 @@
 
-
 # THIS FILE HAS BEEN WRITTEN BY GEMINI AI 
 # I find this annoying to write so I just asked the AI to do it. 
 
 
 from candle import candle_c
-from algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle
+from algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle, getMintick, getPrecision
 from datetime import datetime, timezone
 from constants import c
 import active # Corrected: Import active to get active.barindex
@@ -13,22 +12,40 @@ import active # Corrected: Import active to get active.barindex
 # Define a small epsilon for floating point comparisons to determine if a size is effectively zero
 EPSILON = 1e-9
 
+def round_to_tick_size(value, tick_size):
+    """Rounds a value to the nearest tick_size."""
+    if tick_size == 0: # Avoid division by zero, though getMintick/getPrecision should ideally return non-zero
+        return value
+    return round(value / tick_size) * tick_size
+
 class strategy_c:
     """
     Represents the overall trading strategy, managing positions and global statistics.
     """
-    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False, currency_mode: str = 'USD'):
+    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False, currency_mode: str = 'USD', leverage_long: float = 1.0, leverage_short: float = 1.0):
         self.positions = []   # List to hold all positions (both active and closed, Long and Short)
         self.total_profit_loss = 0.0 # Global variable to keep track of the total profit/loss for the entire strategy
         self.initial_liquidity = initial_liquidity # Starting capital for the strategy
         self.total_winning_positions = 0 # Counter for winning closed positions
         self.total_losing_positions = 0   # Counter for losing closed positions
+        
+        # NEW: Counters for long and short winning/total positions
+        self.total_winning_long_positions = 0
+        self.total_losing_long_positions = 0
+        self.total_long_positions = 0
+
+        self.total_winning_short_positions = 0
+        self.total_losing_short_positions = 0
+        self.total_short_positions = 0
+
         self.verbose = verbose # Controls whether warning prints are displayed
         self.order_size = order_size # Default quantity to use when none is provided (USD or BASE units depending on currency_mode)
         self.max_position_size = max_position_size # Maximum allowed total size for any single position (USD or BASE units)
         self.hedged = hedged # Controls whether multiple positions can be open simultaneously (True) or only one (False)
         self.currency_mode = currency_mode.upper() # NEW: 'USD' or 'BASE'
         self.first_order_timestamp = None # NEW: To track the very first order timestamp in the strategy
+        self.leverage_long = leverage_long   # Default leverage for LONG trades
+        self.leverage_short = leverage_short # Default leverage for SHORT trades
 
         # Validate currency_mode
         if self.currency_mode not in ['USD', 'BASE']:
@@ -49,6 +66,8 @@ class strategy_c:
             raise ValueError("order_size must be a positive value.")
         if self.max_position_size <= 0:
             raise ValueError("max_position_size must be a positive value.")
+        if self.leverage_long <= 0 or self.leverage_short <= 0:
+            raise ValueError("Leverage values must be positive.")
 
 
     def open_position(self, pos_type: int, price: float, quantity: float, leverage: int) -> 'position_c':
@@ -57,21 +76,22 @@ class strategy_c:
         Quantity must always be in base units.
         """
         pos = position_c(self) # Pass self (strategy_c instance) to position_c
-        pos.leverage = leverage # Set initial leverage for the position object
+        pos.leverage = leverage # Set the *position's* leverage based on the opening order
         pos.type = pos_type # Set the initial type of the position
         
         # Record the timestamp of the first order of the entire strategy
         if self.first_order_timestamp is None:
             self.first_order_timestamp = getCandle(active.barindex).timestamp
 
-        # Add the initial order to history with zero PnL
+        # Add the initial order to history, including its leverage
         pos.order_history.append({
             'type': pos_type,
             'price': price, # Price in quote currency
             'quantity': quantity, # Quantity in base units
             'barindex': active.barindex,
             'pnl_quantity': 0.0,
-            'pnl_percentage': 0.0
+            'pnl_percentage': 0.0,
+            'leverage': leverage # Store leverage for this specific order
         })
         
         # Recalculate metrics based on this first order
@@ -133,14 +153,17 @@ class strategy_c:
         """
         if cmd is None:
             return
-
-        current_price = getRealtimeCandle().close
+        
+        current_price = round_to_tick_size(getRealtimeCandle().close, getMintick()) # Round price using mintick
         cmd = cmd.lower()
         
+        # Round incoming quantity to precision before any further processing
+        actual_quantity_to_process_base_units = round_to_tick_size(quantity_in_base_units_input, getPrecision())
+
         # Quantity after initial filter for zero (before any clamping due to max_pos_size)
-        if quantity_in_base_units_input < EPSILON:
+        if actual_quantity_to_process_base_units < EPSILON:
             if self.verbose or not isInitializing():
-                print(f"Warning: Order quantity ({quantity_in_base_units_input:.6f} base units) is effectively zero. No order placed.")
+                print(f"Warning: Order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after precision rounding. No order placed.")
             return
 
         # Determine the direction of the order itself (BUY or SELL)
@@ -148,9 +171,6 @@ class strategy_c:
         if order_direction == 0:
             print(f"Error: Invalid command '{cmd}'. Must be 'buy' or 'sell'.")
             return
-
-        # This will be the actual quantity (in base units) that gets processed after all clamping
-        actual_quantity_to_process_base_units = quantity_in_base_units_input
 
         # Handle USD capital clamping if currency_mode is 'USD'
         if self.currency_mode == 'USD':
@@ -168,12 +188,12 @@ class strategy_c:
                 # The total capital for this initial order must not exceed max_position_size (USD)
                 max_base_units_from_usd_capital_limit = self.max_position_size / cost_per_base_unit_with_leverage
                 
-                # Clamp the incoming order quantity
-                actual_quantity_to_process_base_units = min(quantity_in_base_units_input, max_base_units_from_usd_capital_limit)
+                # Clamp the incoming order quantity and round to precision
+                actual_quantity_to_process_base_units = round_to_tick_size(min(actual_quantity_to_process_base_units, max_base_units_from_usd_capital_limit), getPrecision())
 
                 if actual_quantity_to_process_base_units < EPSILON:
                     if self.verbose or not isInitializing():
-                        print(f"Warning: Calculated initial order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping. No position opened.")
+                        print(f"Warning: Calculated initial order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping and precision rounding. No position opened.")
                     return # Exit if clamped to zero
 
             elif order_direction == current_active_pos.type: # Increasing an existing position
@@ -188,12 +208,12 @@ class strategy_c:
                 # Calculate max base units that can be bought with remaining USD capacity
                 max_base_units_from_usd_capital_capacity = remaining_usd_capital_capacity / cost_per_base_unit_with_leverage
                 
-                # Clamp the incoming order quantity
-                actual_quantity_to_process_base_units = min(quantity_in_base_units_input, max_base_units_from_usd_capital_capacity)
+                # Clamp the incoming order quantity and round to precision
+                actual_quantity_to_process_base_units = round_to_tick_size(min(actual_quantity_to_process_base_units, max_base_units_from_usd_capital_capacity), getPrecision())
 
                 if actual_quantity_to_process_base_units < EPSILON:
                     if self.verbose or not isInitializing():
-                        print(f"Warning: Calculated order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping. No order placed.")
+                        print(f"Warning: Calculated order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping and precision rounding. No order placed.")
                     return # Exit if clamped to zero
 
             # Note: For opposing orders (partial close/reversal), no capital clamping is applied here.
@@ -210,10 +230,10 @@ class strategy_c:
                 # No active position of the target_position_type, so open a new one
                 if order_direction == target_position_type:
                     # In USD mode, `actual_quantity_to_process_base_units` already clamped.
-                    # In BASE mode, clamp by `self.max_position_size`
+                    # In BASE mode, clamp by `self.max_position_size` and round
                     clamped_quantity_final = actual_quantity_to_process_base_units
                     if self.currency_mode == 'BASE':
-                        clamped_quantity_final = min(actual_quantity_to_process_base_units, self.max_position_size)
+                        clamped_quantity_final = round_to_tick_size(min(actual_quantity_to_process_base_units, self.max_position_size), getPrecision())
 
                     if clamped_quantity_final > EPSILON:
                         self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
@@ -227,11 +247,11 @@ class strategy_c:
                 if order_direction == active_target_pos.type:
                     # Order direction matches existing position type: increase position
                     # `actual_quantity_to_process_base_units` is already clamped by USD capital or initial quantity
-                    # For BASE mode, it needs to be clamped against max_position_size (which is self.max_position_size)
+                    # For BASE mode, it needs to be clamped against max_position_size (which is self.max_position_size) and round
                     clamped_quantity_final = actual_quantity_to_process_base_units
                     if self.currency_mode == 'BASE':
                         available_space_base_units = self.max_position_size - active_target_pos.size
-                        clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_base_units)
+                        clamped_quantity_final = round_to_tick_size(min(actual_quantity_to_process_base_units, available_space_base_units), getPrecision())
 
                     if clamped_quantity_final > EPSILON:
                         active_target_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
@@ -273,10 +293,10 @@ class strategy_c:
                 # No active position, open a new one (only if order direction matches target type for consistency)
                 if order_direction == target_position_type:
                     # `actual_quantity_to_process_base_units` already clamped by USD capital or initial quantity
-                    # For BASE mode, it needs to be clamped against max_position_size
+                    # For BASE mode, it needs to be clamped against max_position_size and round
                     clamped_quantity_final = actual_quantity_to_process_base_units
                     if self.currency_mode == 'BASE':
-                        clamped_quantity_final = min(actual_quantity_to_process_base_units, self.max_position_size)
+                        clamped_quantity_final = round_to_tick_size(min(actual_quantity_to_process_base_units, self.max_position_size), getPrecision())
                         
                     if clamped_quantity_final > EPSILON:
                         self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
@@ -289,11 +309,11 @@ class strategy_c:
             elif order_direction == current_overall_active_pos.type:
                 # Order direction matches current overall position: increase existing position
                 # `actual_quantity_to_process_base_units` already clamped by USD capital or initial quantity
-                # For BASE mode, it needs to be clamped against max_position_size
+                # For BASE mode, it needs to be clamped against max_position_size and round
                 clamped_quantity_final = actual_quantity_to_process_base_units
                 if self.currency_mode == 'BASE':
                     available_space_base_units = self.max_position_size - current_overall_active_pos.size
-                    clamped_quantity_final = min(actual_quantity_to_process_base_units, available_space_base_units)
+                    clamped_quantity_final = round_to_tick_size(min(actual_quantity_to_process_base_units, available_space_base_units), getPrecision())
 
                 if clamped_quantity_final > EPSILON:
                     current_overall_active_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
@@ -333,9 +353,9 @@ class strategy_c:
                             if cost_per_base_unit_with_leverage < EPSILON:
                                 cost_per_base_unit_with_leverage = EPSILON # Avoid division by zero
                             max_base_units_for_new_pos_from_usd_limit = self.max_position_size / cost_per_base_unit_with_leverage
-                            clamped_new_pos_quantity_base_units = min(remaining_quantity_base_units_for_new_pos, max_base_units_for_new_pos_from_usd_limit)
+                            clamped_new_pos_quantity_base_units = round_to_tick_size(min(remaining_quantity_base_units_for_new_pos, max_base_units_for_new_pos_from_usd_limit), getPrecision())
                         elif self.currency_mode == 'BASE':
-                            clamped_new_pos_quantity_base_units = min(remaining_quantity_base_units_for_new_pos, self.max_position_size)
+                            clamped_new_pos_quantity_base_units = round_to_tick_size(min(remaining_quantity_base_units_for_new_pos, self.max_position_size), getPrecision())
 
                         if clamped_new_pos_quantity_base_units > EPSILON:
                             self.open_position(order_direction, current_price, clamped_new_pos_quantity_base_units, leverage)
@@ -391,7 +411,8 @@ class strategy_c:
         # Determine the closing order type based on the position's type
         close_cmd = 'sell' if pos_to_close.type == c.LONG else 'buy'
         # Call execute_order with quantity_in_base_units (pos_to_close.size is already in base units)
-        self.execute_order(close_cmd, pos_to_close.type, pos_to_close.size) 
+        # Use the position's effective leverage for closing order
+        self.execute_order(close_cmd, pos_to_close.type, pos_to_close.size, pos_to_close.leverage) 
 
     def get_total_profit_loss(self) -> float:
         """
@@ -448,12 +469,23 @@ class strategy_c:
             status = "Active" if pos.active else "Closed"
             position_type_str = "LONG" if pos.type == c.LONG else ("SHORT" if pos.type == c.SHORT else "N/A (Type not set)")
             
+            if pos.active:
+                if pos.type == c.LONG:
+                    active_long_count += 1
+                elif pos.type == c.SHORT:
+                    active_short_count += 1
+            else:
+                if pos.type == c.LONG:
+                    closed_long_count += 1
+                elif pos.type == c.SHORT:
+                    closed_short_count += 1
+
             # Get unrealized PnL only if active
             unrealized_pnl_qty = pos.get_unrealized_pnl_quantity() if pos.active else 0.0
             unrealized_pnl_pct = pos.get_unrealized_pnl_percentage() if pos.active else 0.0
             
             # Added active_capital_invested to print
-            print(f"\nPosition #{i+1} (Status: {status}, Type: {position_type_str}, Current Size: {pos.size:.2f} base units, Avg Price: {pos.priceAvg:.2f}, Max Size Held: {pos.max_size_held:.2f} base units, Active Capital Invested: {pos.active_capital_invested:.2f} USD)") 
+            print(f"\nPosition #{i+1} (Status: {status}, Type: {position_type_str}, Current Size: {pos.size:.2f} base units, Avg Price: {pos.priceAvg:.2f}, Max Size Held: {pos.max_size_held:.2f} base units, Active Capital Invested: {pos.active_capital_invested:.2f} USD, Position Leverage: {pos.leverage})") 
             if pos.active:
                 print(f"   Unrealized PnL: {unrealized_pnl_qty:.2f} (quote currency) ({unrealized_pnl_pct:.2f}%)")
             else:
@@ -467,8 +499,8 @@ class strategy_c:
                 for j, order_data in enumerate(pos.order_history):
                     order_type_str = "BUY" if order_data['type'] == c.LONG else "SELL"
                     pnl_info = f" | Realized PnL: {order_data['pnl_quantity']:.2f} (quote currency) ({order_data['pnl_percentage']:.2f}%)" if abs(order_data['pnl_quantity']) > EPSILON or abs(order_data['pnl_percentage']) > EPSILON else ""
-                    # Increased precision for quantity display
-                    print(f"     Order {j+1}: {order_type_str} {order_data['quantity']:.6f} base units at {order_data['price']:.2f} (Bar Index: {order_data['barindex']}){pnl_info}") 
+                    # Increased precision for quantity display, added leverage to print
+                    print(f"     Order {j+1}: {order_type_str} {order_data['quantity']:.6f} base units at {order_data['price']:.2f} (Bar Index: {order_data['barindex']}, Leverage: {order_data.get('leverage', 'N/A')}){pnl_info}") 
         
         print("\n--- Position Summary ---")
         print(f"Active LONG positions: {active_long_count}")
@@ -505,10 +537,16 @@ class strategy_c:
         avg_winning_pnl = self.get_average_winning_trade_pnl()
         avg_losing_pnl = self.get_average_losing_trade_pnl()
 
+        # Calculate long and short win ratios
+        long_win_ratio = (self.total_winning_long_positions / self.total_long_positions) * 100 if self.total_long_positions > 0 else 0.0
+        short_win_ratio = (self.total_winning_short_positions / self.total_short_positions) * 100 if self.total_short_positions > 0 else 0.0
+
+
         # Print header
-        print(f"{'Pos PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Win Rate %':<12} {'Acct PnL %':<12}")
+        print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'WinRate(L)':<12} {'WinRate(S)':<12} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Acct PnL %':<12}")
         # Print values
-        print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {percentage_profitable_trades:<12.2f} {pnl_percentage_vs_liquidity:<12.2f}")
+        print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {pnl_percentage_vs_liquidity:<12.2f}")
+        
         print("------------------------------")
 
     def print_pnl_by_period(self):
@@ -621,11 +659,11 @@ class position_c:
         self.type = 0            
         self.size = 0.0          # Current size of the position (absolute value, always in base units)
         self.priceAvg = 0.0      # Average entry price of the position (in quote currency)
-        self.leverage = 1        # Leverage applied to the position (assumed constant for this position object)
+        self.leverage = 1        # Leverage applied to the position (set by opening order, assumed constant for position life)
         self.profit = 0.0        # Total realized PnL for this position when it closes (final value, in quote currency)
         self.realized_pnl_quantity = 0.0 # Cumulative realized PnL in quantity (in quote currency)
         self.realized_pnl_percentage = 0.0 # Cumulative realized PnL in percentage for this position (final value)
-        self.order_history = []  # Stores {'type': c.LONG/c.SHORT, 'price': float, 'quantity': float, 'barindex': int, 'pnl_quantity': float, 'pnl_percentage': float}
+        self.order_history = []  # Stores {'type': c.LONG/c.SHORT, 'price': float, 'quantity': float, 'barindex': int, 'pnl_quantity': float, 'pnl_percentage': float, 'leverage': int}
         self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime (in base units)
         self.active_capital_invested = 0.0 # NEW: Tracks the USD capital (cost basis) currently tied up in the open position
         self.close_timestamp = None # NEW: Store timestamp when position is closed
@@ -670,6 +708,7 @@ class position_c:
             # self.active will be set to False by the close method.
 
         # Calculate active_capital_invested based on the current (recalculated) state
+        # This uses the position's overall leverage (self.leverage)
         if abs(self.size) > EPSILON: # Only if there's an active position size
             self.active_capital_invested = self.priceAvg * self.size * self.leverage
         else:
@@ -719,6 +758,7 @@ class position_c:
         pnl_pct = 0.0
 
         # Calculate PnL if this order reduces the position size
+        # PnL for partial closes uses the *position's* overall leverage (self.leverage)
         if previous_active and op_type != self.type and quantity > EPSILON:
             # This order is opposing the current position type, thus reducing it
             reduced_quantity = min(quantity, previous_size) # The quantity being reduced (in base units)
@@ -737,20 +777,20 @@ class position_c:
             # Add this order's realized PnL to the position's cumulative realized PnL
             self.realized_pnl_quantity += pnl_q
 
-        # Record the order in history with PnL
+        # Record the order in history with PnL and its specific leverage
         self.order_history.append({
             'type': op_type,
             'price': price, # Price in quote currency
             'quantity': quantity, # Quantity in base units
             'barindex': active.barindex,
             'pnl_quantity': pnl_q,
-            'pnl_percentage': pnl_pct
+            'pnl_percentage': pnl_pct,
+            'leverage': leverage # Store leverage for this specific order
         })
 
-        # Set leverage only if it's the first order for this position object
-        if not previous_active:
-            self.leverage = leverage
-            self.type = op_type # Set initial type when position becomes active
+        # The position's overall leverage (self.leverage) is set only by the opening order
+        # It is *not* updated by subsequent orders within the same position.
+        # This ensures consistent PnL calculation for the entire position.
 
         # Recalculate metrics based on the updated history
         self._recalculate_current_position_state()
@@ -790,17 +830,18 @@ class position_c:
 
         # Store previous state for PnL calculation on the closing order
         previous_avg_price = self.priceAvg
-        previous_leverage = self.leverage
+        previous_leverage = self.leverage # Use the position's effective leverage for calculation
         previous_position_type = self.type
 
-        # Add the closing order to history
+        # Add the closing order to history, including its leverage
         self.order_history.append({
             'type': closing_op_type,
             'price': price, # Price in quote currency
             'quantity': closing_quantity, # Quantity in base units
             'barindex': active.barindex,
             'pnl_quantity': 0.0, # Will be updated after full PnL calculation
-            'pnl_percentage': 0.0 # Will be updated after full PnL calculation
+            'pnl_percentage': 0.0, # Will be updated after full PnL calculation
+            'leverage': previous_leverage # Store leverage for this specific closing order
         })
 
         # Recalculate metrics based on the updated history
@@ -849,15 +890,32 @@ class position_c:
             for order_data in self.order_history:
                 # Assuming entry orders have pnl_quantity close to zero
                 if order_data['pnl_quantity'] >= -EPSILON and order_data['pnl_quantity'] <= EPSILON:
-                    total_entry_capital_for_position += order_data['price'] * order_data['quantity'] * self.leverage
+                    # Use the leverage stored with the order
+                    order_leverage = order_data.get('leverage', 1.0) # Default to 1.0 if not found for old data
+                    total_entry_capital_for_position += order_data['price'] * order_data['quantity'] * order_leverage
             
             self.realized_pnl_percentage = (self.profit / total_entry_capital_for_position) * 100 if total_entry_capital_for_position != 0 else 0.0
 
             # Update strategy-level counters for winning/losing positions
             if self.profit > EPSILON:
                 self.strategy_instance.total_winning_positions += 1
+                if previous_position_type == c.LONG:
+                    self.strategy_instance.total_winning_long_positions += 1
+                elif previous_position_type == c.SHORT:
+                    self.strategy_instance.total_winning_short_positions += 1
             elif self.profit < -EPSILON:
                 self.strategy_instance.total_losing_positions += 1
+                if previous_position_type == c.LONG:
+                    self.strategy_instance.total_losing_long_positions += 1
+                elif previous_position_type == c.SHORT:
+                    self.strategy_instance.total_losing_short_positions += 1
+            
+            # Increment total long/short positions regardless of win/loss
+            if previous_position_type == c.LONG:
+                self.strategy_instance.total_long_positions += 1
+            elif previous_position_type == c.SHORT:
+                self.strategy_instance.total_short_positions += 1
+
 
             self.strategy_instance.total_profit_loss += self.profit # Update strategy's total PnL
             self.active = False # Explicitly set to inactive as it's fully closed
@@ -877,7 +935,7 @@ class position_c:
         if not self.active or self.size < EPSILON:
             return 0.0
 
-        current_price = getRealtimeCandle().close # Price is always valid here
+        current_price = round_to_tick_size(getRealtimeCandle().close, getMintick()) # Round current price using mintick
         unrealized_pnl = 0.0
 
         if self.type == c.LONG:
@@ -951,15 +1009,29 @@ def getActivePosition(pos_type: int = None) -> position_c:
 def direction() -> int:
     return strategy.get_direction()
 
-def order(cmd: str, target_position_type: int, quantity: float = None, leverage: int = 1):
+def order(cmd: str, target_position_type: int, quantity: float = None, leverage: int = None): # leverage parameter is now optional
     """
     Places a trading order.
     The 'quantity' parameter's interpretation depends on strategy.currency_mode:
     - If currency_mode is 'USD', quantity is interpreted as a notional USD amount.
     - If currency_mode is 'BASE', quantity is interpreted as base currency units.
     """
-    actual_quantity_base_units = 0.0
+    actual_quantity_base_units = 0.0 # Initialize here to ensure scope
     current_price = getRealtimeCandle().close # Get price here for conversion if needed
+
+    # Determine leverage to use for this order
+    selected_leverage = leverage
+    if selected_leverage is None:
+        if target_position_type == c.LONG:
+            selected_leverage = strategy.leverage_long
+        elif target_position_type == c.SHORT:
+            selected_leverage = strategy.leverage_short
+        else:
+            # Fallback if target_position_type is neither LONG nor SHORT
+            # This case ideally shouldn't happen with proper usage of `order`
+            selected_leverage = 1.0 
+            if strategy.verbose or not isInitializing():
+                print(f"Warning: Could not determine default leverage for target_position_type {target_position_type}. Using default leverage 1.0.")
 
     if strategy.currency_mode == 'USD':
         if quantity is None:
@@ -979,6 +1051,9 @@ def order(cmd: str, target_position_type: int, quantity: float = None, leverage:
             actual_quantity_base_units = quantity / current_price
 
         # Safety check for extremely small quantities (if USD amount is too small for current price)
+        # Apply precision rounding here as well, since `actual_quantity_base_units` was just calculated
+        actual_quantity_base_units = round_to_tick_size(actual_quantity_base_units, getPrecision())
+
         if actual_quantity_base_units < EPSILON:
             if strategy.verbose or not isInitializing():
                 print(f"Warning: Calculated order quantity ({actual_quantity_base_units:.6f} base units) is effectively zero based on current price ({current_price:.2f}). Order not placed.")
@@ -988,8 +1063,12 @@ def order(cmd: str, target_position_type: int, quantity: float = None, leverage:
             actual_quantity_base_units = strategy.order_size
         else:
             actual_quantity_base_units = quantity
+        
+        # Ensure base quantity is rounded to precision before executing order
+        actual_quantity_base_units = round_to_tick_size(actual_quantity_base_units, getPrecision())
 
-    strategy.execute_order(cmd, target_position_type, actual_quantity_base_units, leverage)
+
+    strategy.execute_order(cmd, target_position_type, actual_quantity_base_units, selected_leverage) # Corrected variable name
 
 def close(pos_type: int = None):
     strategy.close_position(pos_type)
