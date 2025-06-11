@@ -2,8 +2,8 @@ import zmq
 import zmq.asyncio
 import asyncio
 import sys
+import tasks  # importing your task management system
 
-# Fix for Windows proactor event loop
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -20,7 +20,7 @@ async def run_client():
     try:
         while True:
             # Send request
-            await socket.send_string("Hello")
+            await socket.send_string("print Hello")
             print("Sent: Hello")
 
             # Get the reply
@@ -36,9 +36,12 @@ async def run_client():
         socket.close()
         context.term()
 
-# Run the client
+# Register the client as a task
+tasks.registerTask("zmq_client", run_client())
+
 if __name__ == "__main__":
     try:
-        asyncio.run(run_client())
+        # Use the tasks system to run the client
+        asyncio.run(tasks.runTasks())
     except KeyboardInterrupt:
         print("\nClient stopped by user")

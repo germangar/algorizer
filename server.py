@@ -23,7 +23,7 @@ async def run_server():
         while True:
             # Wait for client request (non-blocking)
             message = await socket.recv_string()
-            print(f"Received request: {message}")
+            proccess_message( message )
             
             # Send reply (non-blocking)
             await socket.send_string("Hello World")
@@ -39,3 +39,17 @@ async def run_server():
 
 # Register the server task - create the coroutine
 tasks.registerTask("zmq_server", run_server())  # Add back the parentheses
+
+
+
+def proccess_message( msg:str ): # the client will only send string messages.
+    msg = msg.lstrip()           # Remove leading whitespace
+    parts = msg.split(maxsplit=1)    # Split extracting the first word
+    command = parts[0].lower() if parts else ""
+    msg = parts[1] if len(parts) > 1 else ""
+
+    if len(command) : # we will improve this later
+        if command == 'print':
+            print( msg )
+
+    pass
