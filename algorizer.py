@@ -18,6 +18,8 @@ from window import window_c # I should try to get rid of this import
 
 import active
 
+import server
+
 # ALLOW_NEGATIVE_ILOC = False
 SHOW_VOLUME = False
 verbose = False

@@ -1,1 +1,44 @@
-# request data to the server to be visualized in the chart
+import zmq
+import zmq.asyncio
+import asyncio
+import sys
+
+# Fix for Windows proactor event loop
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+async def run_client():
+    # ZeroMQ Context
+    context = zmq.asyncio.Context()
+
+    # Define the socket using the "Context"
+    socket = context.socket(zmq.REQ)
+    socket.connect("tcp://127.0.0.1:5555")
+
+    print("Client is running and connected to server...")
+
+    try:
+        while True:
+            # Send request
+            await socket.send_string("Hello")
+            print("Sent: Hello")
+
+            # Get the reply
+            message = await socket.recv_string()
+            print(f"Received reply: {message}")
+
+            # Wait a bit before next request
+            await asyncio.sleep(2)  # Wait 2 seconds between requests
+
+    except asyncio.CancelledError:
+        print("Client task cancelled")
+    finally:
+        socket.close()
+        context.term()
+
+# Run the client
+if __name__ == "__main__":
+    try:
+        asyncio.run(run_client())
+    except KeyboardInterrupt:
+        print("\nClient stopped by user")
