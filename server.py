@@ -4,6 +4,8 @@ import asyncio
 import tasks
 import sys
 
+from algorizer import getDataframe
+
 # Fix for Windows proactor event loop
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -40,6 +42,11 @@ async def run_server():
 # Register the server task - create the coroutine
 tasks.registerTask("zmq_server", run_server())  # Add back the parentheses
 
+def server_cmd_dataframe( msg ):
+    df = getDataframe()
+
+    # proposed code for sending data to the client
+
 
 
 def proccess_message( msg:str ): # the client will only send string messages.
@@ -52,4 +59,5 @@ def proccess_message( msg:str ): # the client will only send string messages.
         if command == 'print':
             print( msg )
 
-    pass
+        if command == 'dataframe':
+            server_cmd_dataframe(msg)

@@ -665,6 +665,11 @@ def getMintick()->float:
 def getPrecision()->float:
     return active.timeframe.stream.precision
 
+def getDataframe()->pd.DataFrame:
+    # this is temporary for testing. ToDo: Add selection of the requested dataframe
+    stream:stream_c = active.timeframe.stream
+    return stream.timeframes[stream.timeframeFetch]
+
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''
     if not timestamp : 
