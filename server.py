@@ -4,7 +4,6 @@ import asyncio
 import tasks
 import sys
 import json
-# from algorizer import getDataframe
 import active
 import pandas as pd
 
@@ -18,8 +17,8 @@ def getDataframe():
 
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
-CLIENT_LOADING = 2 # receiving the data to open the window
-CLIENT_LISTENING = 3 # the window has already opened the window and is ready to receive updates.
+CLIENT_LOADING = 2  # receiving the data to open the window
+CLIENT_LISTENING = 3  # the window has already opened the window and is ready to receive updates.
 
 class client_t:
     def __init__(self):
@@ -36,12 +35,21 @@ def create_data_message(datatype: str, data: any) -> str:
     }
     return json.dumps(message)
 
+def create_data_descriptor(df, timeframeStr: str) -> str:
+    """Create a descriptor message for the DataFrame that will be sent"""
+    message = {
+        "type": "data_descriptor",
+        "datatype": "dataframe",
+        "timeframe": timeframeStr,
+        "rows": len(df),
+        "columns": list(df.columns),
+        "dtypes": {col: str(df[col].dtype) for col in df.columns}
+    }
+    return json.dumps(message)
 
-def create_dataframe_message(data: any, timeframeStr:str) -> str:
-    # if isinstance(data, pd.DataFrame):
+def create_dataframe_message(data: any, timeframeStr: str) -> str:
     columns = list(data.columns)
     data = data.values.tolist()  # More efficient than to_dict
-    """Create a JSON message for data transmission"""
     message = {
         "type": "data",
         "datatype": "dataframe",
@@ -50,10 +58,6 @@ def create_dataframe_message(data: any, timeframeStr:str) -> str:
         "payload": data
     }
     return json.dumps(message)
-
-
-
-
 
 def create_bars_update(rows: list) -> str:
     """Create a JSON message for bar data updates"""
@@ -69,8 +73,8 @@ def create_config_message() -> str:
     message = {
         "type": "config",
         "symbol": active.timeframe.stream.symbol,
-        "timeframes": list( active.timeframe.stream.timeframes.keys() ),
-        "panels": 2, # To do. By now this is a placeholder
+        "timeframes": list(active.timeframe.stream.timeframes.keys()),
+        "panels": 2,  # To do. By now this is a placeholder
         "payload": ""
     }
     return json.dumps(message)
@@ -78,7 +82,6 @@ def create_config_message() -> str:
 def create_command_response(message: str) -> str:
     """Create a simple response for command acknowledgment"""
     return 'ok'
-    # return f"Command processed: {message}"
 
 def server_cmd_dataframe(msg):
     df = getDataframe()
@@ -86,9 +89,9 @@ def server_cmd_dataframe(msg):
     data = df.to_dict('records') if df is not None else []
     return create_data_message("dataframe", data)
 
-def proccess_message(msg: str):
-    msg = msg.lstrip()           # Remove leading whitespace
-    parts = msg.split(maxsplit=1)    # Split extracting the first word
+async def proccess_message(msg: str, cmd_socket):
+    msg = msg.lstrip()
+    parts = msg.split(maxsplit=1)
     command = parts[0].lower() if parts else ""
     msg = parts[1] if len(parts) > 1 else ""
 
@@ -96,22 +99,40 @@ def proccess_message(msg: str):
 
     if len(command):
         if command == 'connect':
-            print( 'client connected' )
+            print('client connected')
             client.status = CLIENT_CONNECTED
             response = create_config_message()
 
         elif command == 'dataframe':
             client.status = CLIENT_LOADING
-            response = create_dataframe_message( active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch].df, active.timeframe.stream.timeframeFetch )
+            df = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch].df
+            timeframeStr = active.timeframe.stream.timeframeFetch
+            
+            # Convert object columns to string type for consistent handling
+            for col in df.select_dtypes(include=['object']):
+                df[col] = df[col].astype(str)
+            
+            # Convert all data to float64 for consistent binary transmission
+            df_float = df.astype('float64')
+            
+            # First send the descriptor
+            descriptor = create_data_descriptor(df, timeframeStr)
+            await cmd_socket.send_string(descriptor)
 
-
+            # Wait for acknowledgment
+            ack = await cmd_socket.recv_string()
+            if ack == "ready":
+                # Send the raw data
+                raw_data = df_float.values.tobytes()
+                await cmd_socket.send(raw_data)
+            else:
+                print(f"Unexpected acknowledgment: {ack}")
+            
+            return None  # We've already handled the complete exchange
 
         elif command == 'print':
             print(msg)
             response = create_command_response(msg)
-
-        # if command == 'dataframe':
-        #     response = server_cmd_dataframe(msg)
 
     return response if response else create_command_response("unknown command")
 
@@ -121,7 +142,7 @@ async def publish_updates(pub_socket):
     
     while True:
         try:
-            if( client.status == CLIENT_LISTENING ):
+            if(client.status == CLIENT_LISTENING):
                 df = getDataframe()
                 if df is not None:
                     # Convert dataframe to list of lists (more efficient than dict)
@@ -143,31 +164,37 @@ async def run_server():
     # ZeroMQ Context
     context = zmq.asyncio.Context()
 
-    # Socket for handling commands (REP)
+    # Socket to handle command messages (REQ/REP pattern)
     cmd_socket = context.socket(zmq.REP)
     cmd_socket.bind("tcp://127.0.0.1:5555")
 
-    # Socket for publishing updates (PUB)
+    # Socket to publish bar updates (PUB/SUB pattern)
     pub_socket = context.socket(zmq.PUB)
     pub_socket.bind("tcp://127.0.0.1:5556")
 
-    print("ZMQ Server is running (localhost TCP mode)...")
-
-    # Start the update publisher task
-    tasks.registerTask("zmq_publisher", publish_updates(pub_socket))
+    print("Server is running...")
 
     try:
+        # Start the update publisher task
+        tasks.registerTask("zmq_updates", publish_updates(pub_socket))
+
+        # Main command handling loop
         while True:
-            # if client.status != CLIENT_DISCONNECTED:
-            # Wait for client request (non-blocking)
-            message = await cmd_socket.recv_string()
-            response = proccess_message(message)
-            
-            # Send reply (non-blocking)
-            await cmd_socket.send_string(response)
-            
-            # Small delay to prevent CPU overuse
-            await asyncio.sleep(0.1)
+            try:
+                message = await cmd_socket.recv_string()
+                print(f"Received command: {message}")
+
+                # Process the command
+                response = await proccess_message(message, cmd_socket)  # Added await
+
+                # Only send response if it wasn't already sent (for DataFrame case)
+                if response is not None:
+                    await cmd_socket.send_string(response)
+
+            except Exception as e:
+                print(f"Error processing message: {e}")
+                await cmd_socket.send_string("error")
+
     except asyncio.CancelledError:
         print("Server task cancelled")
     finally:
@@ -175,5 +202,12 @@ async def run_server():
         pub_socket.close()
         context.term()
 
-# Register the server task
+# Register the server as a task
 tasks.registerTask("zmq_server", run_server())
+
+if __name__ == "__main__":
+    try:
+        # Use the tasks system to run the server
+        asyncio.run(tasks.runTasks())
+    except KeyboardInterrupt:
+        print("\nServer stopped by user")

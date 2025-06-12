@@ -5,21 +5,24 @@ import sys
 import tasks
 import json
 import pandas as pd
+import numpy as np
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
-CLIENT_LOADING = 2 # receiving the data to open the window
-CLIENT_ONLINE = 3 # the window has already opened the window and is ready to receive updates.
+CLIENT_LOADING = 2  # receiving the data to open the window
+CLIENT_ONLINE = 3  # the window has already opened the window and is ready to receive updates.
 
 status = CLIENT_DISCONNECTED
 
 symbol = None
 timeframesList = []
 panels = 0
-df:pd.DataFrame = []
+df = []
+
+# In client.py, modify the send_command function:
 
 async def send_command(socket, command: str, params: str = ""):
     global symbol, timeframesList, panels, status, df
@@ -33,36 +36,48 @@ async def send_command(socket, command: str, params: str = ""):
     reply = await socket.recv_string()
 
     try:
-        # Try to parse as JSON in case it's a data message
+        # Try to parse as JSON
         data = json.loads(reply)
-        print( data )
+        print(data)
         if isinstance(data, dict) and 'type' in data:
             if data['type'] == 'config':
                 print(f"Received config message for symbol: {data['symbol']}")
-                '''message = {
-                    "type": "config",
-                    "symbol": active.timeframe.stream.symbol,
-                    "timeframes": list( active.timeframe.stream.timeframes.keys() ),
-                    "panels": 2, # To do. By now this is a placeholder
-                    "payload": ""
-                    }'''
                 symbol = data['symbol']
                 timeframesList = data['timeframes']
                 panels = data['panels']
-
                 status = CLIENT_CONNECTED
                 return data
                 
-            elif data['type'] == 'data':
-                print(f"Received data message: {data['datatype']}")
-                if data['datatype'] == 'dataframe':
-                    columns = data.get('columns')  # Get columns if they exist
-                    df = pd.DataFrame(data['payload'], columns=columns)
-
+            elif data['type'] == 'data_descriptor':
+                print(f"Receiving DataFrame data...")
+                status = CLIENT_LOADING
+                
+                # Send acknowledgment that we're ready for the data
+                await socket.send_string("ready")
+                
+                try:
+                    # Get the raw data
+                    raw_data = await socket.recv()
+                    
+                    # Convert raw bytes back to numpy array
+                    array_data = np.frombuffer(raw_data, dtype=np.float64).reshape(data['rows'], len(data['columns']))
+                    
+                    # Convert to DataFrame with proper columns
+                    df = pd.DataFrame(array_data, columns=data['columns'])
+                    
+                    # Convert timestamp to proper type
+                    if 'timestamp' in df.columns:
+                        df['timestamp'] = pd.to_numeric(df['timestamp'], downcast='integer')
+                    
+                    print("DataFrame received and reconstructed")
+                    print(f"DataFrame shape: {df.shape}")
                     print( df )
+                    return data
+                except Exception as e:
+                    print(f"Error reconstructing DataFrame: {e}")
+                    # status = CLIENT_CONNECTED
+                    return None
 
-                # Handle the data based on its type
-                return data
     except json.JSONDecodeError:
         # Not JSON, treat as regular message
         if reply == "connected":
@@ -87,12 +102,7 @@ async def listen_for_updates(context):
                 data = json.loads(message)
                 if data['type'] == 'bars':
                     print(f"Received {data['len']} bars")
-                    # Here you would update your local dataframe with the new bars
-                    # The data structure will be a list of lists, where each inner list
-                    # represents a row with [timestamp, open, high, low, close, volume]
                     bars = data['data']
-                    # Example of processing:
-                    # df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             except json.JSONDecodeError:
                 print(f"Error: Received invalid JSON update")
             
@@ -118,7 +128,6 @@ async def run_client():
         tasks.registerTask("zmq_updates", listen_for_updates(context))
 
         while True:
-
             if status == CLIENT_DISCONNECTED:
                 await send_command(cmd_socket, "connect", "")
                 await asyncio.sleep(0.5)
@@ -129,15 +138,11 @@ async def run_client():
                 await asyncio.sleep(0.5)
                 continue
 
+            if status == CLIENT_LOADING:
+                pass
 
-            # Example commands
-
-            
             await send_command(cmd_socket, "print", "ack")
             await asyncio.sleep(2)
-
-            # await send_command(cmd_socket, "dataframe", "request_data")
-            # await asyncio.sleep(2)
 
     except asyncio.CancelledError:
         print("Client task cancelled")
