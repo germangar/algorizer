@@ -158,7 +158,7 @@ class marker_c:
         self.position = position
         self.shape = shape
         self.color = color
-        self.chartName = chart_name
+        self.panel = chart_name
         self.chart = None
         self.marker = None
     
@@ -671,7 +671,7 @@ class stream_c:
                 'position':m.position,
                 'shape':m.shape,
                 'color':m.color,
-                'chart':m.chartName,
+                'panel':m.panel,
                 'text':m.text
             }
             di.append( marker )

@@ -128,7 +128,7 @@ class window_c:
                 position = m.get('position'),
                 shape = m.get('shape'),
                 color = m.get('color'),
-                panel = m.get('chart'),
+                panel = m.get('panel'),
                 text = m.get('text'),
                 instance = None
             )
