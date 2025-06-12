@@ -152,6 +152,10 @@ async def proccess_message(msg: str, cmd_socket):
         elif command == 'print':
             print(msg)
             response = create_command_response(msg)
+        elif command == 'listening':
+            client.status = CLIENT_LISTENING
+            print( "Client is ready" )
+            response = create_command_response(msg)
 
     return response if response else create_command_response("unknown command")
 

@@ -167,7 +167,8 @@ window:window_c = None
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
 CLIENT_LOADING = 2  # receiving the data to open the window
-CLIENT_ONLINE = 3  # the window has already opened the window and is ready to receive updates.
+CLIENT_READY = 3
+CLIENT_LISTENING = 4  # the window has already opened the window and is ready to receive updates.
 
 status = CLIENT_DISCONNECTED
 
@@ -240,6 +241,7 @@ async def send_command(socket, command: str, params: str = ""):
                 
                 # initialize the window with the dataframe and open it
                 window.openWindow( descriptor, df )
+                status = CLIENT_READY
                 return data
 
     except json.JSONDecodeError:
@@ -278,6 +280,7 @@ async def listen_for_updates(context):
         socket.close()
 
 async def run_client():
+    global status
     # ZeroMQ Context
     context = zmq.asyncio.Context()
 
@@ -294,16 +297,24 @@ async def run_client():
         while True:
             if status == CLIENT_DISCONNECTED:
                 await send_command(cmd_socket, "connect", "")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.25)
                 continue
 
             if status == CLIENT_CONNECTED:
                 await send_command(cmd_socket, "dataframe", "")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.25)
                 continue
 
             if status == CLIENT_LOADING:
-                pass
+                await asyncio.sleep(0.5)
+
+            if status == CLIENT_READY:
+                status = CLIENT_LISTENING
+                await send_command(cmd_socket, "listening", "")
+                await asyncio.sleep(0.25)
+
+            if status == CLIENT_LISTENING:
+                await asyncio.sleep(0.25)
 
             # await send_command(cmd_socket, "print", "ack")
             # await asyncio.sleep(2)
