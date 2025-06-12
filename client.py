@@ -60,22 +60,31 @@ async def send_command(socket, command: str, params: str = ""):
                     raw_data = await socket.recv()
                     
                     # Convert raw bytes back to numpy array
-                    array_data = np.frombuffer(raw_data, dtype=np.float64).reshape(data['rows'], len(data['columns']))
+                    array_data = np.frombuffer(raw_data, dtype=np.float64)
                     
-                    # Convert to DataFrame with proper columns
+                    # Reshape with explicit size calculation
+                    rows = data['rows']
+                    cols = len(data['columns'])
+                    expected_size = rows * cols
+                    
+                    if array_data.size != expected_size:
+                        raise ValueError(f"Data size mismatch. Expected {expected_size}, got {array_data.size}")
+                    
+                    array_data = array_data.reshape(rows, cols)
+                    
+                    # Create DataFrame with explicit dtypes
                     df = pd.DataFrame(array_data, columns=data['columns'])
                     
-                    # Convert timestamp to proper type
+                    # Handle timestamp column separately
                     if 'timestamp' in df.columns:
-                        df['timestamp'] = pd.to_numeric(df['timestamp'], downcast='integer')
+                        df['timestamp'] = df['timestamp'].astype(np.int64)
                     
                     print("DataFrame received and reconstructed")
                     print(f"DataFrame shape: {df.shape}")
-                    print( df )
                     return data
                 except Exception as e:
                     print(f"Error reconstructing DataFrame: {e}")
-                    # status = CLIENT_CONNECTED
+                    status = CLIENT_CONNECTED
                     return None
 
     except json.JSONDecodeError:
@@ -141,8 +150,8 @@ async def run_client():
             if status == CLIENT_LOADING:
                 pass
 
-            await send_command(cmd_socket, "print", "ack")
-            await asyncio.sleep(2)
+            # await send_command(cmd_socket, "print", "ack")
+            # await asyncio.sleep(2)
 
     except asyncio.CancelledError:
         print("Client task cancelled")

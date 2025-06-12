@@ -117,7 +117,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 5000, False )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 25000, False )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()

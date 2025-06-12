@@ -108,12 +108,22 @@ async def proccess_message(msg: str, cmd_socket):
             df = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch].df
             timeframeStr = active.timeframe.stream.timeframeFetch
             
-            # Convert object columns to string type for consistent handling
-            for col in df.select_dtypes(include=['object']):
-                df[col] = df[col].astype(str)
+            # Create a copy to avoid modifying the original dataframe
+            df_copy = df.copy()
             
-            # Convert all data to float64 for consistent binary transmission
-            df_float = df.astype('float64')
+            # Handle different data types
+            for col in df_copy.columns:
+                # Convert object/string columns that might be booleans
+                if df_copy[col].dtype == 'object' or df_copy[col].dtype == 'bool':
+                    # Convert boolean-like strings to 1.0/0.0
+                    if df_copy[col].isin(['True', 'False', True, False]).all():
+                        df_copy[col] = df_copy[col].map({'True': 1.0, 'False': 0.0, True: 1.0, False: 0.0})
+                    else:
+                        # For other string columns, convert to string
+                        df_copy[col] = df_copy[col].astype(str)
+            
+            # Convert all numeric data to float64
+            df_float = df_copy.select_dtypes(include=['int', 'float', 'number']).astype('float64')
             
             # First send the descriptor
             descriptor = create_data_descriptor(df, timeframeStr)
