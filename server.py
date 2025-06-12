@@ -11,23 +11,16 @@ import pandas as pd
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-def getDataframe():
+def getDataframe()->pd.DataFrame:
     timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
     return timeframe.df
 
-def getPlotsList():
-    # plot = {
-    #     'panel': p.panelName,
-    #     'type': p.type,
-    #     'color': p.color,
-    #     'style': p.style,
-    #     'width': p.width,
-    #     'margin_top': p.hist_margin_top,
-    #     'margin_bottom': p.hist_margin_bottom
-    # }
-    # di['column_name'] = p.name
+def getPlotsList()->dict:
     timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
     return timeframe.plotsList()
+
+def getMarkersList()->list:
+    return active.timeframe.stream.getMarkersList()
 
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
@@ -58,7 +51,8 @@ def create_data_descriptor(df, timeframeStr: str) -> str:
         "rows": len(df),
         "columns": list(df.columns),
         "dtypes": {col: str(df[col].dtype) for col in df.columns},
-        "plots": getPlotsList()
+        "plots": getPlotsList(),
+        "markers":getMarkersList()
     }
     return json.dumps(message)
 

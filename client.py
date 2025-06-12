@@ -33,6 +33,17 @@ class plot_c:
     margin_top:float
     margin_bottom:float
     instance:object
+
+@dataclass
+class marker_c:
+    id:str
+    timestamp:int
+    position:str
+    shape:str
+    color:str
+    panel:str
+    text:str
+    instance:object
     
 class window_c:
     def __init__(self, config):
@@ -41,6 +52,7 @@ class window_c:
         self.df: Optional[pd.DataFrame] = None
         self.chart = None
         self.plots:list = []
+        self.markers:list = []
 
     def openWindow(self, descriptor, df):
         try:
@@ -71,6 +83,7 @@ class window_c:
         self.df = df
 
         self.createPlots()
+        self.createMarkers()
 
         task = chart.show_async()
         tasks.registerTask( 'window', task )
@@ -79,8 +92,6 @@ class window_c:
         plotsList = self.descriptor['plots']
         for name in plotsList.keys():
             info = plotsList[name]
-            print( info )
-            # continue
             plot = plot_c( 
                 name,
                 info.get('panel'),
@@ -91,18 +102,48 @@ class window_c:
                 float(info.get('margin_top')),
                 float(info.get('margin_bottom')),
                 None
-                )
+            )
             
             if plot.panel:
                 continue
+
+            chart = self.chart
             
             if plot.type == c.PLOT_LINE :
-                plot.instance = self.chart.create_line( plot.name, plot.color, plot.style, plot.width, price_line=False, price_label=False )
+                plot.instance = chart.create_line( plot.name, plot.color, plot.style, plot.width, price_line=False, price_label=False )
                 plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( self.df['timestamp'], unit='ms' ), plot.name: self.df[plot.name]} ) )
             elif plot.type == c.PLOT_HIST :
-                plot.instance = self.chart.create_histogram( plot.name, plot.color, price_line = False, price_label = False, scale_margin_top = plot.margin_top, scale_margin_bottom = plot.margin_bottom )
+                plot.instance = chart.create_histogram( plot.name, plot.color, price_line = False, price_label = False, scale_margin_top = plot.margin_top, scale_margin_bottom = plot.margin_bottom )
                 plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( self.df['timestamp'], unit='ms' ), plot.name: self.df[plot.name]} ) )
+
+            self.plots.append( plot )
+    
+    def createMarkers(self):
+        markersList = self.descriptor['markers']
+
+        for m in markersList:
+            marker = marker_c(
+                id = m.get('id'),
+                timestamp = int(m.get('timestamp')),
+                position = m.get('position'),
+                shape = m.get('shape'),
+                color = m.get('color'),
+                panel = m.get('chart'),
+                text = m.get('text'),
+                instance = None
+            )
+
+            if marker.panel:
+                continue
+
+            chart = self.chart
+            marker.instance = chart.marker( time = pd.to_datetime( marker.timestamp, unit='ms' ),
+                        position = marker.position,
+                        shape = marker.shape,
+                        color = marker.color,
+                        text = marker.text )
             
+            self.markers.append( marker )
             
 
     # There is no reason for this to be a method other than grouping all the window stuff together

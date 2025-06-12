@@ -429,22 +429,7 @@ class timeframe_c:
         
         plot.update( source, self )
         return plot
-    
-    def plotsList( self )->dict:
-        di = {}
-        for p in self.registeredPlots.values():
-            plot = {
-                'panel': p.panelName,
-                'type': p.type,
-                'color': p.color,
-                'style': p.style,
-                'width': p.width,
-                'margin_top': p.hist_margin_top,
-                'margin_bottom': p.hist_margin_bottom
-            }
-            di[p.name] = plot
-        return di
-            
+
     
     def plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1)->plot_c:
         '''
@@ -466,6 +451,20 @@ class timeframe_c:
         '''
         return self.register_plot( source, name, chart_name, color, type = c.PLOT_HIST, hist_margin_top= margin_top, hist_margin_bottom= margin_bottom )
     
+    def plotsList( self )->dict:
+        di = {}
+        for p in self.registeredPlots.values():
+            plot = {
+                'panel': p.panelName,
+                'type': p.type,
+                'color': p.color,
+                'style': p.style,
+                'width': p.width,
+                'margin_top': p.hist_margin_top,
+                'margin_bottom': p.hist_margin_bottom
+            }
+            di[p.name] = plot
+        return di
 
     def jumpstartPlots( self ):
         for plot in self.registeredPlots.values():
@@ -660,6 +659,24 @@ class stream_c:
         marker = marker_c( text, timestamp, location, shape, color, chart_name )
         self.markers.append( marker )
         return marker
+    
+    def getMarkersList( self )->list:
+        di = []
+        for m in self.markers:
+            # MARKER_POSITION = Literal['above', 'below', 'inside']
+            # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
+            marker = {
+                'id':0,
+                'timestamp':m.timestamp,
+                'position':m.position,
+                'shape':m.shape,
+                'color':m.color,
+                'chart':m.chartName,
+                'text':m.text
+            }
+            di.append( marker )
+
+        return di
 
 
     def createWindow( self, timeframeStr ):
