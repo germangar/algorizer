@@ -6,6 +6,7 @@ import sys
 import json
 # from algorizer import getDataframe
 import active
+import pandas as pd
 
 # Fix for Windows proactor event loop
 if sys.platform == 'win32':
@@ -34,6 +35,25 @@ def create_data_message(datatype: str, data: any) -> str:
         "payload": data
     }
     return json.dumps(message)
+
+
+def create_dataframe_message(data: any, timeframeStr:str) -> str:
+    # if isinstance(data, pd.DataFrame):
+    columns = list(data.columns)
+    data = data.values.tolist()  # More efficient than to_dict
+    """Create a JSON message for data transmission"""
+    message = {
+        "type": "data",
+        "datatype": "dataframe",
+        "timeframe": timeframeStr,
+        "columns": columns,
+        "payload": data
+    }
+    return json.dumps(message)
+
+
+
+
 
 def create_bars_update(rows: list) -> str:
     """Create a JSON message for bar data updates"""
@@ -79,6 +99,13 @@ def proccess_message(msg: str):
             print( 'client connected' )
             client.status = CLIENT_CONNECTED
             response = create_config_message()
+
+        elif command == 'dataframe':
+            client.status = CLIENT_LOADING
+            response = create_dataframe_message( active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch].df, active.timeframe.stream.timeframeFetch )
+
+
+
         elif command == 'print':
             print(msg)
             response = create_command_response(msg)

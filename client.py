@@ -4,6 +4,7 @@ import asyncio
 import sys
 import tasks
 import json
+import pandas as pd
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -18,9 +19,10 @@ status = CLIENT_DISCONNECTED
 symbol = None
 timeframesList = []
 panels = 0
+df:pd.DataFrame = []
 
 async def send_command(socket, command: str, params: str = ""):
-    global symbol, timeframesList, panels, status
+    global symbol, timeframesList, panels, status, df
 
     """Send a command to the server"""
     message = f"{command} {params}".strip()
@@ -53,6 +55,12 @@ async def send_command(socket, command: str, params: str = ""):
                 
             elif data['type'] == 'data':
                 print(f"Received data message: {data['datatype']}")
+                if data['datatype'] == 'dataframe':
+                    columns = data.get('columns')  # Get columns if they exist
+                    df = pd.DataFrame(data['payload'], columns=columns)
+
+                    print( df )
+
                 # Handle the data based on its type
                 return data
     except json.JSONDecodeError:
@@ -113,10 +121,19 @@ async def run_client():
 
             if status == CLIENT_DISCONNECTED:
                 await send_command(cmd_socket, "connect", "")
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
                 continue
+
+            if status == CLIENT_CONNECTED:
+                await send_command(cmd_socket, "dataframe", "")
+                await asyncio.sleep(0.5)
+                continue
+
+
             # Example commands
-            await send_command(cmd_socket, "print", "Hello from client")
+
+            
+            await send_command(cmd_socket, "print", "ack")
             await asyncio.sleep(2)
 
             # await send_command(cmd_socket, "dataframe", "request_data")
