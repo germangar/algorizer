@@ -396,6 +396,8 @@ class timeframe_c:
             if( self.callback != None ):
                 self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
 
+            # To Do: push a row update to the server
+
 
     def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
         name = tools.generatedSeriesNameFormat( type, source, period )
