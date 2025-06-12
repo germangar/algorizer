@@ -15,6 +15,20 @@ def getDataframe():
     timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
     return timeframe.df
 
+def getPlotsList():
+    # plot = {
+    #     'panel': p.panelName,
+    #     'type': p.type,
+    #     'color': p.color,
+    #     'style': p.style,
+    #     'width': p.width,
+    #     'margin_top': p.hist_margin_top,
+    #     'margin_bottom': p.hist_margin_bottom
+    # }
+    # di['column_name'] = p.name
+    timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
+    return timeframe.plotsList()
+
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
 CLIENT_LOADING = 2  # receiving the data to open the window
@@ -43,7 +57,8 @@ def create_data_descriptor(df, timeframeStr: str) -> str:
         "timeframe": timeframeStr,
         "rows": len(df),
         "columns": list(df.columns),
-        "dtypes": {col: str(df[col].dtype) for col in df.columns}
+        "dtypes": {col: str(df[col].dtype) for col in df.columns},
+        "plots": getPlotsList()
     }
     return json.dumps(message)
 

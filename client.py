@@ -16,16 +16,31 @@ if sys.platform == 'win32':
 
 
 ############################ CHART WINDOW ################################
+from constants import c
 from lightweight_charts import Chart
 # from lightweight_charts_esistjosh import Chart
 from typing import Optional, Any
 
+from dataclasses import dataclass
+@dataclass
+class plot_c:
+    name: str
+    panel:str
+    type: int
+    color:str
+    style:str
+    width:int
+    margin_top:float
+    margin_bottom:float
+    instance:object
+    
 class window_c:
     def __init__(self, config):
         self.config = config
         self.descriptor: Optional[dict[str, Any]] = None
         self.df: Optional[pd.DataFrame] = None
         self.chart = None
+        self.plots:list = []
 
     def openWindow(self, descriptor, df):
         try:
@@ -55,8 +70,40 @@ class window_c:
         self.descriptor = descriptor
         self.df = df
 
+        self.createPlots()
+
         task = chart.show_async()
         tasks.registerTask( 'window', task )
+
+    def createPlots(self):
+        plotsList = self.descriptor['plots']
+        for name in plotsList.keys():
+            info = plotsList[name]
+            print( info )
+            # continue
+            plot = plot_c( 
+                name,
+                info.get('panel'),
+                int(info.get('type')),
+                info.get('color'),
+                info.get('style'),
+                int(info.get('width')),
+                float(info.get('margin_top')),
+                float(info.get('margin_bottom')),
+                None
+                )
+            
+            if plot.panel:
+                continue
+            
+            if plot.type == c.PLOT_LINE :
+                plot.instance = self.chart.create_line( plot.name, plot.color, plot.style, plot.width, price_line=False, price_label=False )
+                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( self.df['timestamp'], unit='ms' ), plot.name: self.df[plot.name]} ) )
+            elif plot.type == c.PLOT_HIST :
+                plot.instance = self.chart.create_histogram( plot.name, plot.color, price_line = False, price_label = False, scale_margin_top = plot.margin_top, scale_margin_bottom = plot.margin_bottom )
+                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( self.df['timestamp'], unit='ms' ), plot.name: self.df[plot.name]} ) )
+            
+            
 
     # There is no reason for this to be a method other than grouping all the window stuff together
     def get_screen_resolution(self):

@@ -35,7 +35,7 @@ class plot_c:
         '''
         self.name = name
         self.type = type
-        self.chartName = chart_name
+        self.panelName = chart_name
         self.color = color if color.startswith('rgba') else tools.hx2rgba(color)
         self.style = style
         self.width = width
@@ -92,7 +92,7 @@ class plot_c:
             if( len(thisSeries)<1 ):
                 return
             
-            chart = timeframe.window.bottomPanel if( self.chartName == 'panel' ) else timeframe.window.chart
+            chart = timeframe.window.bottomPanel if( self.panelName == 'panel' ) else timeframe.window.chart
             if self.type == c.PLOT_LINE:
                 self.line = chart.create_line( self.name, self.color, self.style, self.width, price_line=False, price_label=False )
                 self.line.set( pd.DataFrame( {'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries} ) )
@@ -429,6 +429,22 @@ class timeframe_c:
         
         plot.update( source, self )
         return plot
+    
+    def plotsList( self )->dict:
+        di = {}
+        for p in self.registeredPlots.values():
+            plot = {
+                'panel': p.panelName,
+                'type': p.type,
+                'color': p.color,
+                'style': p.style,
+                'width': p.width,
+                'margin_top': p.hist_margin_top,
+                'margin_bottom': p.hist_margin_bottom
+            }
+            di[p.name] = plot
+        return di
+            
     
     def plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1)->plot_c:
         '''
