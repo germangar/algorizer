@@ -10,6 +10,72 @@ import numpy as np
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+
+
+
+
+
+############################ CHART WINDOW ################################
+from lightweight_charts import Chart
+# from lightweight_charts_esistjosh import Chart
+from typing import Optional, Any
+
+class window_c:
+    def __init__(self, config):
+        self.config = config
+        self.descriptor: Optional[dict[str, Any]] = None
+        self.df: Optional[pd.DataFrame] = None
+        self.chart = None
+
+    def openWindow(self, descriptor, df):
+        try:
+            tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close'], 'volume':df['volume']} )
+        except Exception as e:
+            print(f"Error converting timestamp to datetime: {e}")
+
+        print( "Initializing window" )
+
+        window_width = 800
+        window_height = 600
+        if 1:
+            screen_width, screen_height = self.get_screen_resolution()
+            window_width = int(screen_width * 0.65)
+            window_height = int(screen_height * 0.65)
+        chart = Chart( window_width, window_height )
+
+        legend = f"{self.config['symbol']} - {descriptor['timeframe']} - candles:{len(df)}"
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=legend )
+
+        try:
+            chart.set( tmpdf )
+        except Exception as e:
+            print(f"Error setting chart dataframe: {e}")
+            
+        self.chart = chart
+        self.descriptor = descriptor
+        self.df = df
+
+        task = chart.show_async()
+        tasks.registerTask( 'window', task )
+
+    # There is no reason for this to be a method other than grouping all the window stuff together
+    def get_screen_resolution(self):
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()  # Hide the main window
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        root.destroy()  # Destroy the window after getting the resolution
+        return screen_width, screen_height
+
+window:window_c = None
+
+###########################################################################
+###########################################################################
+############################### CLIENT ####################################
+###########################################################################
+###########################################################################
+
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
 CLIENT_LOADING = 2  # receiving the data to open the window
@@ -17,15 +83,11 @@ CLIENT_ONLINE = 3  # the window has already opened the window and is ready to re
 
 status = CLIENT_DISCONNECTED
 
-symbol = None
-timeframesList = []
-panels = 0
-df = []
 
 # In client.py, modify the send_command function:
 
 async def send_command(socket, command: str, params: str = ""):
-    global symbol, timeframesList, panels, status, df
+    global status, window
 
     """Send a command to the server"""
     message = f"{command} {params}".strip()
@@ -38,19 +100,20 @@ async def send_command(socket, command: str, params: str = ""):
     try:
         # Try to parse as JSON
         data = json.loads(reply)
-        print(data)
         if isinstance(data, dict) and 'type' in data:
             if data['type'] == 'config':
                 print(f"Received config message for symbol: {data['symbol']}")
-                symbol = data['symbol']
-                timeframesList = data['timeframes']
-                panels = data['panels']
+                # create the window container
+                window = window_c(data)
                 status = CLIENT_CONNECTED
                 return data
                 
             elif data['type'] == 'data_descriptor':
                 print(f"Receiving DataFrame data...")
                 status = CLIENT_LOADING
+
+                descriptor = data
+                print( descriptor )
                 
                 # Send acknowledgment that we're ready for the data
                 await socket.send_string("ready")
@@ -81,11 +144,15 @@ async def send_command(socket, command: str, params: str = ""):
                     
                     print("DataFrame received and reconstructed")
                     print(f"DataFrame shape: {df.shape}")
-                    return data
+                    ### fall through ###
                 except Exception as e:
                     print(f"Error reconstructing DataFrame: {e}")
                     status = CLIENT_CONNECTED
                     return None
+                
+                # initialize the window with the dataframe and open it
+                window.openWindow( descriptor, df )
+                return data
 
     except json.JSONDecodeError:
         # Not JSON, treat as regular message
