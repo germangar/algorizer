@@ -264,11 +264,13 @@ async def listen_for_updates(context):
     try:
         while True:
             message = await socket.recv_string()
+            print( 'received:', data )
             try:
                 data = json.loads(message)
-                if data['type'] == 'bars':
-                    print(f"Received {data['len']} bars")
-                    bars = data['data']
+                if data['type'] == 'row':
+                    print(f"Received {data['len']} row")
+                    row = data['data']
+                    print(row)
             except json.JSONDecodeError:
                 print(f"Error: Received invalid JSON update")
             
@@ -314,7 +316,8 @@ async def run_client():
                 await asyncio.sleep(0.25)
 
             if status == CLIENT_LISTENING:
-                await asyncio.sleep(0.25)
+                await send_command(cmd_socket, "ack", "")
+                await asyncio.sleep(10)
 
             # await send_command(cmd_socket, "print", "ack")
             # await asyncio.sleep(2)

@@ -22,14 +22,42 @@ def getPlotsList()->dict:
 def getMarkersList()->list:
     return active.timeframe.stream.getMarkersList()
 
+# Global queue for updates
+update_queue = asyncio.Queue(maxsize=1000)  # Set maxsize to match MAX_QUEUE_SIZE
+
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
 CLIENT_LOADING = 2  # receiving the data to open the window
 CLIENT_LISTENING = 3  # the window has already opened the window and is ready to receive updates.
 
+LISTENING_TIMEOUT = 20.0    # 5 seconds timeout for listening state
+LOADING_TIMEOUT = 60.0    # 1 minute timeout for other states
+MAX_QUEUE_SIZE = 1000
+
 class client_t:
     def __init__(self):
         self.status = CLIENT_DISCONNECTED
+        self.last_successful_send = 0.0
+        
+    def update_last_send(self):
+        """Update the last successful send timestamp"""
+        self.last_successful_send = asyncio.get_event_loop().time()
+        
+    def is_timed_out(self):
+        """Check if client has timed out based on its state"""
+        if self.status == CLIENT_DISCONNECTED:
+            return False
+            
+        current_time = asyncio.get_event_loop().time()
+        elapsed = current_time - self.last_successful_send
+        
+        if self.status == CLIENT_LISTENING:
+            # Strict timeout for listening state
+            return elapsed > LISTENING_TIMEOUT
+        else:
+            # More lenient timeout for connecting/loading states
+            return elapsed > LOADING_TIMEOUT
+
 
 client = client_t()
 
@@ -68,15 +96,6 @@ def create_dataframe_message(data: any, timeframeStr: str) -> str:
     }
     return json.dumps(message)
 
-def create_bars_update(rows: list) -> str:
-    """Create a JSON message for bar data updates"""
-    message = {
-        "type": "bars",
-        "len": len(rows),
-        "data": rows
-    }
-    return json.dumps(message)
-
 def create_config_message() -> str:
     """Create a JSON message for data transmission"""
     message = {
@@ -98,6 +117,101 @@ def server_cmd_dataframe(msg):
     data = df.to_dict('records') if df is not None else []
     return create_data_message("dataframe", data)
 
+
+def create_tick_update(tick_data: list) -> str:
+    """Create a JSON message for tick/realtime updates"""
+    message = {
+        "type": "tick",
+        "len": len(tick_data),
+        "data": tick_data
+    }
+    queue_update( json.dumps(message) )
+
+# def create_candle_update(candle_data: list) -> str:
+#     """Create a JSON message for closed candle updates with full data"""
+#     message = {
+#         "type": "candle",
+#         "len": len(candle_data),
+#         "columns": 22,
+#         "data": candle_data  # This will include all dataframe columns
+#     }
+#     return json.dumps(message)
+
+def push_row_update(timeframe):
+    df = timeframe.df
+    # Convert the row to native Python types
+    row_data = [item.item() if hasattr(item, 'item') else item for item in df.iloc[-1].tolist()]
+    
+    message = {
+        "type": "row",
+        "timeframe": timeframe.timeframeStr,
+        "columns": list(df.columns),
+        "data": row_data
+    }
+    # Create task here where we first need async
+    asyncio.get_event_loop().create_task(queue_update(json.dumps(message)))
+
+
+async def queue_update(update):
+    """Queue an update to be sent to clients"""
+    if client.status == CLIENT_LISTENING:
+        if update_queue.qsize() < MAX_QUEUE_SIZE:
+            await update_queue.put(update)
+        else:
+            print("Update queue full - dropping update")
+
+
+async def publish_updates(pub_socket):
+    """Task to publish bar updates to clients"""
+    while True:
+        try:
+            # Check for timeout based on state
+            if client.is_timed_out():
+                if client.status == CLIENT_LISTENING:
+                    print("Client timed out while listening - marking as disconnected")
+                else:
+                    print(f"Client timed out during {['DISCONNECTED', 'CONNECTED', 'LOADING', 'LISTENING'][client.status]} state - marking as disconnected")
+                client.status = CLIENT_DISCONNECTED
+                # Clear the queue
+                while not update_queue.empty():
+                    try:
+                        update_queue.get_nowait()
+                        update_queue.task_done()
+                    except asyncio.QueueEmpty:
+                        break
+
+            if client.status == CLIENT_LISTENING:
+                try:
+                    # Wait for an update with a timeout
+                    update = await asyncio.wait_for(update_queue.get(), timeout=1.0)
+                    try:
+                        await asyncio.wait_for(pub_socket.send_string(update), timeout=1.0)
+                        client.update_last_send()  # Mark successful send
+                    except (asyncio.TimeoutError, zmq.error.Again):
+                        print("Send timed out - requeueing update")
+                        # Requeue the update if send failed
+                        if update_queue.qsize() < MAX_QUEUE_SIZE:
+                            await update_queue.put(update)
+                    finally:
+                        update_queue.task_done()
+                except asyncio.TimeoutError:
+                    # No updates in queue - this is normal
+                    pass
+            else:
+                # Client not listening - clear queue periodically
+                try:
+                    update = await asyncio.wait_for(update_queue.get(), timeout=0.1)
+                    update_queue.task_done()
+                except asyncio.TimeoutError:
+                    pass
+            
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Error in publish_updates: {e}")
+            await asyncio.sleep(1)
+
+
 async def proccess_message(msg: str, cmd_socket):
     msg = msg.lstrip()
     parts = msg.split(maxsplit=1)
@@ -107,6 +221,7 @@ async def proccess_message(msg: str, cmd_socket):
     response = None
 
     if len(command):
+        client.update_last_send()
         if command == 'connect':
             print('client connected')
             client.status = CLIENT_CONNECTED
@@ -154,34 +269,13 @@ async def proccess_message(msg: str, cmd_socket):
             response = create_command_response(msg)
         elif command == 'listening':
             client.status = CLIENT_LISTENING
-            print( "Client is ready" )
             response = create_command_response(msg)
+        elif command == 'ack': # keep alive
+            pass
 
+    client.update_last_send()
     return response if response else create_command_response("unknown command")
 
-async def publish_updates(pub_socket):
-    """Task to publish bar updates to clients"""
-    last_rows = []  # Keep track of last sent rows
-    
-    while True:
-        try:
-            if(client.status == CLIENT_LISTENING):
-                df = getDataframe()
-                if df is not None:
-                    # Convert dataframe to list of lists (more efficient than dict)
-                    new_rows = df.values.tolist()
-                    if new_rows != last_rows:  # Only send if there are changes
-                        update = create_bars_update(new_rows)
-                        await pub_socket.send_string(update)
-                        last_rows = new_rows
-            
-            await asyncio.sleep(0.1)  # Adjust the interval as needed
-            
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            print(f"Error in publish_updates: {e}")
-            await asyncio.sleep(1)
 
 async def run_server():
     # ZeroMQ Context

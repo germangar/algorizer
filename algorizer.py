@@ -16,6 +16,8 @@ from calcseries import generatedSeries_c # just for making lives easier
 
 from window import window_c # I should try to get rid of this import
 
+from server import push_row_update
+
 import active
 
 import server
@@ -397,6 +399,8 @@ class timeframe_c:
                 self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
 
             # To Do: push a row update to the server
+            if not self.stream.initializing:
+                push_row_update( self )
 
 
     def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
