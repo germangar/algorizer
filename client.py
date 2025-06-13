@@ -49,9 +49,10 @@ class window_c:
     def __init__(self, config):
         self.config = config
         self.descriptor: Optional[dict[str, Any]] = None
-        self.df: Optional[pd.DataFrame] = None
+        # self.df: Optional[pd.DataFrame] = None
+        self.columns:list = []
         self.chart = None
-        self.plots:list = []
+        self.plots:list[plot_c] = []
         self.markers:list = []
 
     def openWindow(self, descriptor, df):
@@ -80,15 +81,16 @@ class window_c:
             
         self.chart = chart
         self.descriptor = descriptor
-        self.df = df
+        # self.df = df # FIXME: We may not need to keep this in memory
+        self.columns = df.columns
 
-        self.createPlots()
+        self.createPlots(df)
         self.createMarkers()
 
         task = chart.show_async()
         tasks.registerTask( 'window', task )
 
-    def createPlots(self):
+    def createPlots(self, df:pd.DataFrame):
         plotsList = self.descriptor['plots']
         for name in plotsList.keys():
             info = plotsList[name]
@@ -111,10 +113,10 @@ class window_c:
             
             if plot.type == c.PLOT_LINE :
                 plot.instance = chart.create_line( plot.name, plot.color, plot.style, plot.width, price_line=False, price_label=False )
-                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( self.df['timestamp'], unit='ms' ), plot.name: self.df[plot.name]} ) )
+                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( df['timestamp'], unit='ms' ), plot.name: df[plot.name]} ) )
             elif plot.type == c.PLOT_HIST :
                 plot.instance = chart.create_histogram( plot.name, plot.color, price_line = False, price_label = False, scale_margin_top = plot.margin_top, scale_margin_bottom = plot.margin_bottom )
-                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( self.df['timestamp'], unit='ms' ), plot.name: self.df[plot.name]} ) )
+                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( df['timestamp'], unit='ms' ), plot.name: df[plot.name]} ) )
 
             self.plots.append( plot )
     
@@ -170,16 +172,25 @@ class window_c:
         if columns is None:
             return
 
+        if len(columns) != len(self.columns):
+            # ToDo: The dataframe has changed. We need to reload it
+            raise ValueError( "Dataframe columns have changed" )
+        
         # Create DataFrame from single row - wrap row in a list
         df = pd.DataFrame([row], columns=columns)
-        if len(columns) != len(self.df.columns):
-            # we need to create a column
-            pass
+        
+        # run through the list of plots and issue the updates
+        for plot in self.plots:
+            try:
+                value = df[plot.name].iloc[0]
+            except Exception as e:
+                print( f"ERROR: Couldn't find value for plot [{plot.name}]" )
+                continue
 
-
-
-
-            
+            if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
+                plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
+        
+    
 
     # There is no reason for this to be a method other than grouping all the window stuff together
     def get_screen_resolution(self):
