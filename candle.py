@@ -52,6 +52,9 @@ class candle_c:
             rtstring += f"{int(self.remaininghours):02}:"  # Ensure two digits for hours if there are days
         rtstring += f"{int(self.remainingminutes):02}:{int(self.remainingseconds):02}"  # Ensure two digits for minutes and seconds
         return rtstring
+    
+    def tickData( self ):
+        return [ self.timestamp, self.open, self.high, self.low, self.close, self.volume ]
 
     def print( self ):
         print( self.str() )

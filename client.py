@@ -10,7 +10,7 @@ import numpy as np
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-
+debug = False
 
 
 
@@ -54,6 +54,7 @@ class window_c:
         self.chart = None
         self.plots:list[plot_c] = []
         self.markers:list = []
+        self.showRealTimeCandle = True
 
     def openWindow(self, descriptor, df):
         try:
@@ -147,13 +148,15 @@ class window_c:
             
             self.markers.append( marker )
 
-    def newRow(self, msg):
-        row = msg.get('data')
-        columns = msg.get('columns')
-        if row is None:
+    def newTick(self, msg):
+        if not self.showRealTimeCandle or msg is None :
             return
-
-        # First part - OHLCV update (working fine)
+        
+        row = msg.get('data')
+        if not row:
+            return
+        
+        # OHLCV update to the chart
         data_dict = {
             'time': pd.to_datetime(row[c.DF_TIMESTAMP], unit='ms'),
             'open': row[c.DF_OPEN],
@@ -163,7 +166,23 @@ class window_c:
             'volume': row[c.DF_VOLUME]
         }
         
-        print(data_dict)
+        self.chart.update( pd.Series(data_dict) )
+
+    def newRow(self, msg):
+        row = msg.get('data')
+        columns = msg.get('columns')
+        if row is None:
+            return
+
+        # OHLCV update
+        data_dict = {
+            'time': pd.to_datetime(row[c.DF_TIMESTAMP], unit='ms'),
+            'open': row[c.DF_OPEN],
+            'high': row[c.DF_HIGH],
+            'low': row[c.DF_LOW],
+            'close': row[c.DF_CLOSE],
+            'volume': row[c.DF_VOLUME]
+        }
         
         series = pd.Series(data_dict)
         self.chart.update(series)
@@ -189,6 +208,9 @@ class window_c:
 
             if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
                 plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
+
+        # finally add the opening of the realtime candle
+        self.newTick( msg.get('tick') )
         
     
 
@@ -227,7 +249,7 @@ async def send_command(socket, command: str, params: str = ""):
     """Send a command to the server"""
     message = f"{command} {params}".strip()
     await socket.send_string(message)
-    print(f"Sent command: {message}")
+    if debug : print(f"Sent command: {message}")
     
     # Get the reply
     reply = await socket.recv_string()
@@ -246,9 +268,7 @@ async def send_command(socket, command: str, params: str = ""):
             elif data['type'] == 'data_descriptor':
                 print(f"Receiving DataFrame data...")
                 status = CLIENT_LOADING
-
                 descriptor = data
-                print( descriptor )
                 
                 # Send acknowledgment that we're ready for the data
                 await socket.send_string("ready")
@@ -278,7 +298,7 @@ async def send_command(socket, command: str, params: str = ""):
                         df['timestamp'] = df['timestamp'].astype(np.int64)
                     
                     print("DataFrame received and reconstructed")
-                    print(f"DataFrame shape: {df.shape}")
+                    if debug : print(f"DataFrame shape: {df.shape}")
                     ### fall through ###
                 except Exception as e:
                     print(f"Error reconstructing DataFrame: {e}")
@@ -296,7 +316,7 @@ async def send_command(socket, command: str, params: str = ""):
             status = CLIENT_CONNECTED
             print("Connected")
         else:
-            print(f"Received reply: {reply}")
+            if debug : print(f"Received reply: {reply}")
         return reply
 
 async def listen_for_updates(context):
@@ -305,19 +325,20 @@ async def listen_for_updates(context):
     socket.connect("tcp://127.0.0.1:5556")
     socket.setsockopt_string(zmq.SUBSCRIBE, "")
     
-    print("Data update listener started...")
+    print("started...")
     
     try:
         while True:
             try:
-                print("Waiting for message...")  # Debug
+                if debug : print("Waiting for message...")
                 message = await socket.recv_string()
-                print("Received message")  # Debug
+                if debug : print("Received message")
                 try:
                     data = json.loads(message)
                     if data['type'] == 'row':
-                        print(f"Received row update for timeframe {data['timeframe']}")
                         window.newRow(data)
+                    elif data['type'] == 'tick':
+                        window.newTick(data)
                 except json.JSONDecodeError:
                     print(f"Error: Received invalid JSON update")
                 
@@ -367,7 +388,7 @@ async def run_client():
                 await asyncio.sleep(0.25)
 
             if status == CLIENT_LISTENING:
-                await send_command(cmd_socket, "ack", "")
+                await send_command(cmd_socket, "ack", "") # keepalive
                 await asyncio.sleep(10)
 
             # await send_command(cmd_socket, "print", "ack")

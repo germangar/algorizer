@@ -22,6 +22,8 @@ def getPlotsList()->dict:
 def getMarkersList()->list:
     return active.timeframe.stream.getMarkersList()
 
+debug = False
+
 # Global queue for updates
 update_queue = asyncio.Queue(maxsize=1000)  # Set maxsize to match MAX_QUEUE_SIZE
 
@@ -38,6 +40,7 @@ class client_t:
     def __init__(self):
         self.status = CLIENT_DISCONNECTED
         self.last_successful_send = 0.0
+        self.timeframeStr = ""
         
     def update_last_send(self):
         """Update the last successful send timestamp"""
@@ -118,26 +121,19 @@ def server_cmd_dataframe(msg):
     return create_data_message("dataframe", data)
 
 
-def create_tick_update(tick_data: list) -> str:
+def push_tick_update(timeframe) -> str:
+    if timeframe.timeframeStr != client.timeframeStr:
+        return
     """Create a JSON message for tick/realtime updates"""
     message = {
         "type": "tick",
-        "len": len(tick_data),
-        "data": tick_data
+        "data": timeframe.realtimeCandle.tickData()
     }
-    queue_update( json.dumps(message) )
-
-# def create_candle_update(candle_data: list) -> str:
-#     """Create a JSON message for closed candle updates with full data"""
-#     message = {
-#         "type": "candle",
-#         "len": len(candle_data),
-#         "columns": 22,
-#         "data": candle_data  # This will include all dataframe columns
-#     }
-#     return json.dumps(message)
+    asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
 
 def push_row_update(timeframe):
+    if timeframe.timeframeStr != client.timeframeStr:
+        return
     df = timeframe.df
     # Convert the row to native Python types
     row_data = [item.item() if hasattr(item, 'item') else item for item in df.iloc[-1].tolist()]
@@ -146,10 +142,11 @@ def push_row_update(timeframe):
         "type": "row",
         "timeframe": timeframe.timeframeStr,
         "columns": list(df.columns),
-        "data": row_data
+        "data": row_data,
+        "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
-    print(f"Queueing update for timestamp: {row_data[df.columns.get_loc('timestamp')]}")  # Debug
-    asyncio.get_event_loop().create_task(queue_update(json.dumps(message)))
+    # print(f"Queueing update for timestamp: {row_data[df.columns.get_loc('timestamp')]}")  # Debug
+    asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
 
 
 async def queue_update(update):
@@ -157,7 +154,7 @@ async def queue_update(update):
     if client.status == CLIENT_LISTENING:
         if update_queue.qsize() < MAX_QUEUE_SIZE:
             await update_queue.put(update)
-            print(f"Added to queue. Queue size: {update_queue.qsize()}")  # Debug
+            if debug : print(f"Added to queue. Queue size: {update_queue.qsize()}")  # Debug
         else:
             print("Update queue full - dropping update")
 
@@ -169,7 +166,7 @@ async def publish_updates(pub_socket):
             # Check for timeout based on state
             if client.is_timed_out():
                 if client.status == CLIENT_LISTENING:
-                    print("Client timed out while listening - marking as disconnected")
+                    print("Chart disconnected")
                 else:
                     print(f"Client timed out during {['DISCONNECTED', 'CONNECTED', 'LOADING', 'LISTENING'][client.status]} state - marking as disconnected")
                 client.status = CLIENT_DISCONNECTED
@@ -185,13 +182,13 @@ async def publish_updates(pub_socket):
                 try:
                     # Wait for an update with a timeout
                     update = await asyncio.wait_for(update_queue.get(), timeout=1.0)
-                    print(f"Got update from queue. Queue size: {update_queue.qsize()}")  # Debug
+                    if debug : print(f"Got update from queue. Queue size: {update_queue.qsize()}")  # Debug
                     try:
                         await asyncio.wait_for(pub_socket.send_string(update), timeout=1.0)
-                        print("Successfully sent update")  # Debug
+                        if debug : print("Successfully sent update")  # Debug
                         client.update_last_send()  # Mark successful send
                     except (asyncio.TimeoutError, zmq.error.Again):
-                        print("Send timed out - requeueing update")
+                        if debug : print("Send timed out - requeueing update")
                         # Requeue the update if send failed
                         if update_queue.qsize() < MAX_QUEUE_SIZE:
                             await update_queue.put(update)
@@ -232,8 +229,11 @@ async def proccess_message(msg: str, cmd_socket):
 
         elif command == 'dataframe':
             client.status = CLIENT_LOADING
+
+            # FIXME: This is not yet implemented
             df = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch].df
             timeframeStr = active.timeframe.stream.timeframeFetch
+            client.timeframeStr = active.timeframe.stream.timeframeFetch
             
             # Create a copy to avoid modifying the original dataframe
             df_copy = df.copy()
@@ -274,7 +274,7 @@ async def proccess_message(msg: str, cmd_socket):
             client.status = CLIENT_LISTENING
             response = create_command_response(msg)
         elif command == 'ack': # keep alive
-            pass
+            response = ''
 
     client.update_last_send()
     return response if response else create_command_response("unknown command")
@@ -302,7 +302,7 @@ async def run_server():
         while True:
             try:
                 message = await cmd_socket.recv_string()
-                print(f"Received command: {message}")
+                if debug : print(f"Received command: {message}")
 
                 # Process the command
                 response = await proccess_message(message, cmd_socket)  # Added await

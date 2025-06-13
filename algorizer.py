@@ -16,7 +16,7 @@ from calcseries import generatedSeries_c # just for making lives easier
 
 from window import window_c # I should try to get rid of this import
 
-from server import push_row_update
+from server import push_row_update, push_tick_update
 
 import active
 
@@ -359,6 +359,9 @@ class timeframe_c:
 
                 if( not self.stream.initializing and self.window != None ):
                     self.window.updateChart(self)
+
+                if not self.stream.initializing:
+                    push_tick_update( self )
 
                 continue
 
