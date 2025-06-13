@@ -126,6 +126,6 @@ if __name__ == '__main__':
     # print(stream.timeframes[stream.timeframeFetch].df)
 
     # Call only if you want to open the chart window. It's not needed to run the algo
-    stream.createWindow( '1m' )
+    # stream.createWindow( '1m' )
 
     stream.run()
