@@ -90,7 +90,7 @@ class window_c:
 
         for marker in timeframe.stream.markers:
             if( marker.chart == None ):
-                marker.chart = self.bottomPanel if marker.chartName == 'panel' else self.chart
+                marker.chart = self.bottomPanel if marker.panel == 'panel' else self.chart
             marker.refreshInChart()
 
         if not self.timeframe.stream.isRunning:

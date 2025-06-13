@@ -148,7 +148,7 @@ def push_row_update(timeframe):
         "columns": list(df.columns),
         "data": row_data
     }
-    # Create task here where we first need async
+    print(f"Queueing update for timestamp: {row_data[df.columns.get_loc('timestamp')]}")  # Debug
     asyncio.get_event_loop().create_task(queue_update(json.dumps(message)))
 
 
@@ -157,6 +157,7 @@ async def queue_update(update):
     if client.status == CLIENT_LISTENING:
         if update_queue.qsize() < MAX_QUEUE_SIZE:
             await update_queue.put(update)
+            print(f"Added to queue. Queue size: {update_queue.qsize()}")  # Debug
         else:
             print("Update queue full - dropping update")
 
@@ -184,8 +185,10 @@ async def publish_updates(pub_socket):
                 try:
                     # Wait for an update with a timeout
                     update = await asyncio.wait_for(update_queue.get(), timeout=1.0)
+                    print(f"Got update from queue. Queue size: {update_queue.qsize()}")  # Debug
                     try:
                         await asyncio.wait_for(pub_socket.send_string(update), timeout=1.0)
+                        print("Successfully sent update")  # Debug
                         client.update_last_send()  # Mark successful send
                     except (asyncio.TimeoutError, zmq.error.Again):
                         print("Send timed out - requeueing update")

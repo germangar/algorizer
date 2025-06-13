@@ -144,6 +144,41 @@ class window_c:
                         text = marker.text )
             
             self.markers.append( marker )
+
+    def newRow(self, msg):
+        row = msg.get('data')
+        columns = msg.get('columns')
+        if row is None:
+            return
+
+        # First part - OHLCV update (working fine)
+        data_dict = {
+            'time': pd.to_datetime(row[c.DF_TIMESTAMP], unit='ms'),
+            'open': row[c.DF_OPEN],
+            'high': row[c.DF_HIGH],
+            'low': row[c.DF_LOW],
+            'close': row[c.DF_CLOSE],
+            'volume': row[c.DF_VOLUME]
+        }
+        
+        print(data_dict)
+        
+        series = pd.Series(data_dict)
+        self.chart.update(series)
+
+        # Second part - full data update
+        if columns is None:
+            return
+
+        # Create DataFrame from single row - wrap row in a list
+        df = pd.DataFrame([row], columns=columns)
+        if len(columns) != len(self.df.columns):
+            # we need to create a column
+            pass
+
+
+
+
             
 
     # There is no reason for this to be a method other than grouping all the window stuff together
@@ -254,27 +289,32 @@ async def send_command(socket, command: str, params: str = ""):
         return reply
 
 async def listen_for_updates(context):
-    """Listen for bar updates from server"""
+    """Listen for updates from server"""
     socket = context.socket(zmq.SUB)
     socket.connect("tcp://127.0.0.1:5556")
     socket.setsockopt_string(zmq.SUBSCRIBE, "")
     
-    print("Bar data update listener started...")
+    print("Data update listener started...")
     
     try:
         while True:
-            message = await socket.recv_string()
-            print( 'received:', data )
             try:
-                data = json.loads(message)
-                if data['type'] == 'row':
-                    print(f"Received {data['len']} row")
-                    row = data['data']
-                    print(row)
-            except json.JSONDecodeError:
-                print(f"Error: Received invalid JSON update")
+                print("Waiting for message...")  # Debug
+                message = await socket.recv_string()
+                print("Received message")  # Debug
+                try:
+                    data = json.loads(message)
+                    if data['type'] == 'row':
+                        print(f"Received row update for timeframe {data['timeframe']}")
+                        window.newRow(data)
+                except json.JSONDecodeError:
+                    print(f"Error: Received invalid JSON update")
+                
+            except Exception as e:
+                print(f"Error in listen_for_updates loop: {e}")
             
-            await asyncio.sleep(0.1)
+            # Remove or reduce this sleep - it might be causing us to miss messages
+            await asyncio.sleep(0.01)  # Reduced from 0.1 to 0.01
     
     except asyncio.CancelledError:
         print("Update listener cancelled")
