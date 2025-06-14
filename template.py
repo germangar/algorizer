@@ -31,9 +31,9 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     BBupper.plot( style='dotted' )
     BBlower.plot( style='dotted' )
 
-    rsi14 = calc.RSI(close, 14).plot('rsi')
+    rsi14 = calc.RSI(close, 14)
     rsiSlow = requestValue( rsi30m.name, '30m' )
-    # plot( rsiSlow, 'rsiSlow', 'rsi' )
+    plot( rsiSlow, 'rsiSlow', 'rsi' )
 
 
 
@@ -125,11 +125,12 @@ if __name__ == '__main__':
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 
-    # print(stream.timeframes[stream.timeframeFetch].df)
+    print(stream.timeframes[stream.timeframeFetch].df.columns)
+    print(stream.timeframes[stream.timeframeFetch].df['rsiSlow'])
 
     # Call only if you want to open the chart window. It's not needed to run the algo
     # stream.createWindow( '1m' )
     stream.registerPanel('macd', 1.0, 0.2, show_timescale=False )
-    # stream.registerPanel('rsi', 1.0, 0.2, show_candles=True, show_volume=True )
+    stream.registerPanel('rsi', 1.0, 0.2 )
 
     stream.run()

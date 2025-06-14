@@ -1,6 +1,6 @@
 
 import pandas as pd
-
+import numpy as np
 import pandas_ta as pt
 import asyncio
 import ccxt.pro as ccxt
@@ -43,9 +43,6 @@ class plot_c:
         self.width = width
         self.hist_margin_top = hist_margin_top
         self.hist_margin_bottom = hist_margin_bottom
-        self.line = None
-        self.hist = None
-        self.initialized = False
         self.iat_index = -1
 
         if name is None:
@@ -58,82 +55,30 @@ class plot_c:
                 raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
 
     def update( self, source, timeframe ):
+        if isinstance(source, (int, float, type(None))) :
+            # Create a column in the dataframe for it if there's none, and keep updating it
+            if self.iat_index == -1: # self.name not in timeframe.df.columns:
+                timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
+                self.iat_index = timeframe.df.columns.get_loc(self.name)
 
-        if timeframe.stream.initializing and not timeframe.shadowcopy :
-            # This is the call made on the last row to force pandas
-            # to calculate all the generated series at once. We don't
-            # want to do anything here.
-            return
-        
-        if not self.initialized:
-            # We want to store a reference to the series that is being plotted
-            # to have it ready when the window is opened
-            if( timeframe.window is None ):
-                # if it's plotting a generated series reference its column in the dataframe
-                if( isinstance(source, pd.Series) ):
-                    # if self.name not in timeframe.df.columns:
-                    #     raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
-                    # I don't support series which are not in the dataframe yet
-                    return
-
-                if not isinstance(source, (int, float, type(None))) :
-                    return
-
-                # Create a column in the dataframe for it if there's none, and keep updating it
-                if self.iat_index == -1: # self.name not in timeframe.df.columns:
-                    timeframe.df[self.name] = None
-                    self.iat_index = timeframe.df.columns.get_loc(self.name)
-                    
-                # timeframe.df.at[timeframe.barindex, self.name] = source
-                timeframe.df.iat[timeframe.barindex, self.iat_index] = source
+            if timeframe.jumpstart :
+                # This is the call made on the last row to force pandas
+                # to calculate all the generated series at once. We don't want to do anything here.
                 return
-            
 
-            # We've got a window,  INITIALIZE in the chart
-            thisSeries = timeframe.df[self.name]
-            if( len(thisSeries)<1 ):
-                return
-            
-            chart = timeframe.window.bottomPanel if( self.panelName == 'panel' ) else timeframe.window.chart
-            if self.type == c.PLOT_LINE:
-                self.line = chart.create_line( self.name, self.color, self.style, self.width, price_line=False, price_label=False )
-                self.line.set( pd.DataFrame( {'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries} ) )
-
-            elif self.type == c.PLOT_HIST:
-                self.hist = chart.create_histogram( self.name, self.color, price_line = False, price_label = False, scale_margin_top = self.hist_margin_top, scale_margin_bottom = self.hist_margin_bottom )
-                self.hist.set( pd.DataFrame( {'time': pd.to_datetime( timeframe.df['timestamp'], unit='ms' ), self.name: thisSeries} ) )
-
-            self.iat_index = timeframe.df.columns.get_loc(self.name)
-            self.initialized = True
-            return
-
-
-        # No window, but we are initialized. The window has been lost
-        if( timeframe.window is None ):
-            self.initialized = False
-            return
-
-        # if it's not a series update the value into the dataframe
-        if( isinstance(source, float) or isinstance(source, int) ):
-            if self.name not in timeframe.df.columns: 
-                # This would never happen. Maybe I should just raise an error
-                print( f'* WARNING plot_c: New plot [{self.name}] was created after initialization' )
-                timeframe.df[self.name] = None
+            # timeframe.df.at[timeframe.barindex, self.name] = source
             timeframe.df.iat[timeframe.barindex, self.iat_index] = source
+            return
 
-            ### fall through ###
+        
+        if isinstance(source, (pd.Series, generatedSeries_c)) and self.name in timeframe.df.columns:
+            if self.iat_index == -1:
+                self.iat_index = timeframe.df.columns.get_loc(self.name)
+            return
 
-        # I don't support series not in the dataframe yet
-        if( isinstance(source, pd.Series) ):
-            if self.name not in timeframe.df.columns:
-                return
+        raise ValueError( f"Unvalid plot type {self.name}: {type(source)}" )
 
-        # update the chart
-        newval = timeframe.df.iat[timeframe.barindex, self.iat_index]
-        if self.type == c.PLOT_LINE:
-            self.line.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
-        elif self.type == c.PLOT_HIST:
-            self.hist.update( pd.Series( {'time': pd.to_datetime( timeframe.timestamp, unit='ms' ), 'value': newval } ) )
+
 
 
 
@@ -829,7 +774,7 @@ if __name__ == '__main__':
 
 
     stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], [runCloseCandle_1m], 5000 )
-
+    stream.registerPanel('panel', 1.0, 0.2, show_timescale=False )
     # strategy.print_strategy_stats()
 
     # stream.createWindow( '1m' )

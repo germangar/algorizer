@@ -83,6 +83,25 @@ def create_config_message() -> str:
     return json.dumps(message)
 
 
+def prepare_dataframe_for_sending(df):
+    """Prepare DataFrame for sending by ensuring consistent data types."""
+    df_copy = df.copy()
+    
+    # Handle different data types
+    for col in df_copy.columns:
+        if df_copy[col].dtype == 'object' or df_copy[col].dtype == 'bool':
+            # Convert boolean-like strings to 1.0/0.0
+            if df_copy[col].isin(['True', 'False', True, False]).all():
+                df_copy[col] = df_copy[col].map({'True': 1.0, 'False': 0.0, True: 1.0, False: 0.0})
+            else:
+                # Replace None/NaN with np.nan
+                df_copy[col] = df_copy[col].replace([None], np.nan)
+    
+    # Convert all numeric data to float64
+    df_float = df_copy.select_dtypes(include=['int', 'float', 'number']).astype('float64')
+    
+    return df_float
+
 def create_data_descriptor(df, timeframeStr: str) -> str:
     """Create a descriptor message for the DataFrame that will be sent"""
     message = {
@@ -93,22 +112,35 @@ def create_data_descriptor(df, timeframeStr: str) -> str:
         "columns": list(df.columns),
         "dtypes": {col: str(df[col].dtype) for col in df.columns},
         "plots": getPlotsList(),
-        "markers":getMarkersList()
+        "markers": getMarkersList()
     }
     return json.dumps(message)
 
+async def send_dataframe(cmd_socket, df, timeframe_str):
+    """Send DataFrame to client with proper descriptor and data handling."""
+    try:
+        # Prepare DataFrame
+        df_float = prepare_dataframe_for_sending(df)
+        
+        # Send descriptor
+        descriptor = create_data_descriptor(df, timeframe_str)
+        await cmd_socket.send_string(descriptor)
+        
+        # Wait for acknowledgment
+        ack = await cmd_socket.recv_string()
+        if ack != "ready":
+            raise ValueError(f"Unexpected acknowledgment: {ack}")
+            
+        # Send the raw data
+        raw_data = df_float.values.tobytes()
+        await cmd_socket.send(raw_data)
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error sending DataFrame: {e}")
+        return False
 
-def create_dataframe_message(data: any, timeframeStr: str) -> str:
-    columns = list(data.columns)
-    data = data.values.tolist()  # More efficient than to_dict
-    message = {
-        "type": "data",
-        "datatype": "dataframe",
-        "timeframe": timeframeStr,
-        "columns": columns,
-        "payload": data
-    }
-    return json.dumps(message)
 
 
 def push_marker_update(marker) -> str:
@@ -235,43 +267,17 @@ async def proccess_message(msg: str, cmd_socket):
         elif command == 'dataframe':
             client.status = CLIENT_LOADING
 
-            # FIXME: This is not yet implemented
+            # Get DataFrame from active timeframe
             df = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch].df
             timeframeStr = active.timeframe.stream.timeframeFetch
-            client.timeframeStr = active.timeframe.stream.timeframeFetch
+            client.timeframeStr = timeframeStr
             
-            # Create a copy to avoid modifying the original dataframe
-            df_copy = df.copy()
-            
-            # Handle different data types
-            for col in df_copy.columns:
-                # Convert object/string columns that might be booleans
-                if df_copy[col].dtype == 'object' or df_copy[col].dtype == 'bool':
-                    # Convert boolean-like strings to 1.0/0.0
-                    if df_copy[col].isin(['True', 'False', True, False]).all():
-                        df_copy[col] = df_copy[col].map({'True': 1.0, 'False': 0.0, True: 1.0, False: 0.0})
-                    else:
-                        # For other string columns, convert to string
-                        df_copy[col] = df_copy[col].astype(str)
-            
-            # Convert all numeric data to float64
-            df_float = df_copy.select_dtypes(include=['int', 'float', 'number']).astype('float64')
-            
-            # First send the descriptor
-            descriptor = create_data_descriptor(df, timeframeStr)
-            await cmd_socket.send_string(descriptor)
-
-            # Wait for acknowledgment
-            ack = await cmd_socket.recv_string()
-            if ack == "ready":
-                # Send the raw data
-                raw_data = df_float.values.tobytes()
-                await cmd_socket.send(raw_data)
-            else:
-                print(f"Unexpected acknowledgment: {ack}")
+            # Send DataFrame to client
+            success = await send_dataframe(cmd_socket, df, timeframeStr)
+            if not success:
+                return create_command_response("error sending dataframe")
             
             return None  # We've already handled the complete exchange
-
         elif command == 'print':
             print(msg)
             response = create_command_response(msg)
