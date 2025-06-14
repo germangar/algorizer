@@ -263,7 +263,7 @@ async def proccess_message(msg: str, cmd_socket):
     if len(command):
         client.update_last_send()
         if command == 'connect':
-            print('client connected')
+            if debug:print('client connected')
             client.status = CLIENT_CONNECTED
             response = create_config_message()
 
@@ -313,7 +313,7 @@ def launch_client_window(cmd_port):
             "--port", str(cmd_port)
         ])
         
-        print(f"Launched client window with port {cmd_port}")
+        if debug:print(f"Launched client window with port {cmd_port}")
         return process
         
     except subprocess.SubprocessError as e:
@@ -363,13 +363,13 @@ def start_window_server():
     
     # If server is running, use its ports
     if server_cmd_port is not None:
-        print(f"Launching client for existing server on port {server_cmd_port}")
+        if debug : print(f"Launching client for existing server on port {server_cmd_port}")
         return launch_client_window(server_cmd_port) is not None
 
     # Server not running yet, start it with new ports
     try:
         cmd_port, pub_port = find_available_ports()
-        print(f"Starting new server using ports: CMD={cmd_port}, PUB={pub_port}")
+        if debug : print(f"Starting new server using ports: CMD={cmd_port}, PUB={pub_port}")
         server_cmd_port, server_pub_port = cmd_port, pub_port
     except RuntimeError as e:
         print(f"Error finding available port: {e}")
@@ -391,12 +391,12 @@ async def run_server():
     if server_cmd_port is None or server_pub_port is None:
         try:
             server_cmd_port, server_pub_port = find_available_ports()
-            print(f"Server using ports: CMD={server_cmd_port}, PUB={server_pub_port}")
+            if debug:print(f"Server using ports: CMD={server_cmd_port}, PUB={server_pub_port}")
         except RuntimeError as e:
             print(f"Error finding available ports: {e}")
             return
     else:
-        print(f"Server already running on ports: CMD={server_cmd_port}, PUB={server_pub_port}")
+        if debug:print(f"Server already running on ports: CMD={server_cmd_port}, PUB={server_pub_port}")
     
     # ZeroMQ Context
     context = zmq.asyncio.Context()
@@ -409,7 +409,7 @@ async def run_server():
     pub_socket = context.socket(zmq.PUB)
     pub_socket.bind(f"tcp://127.0.0.1:{server_pub_port}")
 
-    print("Server is running...")
+    if debug:print("Server is running...")
 
     try:
         # Start the update publisher task

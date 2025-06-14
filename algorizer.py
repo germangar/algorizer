@@ -60,7 +60,6 @@ class plot_c:
                 if not self.screen_name:
                     self.screen_name = self.name
                 timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
-                print(f"CREATED custom plot {self.name}")
 
         elif isinstance( source, (pd.Series, generatedSeries_c) ):
             self.name = source.name
@@ -72,9 +71,16 @@ class plot_c:
 
 
     def update( self, source, timeframe ):
+
+        # this shouldn't be neccesary anymore. I gotta check it
+        if isinstance(source, (pd.Series, generatedSeries_c)): # and self.name in timeframe.df.columns:
+            # if self.iat_index == -1:
+            #     self.iat_index = timeframe.df.columns.get_loc(self.name)
+            return
+        
         if isinstance(source, (int, float, type(None))) :
             # Create a column in the dataframe for it if there's none, and keep updating it
-            if self.iat_index == -1: # self.name not in timeframe.df.columns:
+            if self.iat_index == -1:
                 timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
                 self.iat_index = timeframe.df.columns.get_loc(self.name)
 
@@ -83,12 +89,6 @@ class plot_c:
 
             # timeframe.df.at[timeframe.barindex, self.name] = source
             timeframe.df.iat[timeframe.barindex, self.iat_index] = source
-            return
-
-        # this shouldn't be neccesary anymore. I gotta check it
-        if isinstance(source, (pd.Series, generatedSeries_c)) and self.name in timeframe.df.columns:
-            if self.iat_index == -1:
-                self.iat_index = timeframe.df.columns.get_loc(self.name)
             return
 
         raise ValueError( f"Unvalid plot type {self.name}: {type(source)}" )
@@ -448,11 +448,11 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, callbackList, max_amount = 5000, noplots:bool = False ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbackList, max_amount = 5000, plots:bool = True ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.isRunning = False
-        self.noplots = noplots
+        self.noplots = not plots
         self.timeframeFetch = None
         self.timestampFetch = -1
         self.timeframes: dict[str, timeframe_c] = {}

@@ -71,8 +71,6 @@ class window_c:
         self.showRealTimeCandle = True
         self.numpanels = 0
 
-        print( config )
-
         # calculate the panels sizes
         self.panels = config['panels']
         # add the main panel
@@ -111,7 +109,7 @@ class window_c:
 
 
     def loadChartData(self, descriptor, df):
-        print( "Initializing window" )
+        if debug : print( "Initializing window" )
 
         window_width = 1024
         window_height = 768
@@ -356,7 +354,7 @@ async def send_command(socket, command: str, params: str = ""):
         data = json.loads(reply)
         if isinstance(data, dict) and 'type' in data:
             if data['type'] == 'config':
-                print(f"Received config message for symbol: {data['symbol']}")
+                if debug:print(f"Received config message for symbol: {data['symbol']}")
                 # create the window container
                 window = window_c(data)
                 status = CLIENT_CONNECTED
@@ -394,7 +392,7 @@ async def send_command(socket, command: str, params: str = ""):
                     if 'timestamp' in df.columns:
                         df['timestamp'] = df['timestamp'].astype(np.int64)
                     
-                    print("DataFrame received and reconstructed")
+                    print("DataFrame received")
                     if debug : print(f"DataFrame shape: {df.shape}")
                     ### fall through ###
                 except Exception as e:
@@ -422,7 +420,7 @@ async def listen_for_updates(context):
     socket.connect(f"tcp://127.0.0.1:{pub_port}")  # Modified line
     socket.setsockopt_string(zmq.SUBSCRIBE, "")
     
-    print("started...")
+    if debug:print("started...")
     
     try:
         while True:
