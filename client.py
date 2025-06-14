@@ -10,6 +10,22 @@ import numpy as np
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+# Add port parameter handling
+import argparse
+
+# Default ports
+DEFAULT_CMD_PORT = 5555
+DEFAULT_PUB_PORT = 5556
+
+# Parse command line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument('--port', type=int, help='Command port number (pub port will be port+1)')
+args = parser.parse_args()
+
+# Set ports
+cmd_port = args.port if args.port is not None else DEFAULT_CMD_PORT
+pub_port = cmd_port + 1 if args.port is not None else DEFAULT_PUB_PORT
+
 debug = False
 
 
@@ -403,7 +419,7 @@ async def send_command(socket, command: str, params: str = ""):
 async def listen_for_updates(context):
     """Listen for updates from server"""
     socket = context.socket(zmq.SUB)
-    socket.connect("tcp://127.0.0.1:5556")
+    socket.connect(f"tcp://127.0.0.1:{pub_port}")  # Modified line
     socket.setsockopt_string(zmq.SUBSCRIBE, "")
     
     print("started...")
@@ -441,7 +457,7 @@ async def run_client():
 
     # Define the socket for commands using REQ/REP pattern
     cmd_socket = context.socket(zmq.REQ)
-    cmd_socket.connect("tcp://127.0.0.1:5555")
+    cmd_socket.connect(f"tcp://127.0.0.1:{cmd_port}")  # Modified line
 
     if debug : print("Client is running and connected to server...")
 
