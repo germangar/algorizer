@@ -292,17 +292,61 @@ async def proccess_message(msg: str, cmd_socket):
     return response if response else create_command_response("unknown command")
 
 
+def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10):
+    """Find available ports for both command and publish sockets"""
+    for attempt in range(max_attempts):
+        cmd_port = base_cmd_port + (attempt * 2)
+        pub_port = base_pub_port + (attempt * 2)
+        
+        try:
+            # Test command port (REP)
+            context = zmq.Context()
+            cmd_socket = context.socket(zmq.REP)
+            cmd_socket.bind(f"tcp://127.0.0.1:{cmd_port}")
+            
+            # Test publish port (PUB)
+            pub_socket = context.socket(zmq.PUB)
+            pub_socket.bind(f"tcp://127.0.0.1:{pub_port}")
+            
+            # If we got here, both ports are available
+            cmd_socket.close()
+            pub_socket.close()
+            context.term()
+            
+            return cmd_port, pub_port
+            
+        except zmq.error.ZMQError:
+            # Port(s) already in use, clean up and try next pair
+            try:
+                cmd_socket.close()
+                pub_socket.close()
+                context.term()
+            except:
+                pass
+            continue
+            
+    raise RuntimeError(f"Could not find available ports after {max_attempts} attempts")
+
+
 async def run_server():
+    # Find available ports
+    try:
+        cmd_port, pub_port = find_available_ports()
+        print(f"Server using ports: CMD={cmd_port}, PUB={pub_port}")
+    except RuntimeError as e:
+        print(f"Error finding available ports: {e}")
+        return
+    
     # ZeroMQ Context
     context = zmq.asyncio.Context()
 
     # Socket to handle command messages (REQ/REP pattern)
     cmd_socket = context.socket(zmq.REP)
-    cmd_socket.bind("tcp://127.0.0.1:5555")
+    cmd_socket.bind(f"tcp://127.0.0.1:{cmd_port}")
 
     # Socket to publish bar updates (PUB/SUB pattern)
     pub_socket = context.socket(zmq.PUB)
-    pub_socket.bind("tcp://127.0.0.1:5556")
+    pub_socket.bind(f"tcp://127.0.0.1:{pub_port}")
 
     print("Server is running...")
 
@@ -317,7 +361,7 @@ async def run_server():
                 if debug : print(f"Received command: {message}")
 
                 # Process the command
-                response = await proccess_message(message, cmd_socket)  # Added await
+                response = await proccess_message(message, cmd_socket)
 
                 # Only send response if it wasn't already sent (for DataFrame case)
                 if response is not None:
