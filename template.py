@@ -128,9 +128,7 @@ if __name__ == '__main__':
     print(stream.timeframes[stream.timeframeFetch].df.columns)
     print(stream.timeframes[stream.timeframeFetch].df['rsiSlow'])
 
-    # Call only if you want to open the chart window. It's not needed to run the algo
-    # stream.createWindow( '1m' )
-    stream.registerPanel('macd', 1.0, 0.2, show_timescale=False )
+    # stream.registerPanel('macd', 1.0, 0.2, show_timescale=False )
     stream.registerPanel('rsi', 1.0, 0.2 )
 
     stream.run()

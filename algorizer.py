@@ -14,8 +14,6 @@ from candle import candle_c
 import calcseries as calc
 from calcseries import generatedSeries_c # just for making lives easier
 
-# from window import window_c # I should try to get rid of this import
-
 from server import push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
 
 import active
@@ -132,7 +130,6 @@ class timeframe_c:
         self.timestamp = 0
         self.shadowcopy = False
         self.jumpstart = False
-        self.window = None
 
         self.df:pd.DataFrame = []
         self.initdata:pd.DataFrame = []
@@ -671,6 +668,7 @@ def isInitializing():
     return active.timeframe.stream.initializing
 
 
+# FIXME: Should I bother doing this anymore? Now that the window is open on its own, what is the clock good for?
 async def update_clocks( stream:stream_c ):
     from datetime import datetime
 
@@ -679,8 +677,6 @@ async def update_clocks( stream:stream_c ):
 
         for timeframe in stream.timeframes.values():
             timeframe.realtimeCandle.updateRemainingTime()
-            # if timeframe.window != None:
-            #     timeframe.window.updateClock()
 
 
 
