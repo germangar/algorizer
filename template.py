@@ -125,10 +125,12 @@ if __name__ == '__main__':
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 
-    print(stream.timeframes[stream.timeframeFetch].df.columns)
-    print(stream.timeframes[stream.timeframeFetch].df['rsiSlow'])
+    # print(stream.timeframes[stream.timeframeFetch].df.columns)
 
     # stream.registerPanel('macd', 1.0, 0.2, show_timescale=False )
     stream.registerPanel('rsi', 1.0, 0.2 )
+
+
+    # stream.createWindow( '1m' )
 
     stream.run()

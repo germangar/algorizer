@@ -4,6 +4,7 @@ import asyncio
 import tasks
 import sys
 import json
+import numpy as np
 import active
 import pandas as pd
 from constants import c

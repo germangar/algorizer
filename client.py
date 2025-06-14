@@ -53,6 +53,7 @@ class window_c:
         self.plots:list[plot_c] = []
         self.markers:list = []
         self.showRealTimeCandle = True
+        self.numpanels = 0
 
         print( config )
 
@@ -68,6 +69,7 @@ class window_c:
         fullheighttop = 0.0
         for n in self.panels.keys():
             if n == 'main': continue
+            self.numpanels += 1
             panel = self.panels[n]
             h = panel.get('height')
             if h == None:
@@ -97,12 +99,14 @@ class window_c:
 
         window_width = 1024
         window_height = 768
-        if 0:
+        if 1:
             screen_width, screen_height = self.get_screen_resolution()
             window_width = int(screen_width * 0.65)
             window_height = int(screen_height * 0.65)
         self.panels["main"]["chart"] = chart = Chart( window_width, window_height, inner_height=self.panels["main"]["height"], inner_width=self.panels["main"]["width"] )
         chart.layout( font_size=12 )
+        if self.numpanels > 0 : 
+            chart.time_scale( visible=False, time_visible=False )
 
         legend = f"{self.config['symbol']}"
         chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=legend )
@@ -127,7 +131,6 @@ class window_c:
         # create subpanels if there are any
         for n in self.panels.keys():
             if n == 'main': continue
-            self.showRealTimeCandle = False
             panel = self.panels[n]
             panel["chart"] = subchart = chart.create_subchart( panel["position"], width = panel["width"], height = panel["height"], sync=chart.id )
             subchart.layout( font_size=panel["fontsize"] )
@@ -217,6 +220,10 @@ class window_c:
                         text = marker.text )
             
             self.markers.append( marker )
+
+    def isAlive(self)->bool:
+        chart:Chart = self.panels['main']['chart']
+        return chart.is_alive
 
     def newTick(self, msg):
         if not self.showRealTimeCandle or msg is None :

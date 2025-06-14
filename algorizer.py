@@ -26,7 +26,7 @@ verbose = False
 
 
 class plot_c:
-    def __init__( self, name:str, chart_name = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0 ):
+    def __init__( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
         '''name, color, style, width
         color: str = 'rgba(200, 200, 200, 0.6)',
         style: LINE_STYLE = 'solid', width: int = 2,
@@ -35,22 +35,41 @@ class plot_c:
         '''
         self.name = name
         self.type = type
-        self.panelName = chart_name
+        self.chart_name = chart_name
         self.color = color if color.startswith('rgba') else tools.hx2rgba(color)
         self.style = style
         self.width = width
         self.hist_margin_top = hist_margin_top
         self.hist_margin_bottom = hist_margin_bottom
+        self.screen_name = screen_name
         self.iat_index = -1
 
-        if name is None:
-            raise SystemError( "ERROR: plot_c: Can't create a plot without a name" )
+        timeframe = active.timeframe # FIXME
 
-        # Names starting with an underscore are reserved for generated series
-        # and must already exist in the dataframe
-        if name.startswith('_') :
-            if name not in active.timeframe.df.columns:
-                raise SystemError( "ERROR: plot_c: Names starting with an underscore are reserved for generated series" )
+        # these types will create a new column in the dataframe where to store values
+        if source is None or isinstance( source, (float, int) ):
+            # we need to figure out the column name
+            if name:
+                if name in timeframe.df.columns: # we can't use this name. Do we have an alternative?
+                    raise ValueError( f"plot_c:name [{name}] is already in use" )
+                # Names starting with an underscore are reserved for generated series
+                # and must already exist in the dataframe
+                if name.startswith('_') :
+                    raise ValueError( f"plot_c:names starting with an underscore are reserved for generatedSeries_c objects" )
+                self.name = name
+                if not self.screen_name:
+                    self.screen_name = self.name
+                timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
+                print(f"CREATED custom plot {self.name}")
+
+        elif isinstance( source, (pd.Series, generatedSeries_c) ):
+            self.name = source.name
+
+        if not self.name or self.name not in timeframe.df.columns:
+            raise ValueError( f"plot_c:Couldn't assign a name to the plot [{name}]" )
+
+        self.iat_index = timeframe.df.columns.get_loc(self.name)
+
 
     def update( self, source, timeframe ):
         if isinstance(source, (int, float, type(None))) :
@@ -59,16 +78,14 @@ class plot_c:
                 timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
                 self.iat_index = timeframe.df.columns.get_loc(self.name)
 
-            if timeframe.jumpstart :
-                # This is the call made on the last row to force pandas
-                # to calculate all the generated series at once. We don't want to do anything here.
+            if timeframe.jumpstart : # Do not assign values in the jumpstart row
                 return
 
             # timeframe.df.at[timeframe.barindex, self.name] = source
             timeframe.df.iat[timeframe.barindex, self.iat_index] = source
             return
 
-        
+        # this shouldn't be neccesary anymore. I gotta check it
         if isinstance(source, (pd.Series, generatedSeries_c)) and self.name in timeframe.df.columns:
             if self.iat_index == -1:
                 self.iat_index = timeframe.df.columns.get_loc(self.name)
@@ -76,23 +93,6 @@ class plot_c:
 
         raise ValueError( f"Unvalid plot type {self.name}: {type(source)}" )
 
-
-
-
-
-def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
-    '''
-    source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
-    chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
-    color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
-    style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
-    width: int
-    '''
-    return active.timeframe.plot( source, name, chart_name, color, style, width )
-
-
-def histogram( source, name:str = None, chart_name:str = None, color = "#4A545D", margin_top = 0.0, margin_bottom = 0.0 )->plot_c:
-        return active.timeframe.histogram( source, name, chart_name, color, margin_top, margin_bottom )
 
 class marker_c:
     def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
@@ -349,8 +349,8 @@ class timeframe_c:
 
     def register_plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0 )->plot_c:
         '''
-        source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
-        chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+        source: can either be a series, a generatedSeries or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
+        chart_name: Leave empty or use 'main' for the main panel. Use the name of a registered panel for plotting in the subpanel.
         color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
         style: plots LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
         width: with of the line. For plots.
@@ -362,7 +362,7 @@ class timeframe_c:
         plot = self.registeredPlots.get( name )
 
         if( plot == None ):
-            plot = plot_c( name, chart_name, color, style, width, type, hist_margin_top, hist_margin_bottom )
+            plot = plot_c( source, name, chart_name, color, style, width, type, hist_margin_top, hist_margin_bottom )
             self.registeredPlots[name] = plot
         
         plot.update( source, self )
@@ -393,7 +393,7 @@ class timeframe_c:
         di = {}
         for p in self.registeredPlots.values():
             plot = {
-                'panel': p.panelName,
+                'panel': p.chart_name,
                 'type': p.type,
                 'color': p.color,
                 'style': p.style,
@@ -631,7 +631,36 @@ class stream_c:
         for m in self.markers:
             di.append( m.descriptor() )
         return di
+    
+    def createWindow(self, timeframeStr):
+        """Create and show a window for the given timeframe"""
+        # if timeframeStr not in self.timeframes:
+        #     raise ValueError(f"Invalid timeframe: {timeframeStr}")
+        
+        # # Import here to avoid circular imports
+        # from server import start_window_server
+        # start_window_server()
+        pass
 
+
+def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
+    '''
+    source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
+    chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
+    color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
+    style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+    width: int
+    '''
+    return active.timeframe.plot( source, name, chart_name, color, style, width )
+
+
+def histogram( source, name:str = None, chart_name:str = None, color = "#4A545D", margin_top = 0.0, margin_bottom = 0.0 )->plot_c:
+        return active.timeframe.histogram( source, name, chart_name, color, margin_top, margin_bottom )
+
+def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name = None )->marker_c:
+    '''MARKER_POSITION = Literal['above', 'below', 'inside']
+        MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
+    return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name ) or None
 
 def getRealtimeCandle()->candle_c:
     return active.timeframe.realtimeCandle
@@ -658,12 +687,6 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
     targetTimeframe = active.timeframe.stream.timeframes[timeframeName] if timeframeName is not None else active.timeframe
     return targetTimeframe.valueAtTimestamp( column_name, timestamp )
     
-
-def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name = None )->marker_c:
-    '''MARKER_POSITION = Literal['above', 'below', 'inside']
-        MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
-    return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name ) or None
-
 def isInitializing():
     return active.timeframe.stream.initializing
 
@@ -700,9 +723,9 @@ if __name__ == '__main__':
         pass
     def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
         sma = calc.SMA( close, 350 )
-        sma.plot()
+        # sma.plot()
         rsi = calc.RSI( close, 14 )
-        rsiplot = plot( rsi.series(), rsi.name, 'panel' )
+        # rsiplot = plot( rsi.series(), rsi.name, 'panel' )
         return
 
     def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
@@ -714,13 +737,13 @@ if __name__ == '__main__':
         # strategy code goes here #
         ###########################
         sma = calc.SMA( close, 75 )
-        sma.plot()
+        # sma.plot()
 
         # ema = calcEMA( close, 4 )
         # ema.plot()
 
         lr = calc.LINREG( close, 300 )
-        lr.plot()
+        # lr.plot()
 
         # plot( 0, "lazyline", 'panel' )
 
@@ -729,7 +752,7 @@ if __name__ == '__main__':
         
         # FIXME: It crashes when calling to plot the same series
         atr = calc.ATR( 14 )
-        plot( atr.series(), atr.name, 'panel' )
+        # plot( atr.series(), atr.name, 'panel' )
 
         # calcTR(14).plot('panel')
 
@@ -770,7 +793,7 @@ if __name__ == '__main__':
 
 
     stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], [runCloseCandle_1m], 5000 )
-    stream.registerPanel('panel', 1.0, 0.2, show_timescale=False )
+    # stream.registerPanel('panel', 1.0, 0.2, show_timescale=False )
     # strategy.print_strategy_stats()
 
     # stream.createWindow( '1m' )
