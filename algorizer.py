@@ -13,15 +13,10 @@ from fetcher import ohlcvs_c
 from candle import candle_c
 import calcseries as calc
 from calcseries import generatedSeries_c # just for making lives easier
-
 from server import push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
-
 import active
 
-import server
 
-
-SHOW_VOLUME = False
 verbose = False
 
 
@@ -404,12 +399,6 @@ class timeframe_c:
             di[p.name] = plot
         return di
 
-    # def jumpstartPlots( self ):
-    #     for plot in self.registeredPlots.values():
-    #         if not plot.initialized:
-    #             plot.update( None, self )
-
-
     def indexForTimestamp( self, timestamp:int )->int:
         # Estimate the index by dividing the offset by the time difference between rows
         baseTimestamp = int(self.df['timestamp'].iloc[0])
@@ -716,88 +705,6 @@ async def cli_task(stream:stream_c):
         await asyncio.sleep(0.05)
 
 
-if __name__ == '__main__':
-
-    def runCloseCandle_1d( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
-        pass
-    def runCloseCandle_5m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
-        sma = calc.SMA( close, 350 )
-        # sma.plot()
-        rsi = calc.RSI( close, 14 )
-        # rsiplot = plot( rsi.series(), rsi.name, 'panel' )
-        return
-
-    def runCloseCandle_15m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
-        return
-
-    def runCloseCandle_1m( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
-
-        ###########################
-        # strategy code goes here #
-        ###########################
-        sma = calc.SMA( close, 75 )
-        # sma.plot()
-
-        # ema = calcEMA( close, 4 )
-        # ema.plot()
-
-        lr = calc.LINREG( close, 300 )
-        # lr.plot()
-
-        # plot( 0, "lazyline", 'panel' )
-
-        # rsi = calcRSI( close, 14 )
-        # rsiplot = plot( rsi.series(), rsi.name, 'panel' )
-        
-        # FIXME: It crashes when calling to plot the same series
-        atr = calc.ATR( 14 )
-        # plot( atr.series(), atr.name, 'panel' )
-
-        # calcTR(14).plot('panel')
-
-        # cfo = calcCFO( close, 20 )
-        # cfo.plot('panel')
-
-        # dev = calcDEV( close, 30 )
-        # plot( dev.series(), dev.name, 'panel' )
-
-        # rma = calcRMA( close, 90 )
-        # rma.plot()
-
-        # stdev = calcSTDEV( close, 350 )
-
-        # willr = calcWPR( close, 32 ).plot('panel')
-        # calcBIAS( close, 32 ).plot('panel')
-
-        # hma = calcHMA( close, 150 )
-        # hma.plot()
-        # r = rising( hma.series(), 10 )
-        # f = falling( hma.series(), 10 )
-
-        # calcBarsSince( timeframe.barindex, r )
-        # wt = calcBarsWhileTrue( timeframe.barindex, hma.series() > 1.7 )
-
-        # calcCCI( 100 ).plot('panel')
-
-        # slope1000 = calcSMA( calcSLOPE( close, 200 ).series() * 500000, 14 )
-        # plot( slope1000.series(), slope1000.name, 'panel' )
-
-        # hma_rising = rising( hma.series(), 30 )
-        # if( hma_rising.current and not hma_rising.iloc(timeframe.barindex-1) ):
-        #     timeframe.stream.createMarker( '🔼' )
-
-        # hma_falling = falling( hma.series(), 30 )
-        # if( hma_falling.current and not hma_falling.iloc(timeframe.barindex-1) ):
-        #     timeframe.stream.createMarker( '🔽' )
-
-
-    stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], [runCloseCandle_1m], 5000 )
-    # stream.registerPanel('panel', 1.0, 0.2, show_timescale=False )
-    # strategy.print_strategy_stats()
-
-    # stream.createWindow( '1m' )
-
-    stream.run()
 
 
     

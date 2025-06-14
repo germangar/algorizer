@@ -145,7 +145,6 @@ async def send_dataframe(cmd_socket, df, timeframe_str):
         return False
 
 
-
 def push_marker_update(marker) -> str:
     """A new marker was created"""
     
