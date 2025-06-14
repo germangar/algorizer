@@ -31,9 +31,11 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     BBupper.plot( style='dotted' )
     BBlower.plot( style='dotted' )
 
-    rsi14 = calc.RSI(close, 14)
+    rsi14 = calc.RSI(close, 14).plot('rsi')
     rsiSlow = requestValue( rsi30m.name, '30m' )
-    # plot( rsiSlow, 'rsiSlow', 'panel' )
+    # plot( rsiSlow, 'rsiSlow', 'rsi' )
+
+
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsiSlow < -0.7
     sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsiSlow > 0.65
@@ -77,9 +79,9 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     # histogram.plot( 'panel', color = "#735252" )
     # timeframe.histogram( histo.series(), histo.name, "panel", color = "#4A545D")
     # histogram( histo.series(), histo.name, 'panel', "#4A545D" )
-    histo.histogram( 'panel', "#4A545D" )
-    macd_line.plot( 'panel', color = "#AB1212", width=2 )
-    signal_line.plot( 'panel', color = "#1BC573" )
+    histo.histogram( 'macd', "#4A545D" )
+    macd_line.plot( 'macd', color = "#AB1212", width=2 )
+    signal_line.plot( 'macd', color = "#1BC573" )
 
 # 
 #   SETTING UP THE CANDLES FEED
@@ -127,6 +129,7 @@ if __name__ == '__main__':
 
     # Call only if you want to open the chart window. It's not needed to run the algo
     # stream.createWindow( '1m' )
-    stream.registerPanel('panel', 1.0, 0.2 )
+    stream.registerPanel('macd', 1.0, 0.2, show_timescale=False )
+    # stream.registerPanel('rsi', 1.0, 0.2, show_candles=True, show_volume=True )
 
     stream.run()

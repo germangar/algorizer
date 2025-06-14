@@ -87,14 +87,9 @@ class window_c:
             raise ValueError( f"Panels exceed the maximum heigh. Check the accumulated panel heights don't exceed 1.0" )
         
         self.panels['main']['height'] = 1.0 - (fullheightbottom + fullheighttop)
+        self.panels["main"]["show_volume"] = False
 
         # to do: figure out how to do the same with widths
-
-        print( "__init__ DONE" )
-
-
-
-        
 
 
     def loadChartData(self, descriptor, df):
@@ -112,6 +107,13 @@ class window_c:
         legend = f"{self.config['symbol']}"
         chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=legend )
 
+        volume_alpha = 0.8 if self.panels["main"]["show_volume"] else 0.0
+        chart.volume_config(
+            scale_margin_top = 0.8, 
+            scale_margin_bottom = 0.0, 
+            up_color=f'rgba(83,141,131,{volume_alpha})', 
+            down_color=f'rgba(200,127,130,{volume_alpha})')
+
         try:
             tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close'], 'volume':df['volume']} )
         except Exception as e:
@@ -122,35 +124,23 @@ class window_c:
         except Exception as e:
             print(f"Error setting chart dataframe: {e}")
 
-        # create subpanels if assigned
+        # create subpanels if there are any
         for n in self.panels.keys():
             if n == 'main': continue
             self.showRealTimeCandle = False
             panel = self.panels[n]
             panel["chart"] = subchart = chart.create_subchart( panel["position"], width = panel["width"], height = panel["height"], sync=chart.id )
-            allow_line_names = False # FIXME: Add setting
+            subchart.layout( font_size=panel["fontsize"] )
+            allow_line_names = panel["show_plotnames"]
             subchart.legend( visible=True, ohlc=False, percent=False, lines = allow_line_names, font_size=14, text=n ) # lines info crash the script when enabled
             subchart.crosshair( horz_visible=False )
-            subchart.price_line( label_visible=False, line_visible=False )
-            subchart.layout( font_size=14 )
+            subchart.time_scale( visible=panel["show_timescale"], time_visible=panel["show_timescale"] )
+            subchart.price_line( label_visible=panel["show_labels"], line_visible=panel["show_priceline"] )
+            # subchart.precision( self.bottompanel_precision )
+            # subchart.price_scale(minimum_width=price_column_width)
+            
             subchart.set(tmpdf)
             if not panel["show_candles"]:subchart.hide_data()
-            
-
-
-
-        # self.subchart = subchart = self.chart.create_subchart('bottom', width = 1.0, height = 0.2, sync=self.chart.id)
-        # subchart.legend( visible=True, ohlc=False, percent=False, lines = False, font_size=14 )
-        # subchart.legend( visible=True, ohlc=False, percent=False, lines = False, font_size=14 ) # lines info crash the script when enabled
-        # subchart.time_scale( visible=True, time_visible=True )
-        # subchart.crosshair( horz_visible=False )
-        # subchart.price_line( label_visible=False, line_visible=False )
-        # subchart.layout( font_size=14 )
-        # # subchart.precision( self.bottompanel_precision )
-        # # subchart.price_scale(minimum_width=price_column_width)
-        # subchart.hide_data()
-        # print ( self.subchart )
-        # self.subchart.set(tmpdf)
 
         self.descriptor = descriptor
         self.columns = df.columns

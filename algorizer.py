@@ -643,7 +643,7 @@ class stream_c:
         await exchange.close()
 
     
-    def registerPanel( self, name:str, width:float, height:float, show_candles:bool = False, ptype = c.PANEL_HORIZONTAL ):
+    def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False ):
         """width and height are percentages of the window in 0/1 scale"""
         # to do: ensure the name isn't in use
         if name == None or not isinstance(name, str):
@@ -654,10 +654,15 @@ class stream_c:
                 raise ValueError( f"panels_c:registerPanel - name [{name}] is already registered " )
         panel = {
             "position": "bottom",
-            "type": ptype,
             "width": min(1.0, max(0.0, width)),
             "height": min(1.0, max(0.0, height)),
-            "show_candles": show_candles
+            "fontsize": fontsize,
+            "show_candles": show_candles,
+            "show_timescale": show_timescale,
+            "show_labels": show_labels,
+            "show_priceline": show_priceline,
+            "show_plotnames": show_plotnames,
+            "show_volume": show_volume
         }
         self.registeredPanels[name] = panel
 
