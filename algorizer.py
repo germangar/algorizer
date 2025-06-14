@@ -701,13 +701,13 @@ async def update_clocks( stream:stream_c ):
 
 
 import aioconsole
-async def cli_task(stream):
+async def cli_task(stream:stream_c):
     while True:
         command = await aioconsole.ainput()  # <-- Use aioconsole for non-blocking input
 
         if command.lower() == 'chart':
             print( 'opening chart' )
-            stream.createWindow( stream.timeframeFetch ) # TODO: Allow the user to choose the timeframe as parameter and add validation
+            stream.createWindow( "1m" ) # TODO: Allow the user to choose the timeframe as parameter and add validation
 
         if command.lower() == 'close':
             # TODO: Function to send a command to the client to shutdown

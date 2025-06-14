@@ -28,6 +28,8 @@ debug = False
 
 # Global queue for updates
 update_queue = asyncio.Queue(maxsize=1000)  # Set maxsize to match MAX_QUEUE_SIZE
+server_cmd_port = None
+server_pub_port = None
 
 CLIENT_DISCONNECTED = 0
 CLIENT_CONNECTED = 1
@@ -357,10 +359,18 @@ def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10
 
 def start_window_server():
     """Initialize and start the window server"""
-    # Find available ports
+    global server_cmd_port
+    
+    # If server is running, use its ports
+    if server_cmd_port is not None:
+        print(f"Launching client for existing server on port {server_cmd_port}")
+        return launch_client_window(server_cmd_port) is not None
+
+    # Server not running yet, start it with new ports
     try:
         cmd_port, pub_port = find_available_ports()
-        print(f"Using ports: CMD={cmd_port}, PUB={pub_port}")
+        print(f"Starting new server using ports: CMD={cmd_port}, PUB={pub_port}")
+        server_cmd_port, server_pub_port = cmd_port, pub_port
     except RuntimeError as e:
         print(f"Error finding available port: {e}")
         return False
@@ -375,24 +385,29 @@ def start_window_server():
 
 
 async def run_server():
-    # Find available ports
-    try:
-        cmd_port, pub_port = find_available_ports()
-        print(f"Server using ports: CMD={cmd_port}, PUB={pub_port}")
-    except RuntimeError as e:
-        print(f"Error finding available ports: {e}")
-        return
+    global server_cmd_port, server_pub_port
+    
+    # Find available ports if we don't have them yet
+    if server_cmd_port is None or server_pub_port is None:
+        try:
+            server_cmd_port, server_pub_port = find_available_ports()
+            print(f"Server using ports: CMD={server_cmd_port}, PUB={server_pub_port}")
+        except RuntimeError as e:
+            print(f"Error finding available ports: {e}")
+            return
+    else:
+        print(f"Server already running on ports: CMD={server_cmd_port}, PUB={server_pub_port}")
     
     # ZeroMQ Context
     context = zmq.asyncio.Context()
 
     # Socket to handle command messages (REQ/REP pattern)
     cmd_socket = context.socket(zmq.REP)
-    cmd_socket.bind(f"tcp://127.0.0.1:{cmd_port}")
+    cmd_socket.bind(f"tcp://127.0.0.1:{server_cmd_port}")
 
     # Socket to publish bar updates (PUB/SUB pattern)
     pub_socket = context.socket(zmq.PUB)
-    pub_socket.bind(f"tcp://127.0.0.1:{pub_port}")
+    pub_socket.bind(f"tcp://127.0.0.1:{server_pub_port}")
 
     print("Server is running...")
 
