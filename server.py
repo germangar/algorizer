@@ -292,6 +292,33 @@ async def proccess_message(msg: str, cmd_socket):
     return response if response else create_command_response("unknown command")
 
 
+def launch_client_window(cmd_port):
+    """Launch the client window process with the specified port"""
+    import os
+    import sys
+    import subprocess
+    
+    # Get the directory where server.py is located
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Construct path to client.py
+    client_script = os.path.join(current_dir, "client.py")
+    
+    try:
+        # Launch client process with port parameter
+        process = subprocess.Popen([
+            sys.executable,  # Use same Python interpreter
+            client_script,
+            "--port", str(cmd_port)
+        ])
+        
+        print(f"Launched client window with port {cmd_port}")
+        return process
+        
+    except subprocess.SubprocessError as e:
+        print(f"Error launching client window: {e}")
+        return None
+
+
 def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10):
     """Find available ports for both command and publish sockets"""
     for attempt in range(max_attempts):
@@ -326,6 +353,25 @@ def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10
             continue
             
     raise RuntimeError(f"Could not find available ports after {max_attempts} attempts")
+
+
+def start_window_server():
+    """Initialize and start the window server"""
+    # Find available ports
+    try:
+        cmd_port, pub_port = find_available_ports()
+        print(f"Using ports: CMD={cmd_port}, PUB={pub_port}")
+    except RuntimeError as e:
+        print(f"Error finding available port: {e}")
+        return False
+
+    # Launch client window
+    client_process = launch_client_window(cmd_port)
+    if not client_process:
+        print("Failed to launch client window")
+        return False
+        
+    return True
 
 
 async def run_server():

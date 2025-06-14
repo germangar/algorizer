@@ -634,13 +634,10 @@ class stream_c:
     
     def createWindow(self, timeframeStr):
         """Create and show a window for the given timeframe"""
-        # if timeframeStr not in self.timeframes:
-        #     raise ValueError(f"Invalid timeframe: {timeframeStr}")
-        
-        # # Import here to avoid circular imports
-        # from server import start_window_server
-        # start_window_server()
-        pass
+        # TODO: add validation of the timeframe
+        from server import start_window_server
+        start_window_server()
+
 
 
 def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
@@ -710,8 +707,10 @@ async def cli_task(stream):
 
         if command.lower() == 'chart':
             print( 'opening chart' )
+            stream.createWindow( stream.timeframeFetch ) # TODO: Allow the user to choose the timeframe as parameter and add validation
 
         if command.lower() == 'close':
+            # TODO: Function to send a command to the client to shutdown
             print( 'closing chart' )
         
         await asyncio.sleep(0.05)
