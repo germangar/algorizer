@@ -20,3 +20,7 @@ class c(IntEnum):  # Ultra-short class name
     DF_VOLUME = 5
     DF_TOP = 6
     DF_BOTTOM = 7
+
+    # window panel types (I don't even know if vertical is possible right now)
+    PANEL_HORIZONTAL = 0
+    PANEL_VERTICAL = 0

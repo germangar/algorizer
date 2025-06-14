@@ -6,6 +6,7 @@ import sys
 import json
 import active
 import pandas as pd
+from constants import c
 
 # Fix for Windows proactor event loop
 if sys.platform == 'win32':
@@ -36,6 +37,7 @@ LISTENING_TIMEOUT = 20.0    # 5 seconds timeout for listening state
 LOADING_TIMEOUT = 60.0    # 1 minute timeout for other states
 MAX_QUEUE_SIZE = 1000
 
+
 class client_t:
     def __init__(self):
         self.status = CLIENT_DISCONNECTED
@@ -61,17 +63,25 @@ class client_t:
             # More lenient timeout for connecting/loading states
             return elapsed > LOADING_TIMEOUT
 
-
 client = client_t()
 
-def create_data_message(datatype: str, data: any) -> str:
+
+def create_command_response(message: str) -> str:
+    """Create a simple response for command acknowledgment"""
+    return 'ok'
+
+
+def create_config_message() -> str:
     """Create a JSON message for data transmission"""
+    stream = active.timeframe.stream
     message = {
-        "type": "data",
-        "datatype": datatype,
-        "payload": data
+        "type": "config",
+        "symbol": stream.symbol,
+        "timeframes": list(stream.timeframes.keys()),
+        "panels": stream.registeredPanels
     }
     return json.dumps(message)
+
 
 def create_data_descriptor(df, timeframeStr: str) -> str:
     """Create a descriptor message for the DataFrame that will be sent"""
@@ -87,6 +97,7 @@ def create_data_descriptor(df, timeframeStr: str) -> str:
     }
     return json.dumps(message)
 
+
 def create_dataframe_message(data: any, timeframeStr: str) -> str:
     columns = list(data.columns)
     data = data.values.tolist()  # More efficient than to_dict
@@ -99,26 +110,20 @@ def create_dataframe_message(data: any, timeframeStr: str) -> str:
     }
     return json.dumps(message)
 
-def create_config_message() -> str:
-    """Create a JSON message for data transmission"""
+
+def push_marker_update(marker) -> str:
+    """A new marker was created"""
+    
     message = {
-        "type": "config",
-        "symbol": active.timeframe.stream.symbol,
-        "timeframes": list(active.timeframe.stream.timeframes.keys()),
-        "panels": 2,  # To do. By now this is a placeholder
-        "payload": ""
+        "type": "marker",
+        "data": marker.descriptor()
     }
-    return json.dumps(message)
+    asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
 
-def create_command_response(message: str) -> str:
-    """Create a simple response for command acknowledgment"""
-    return 'ok'
 
-def server_cmd_dataframe(msg):
-    df = getDataframe()
-    # Convert dataframe to dict for JSON serialization
-    data = df.to_dict('records') if df is not None else []
-    return create_data_message("dataframe", data)
+def push_remove_marker_update(marker) -> str:
+    """A new marker was created"""
+    return
 
 
 def push_tick_update(timeframe) -> str:
@@ -130,6 +135,7 @@ def push_tick_update(timeframe) -> str:
         "data": timeframe.realtimeCandle.tickData()
     }
     asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
+
 
 def push_row_update(timeframe):
     if timeframe.timeframeStr != client.timeframeStr:
@@ -145,7 +151,6 @@ def push_row_update(timeframe):
         "data": row_data,
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
-    # print(f"Queueing update for timestamp: {row_data[df.columns.get_loc('timestamp')]}")  # Debug
     asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
 
 

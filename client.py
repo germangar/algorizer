@@ -49,40 +49,110 @@ class window_c:
     def __init__(self, config):
         self.config = config
         self.descriptor: Optional[dict[str, Any]] = None
-        # self.df: Optional[pd.DataFrame] = None
         self.columns:list = []
-        self.chart = None
         self.plots:list[plot_c] = []
         self.markers:list = []
         self.showRealTimeCandle = True
 
-    def openWindow(self, descriptor, df):
+        print( config )
+
+        # calculate the panels sizes
+        self.panels = config['panels']
+        # add the main panel
+        if self.panels.get('main') == None:
+            self.panels['main'] = { "type": c.PANEL_HORIZONTAL, "position": "above", "width": 1.0, "height": 1.0 }
+
+        # first figure out how much space are going to 
+        # take the other panels which are not the main panel
+        fullheightbottom = 0.0
+        fullheighttop = 0.0
+        for n in self.panels.keys():
+            if n == 'main': continue
+            panel = self.panels[n]
+            h = panel.get('height')
+            if h == None:
+                panel['height'] = h = 0.1
+            position = panel.get('position')
+            if position is None:
+                panel['position'] = position = 'bottom'
+
+            if panel['position'] == 'bottom':
+                fullheightbottom += h
+            elif panel['position'] == 'top':
+                fullheighttop += h
+            # is it possible to have panels both above and below the main panel? I have to check that.
+
+        if fullheightbottom + fullheighttop > 1.0:
+            # This is way out of bounds. We should rescale but by now let's just crash
+            raise ValueError( f"Panels exceed the maximum heigh. Check the accumulated panel heights don't exceed 1.0" )
+        
+        self.panels['main']['height'] = 1.0 - (fullheightbottom + fullheighttop)
+
+        # to do: figure out how to do the same with widths
+
+        print( "__init__ DONE" )
+
+
+
+        
+
+
+    def loadChartData(self, descriptor, df):
+        print( "Initializing window" )
+
+        window_width = 1024
+        window_height = 768
+        if 0:
+            screen_width, screen_height = self.get_screen_resolution()
+            window_width = int(screen_width * 0.65)
+            window_height = int(screen_height * 0.65)
+        self.panels["main"]["chart"] = chart = Chart( window_width, window_height, inner_height=self.panels["main"]["height"], inner_width=self.panels["main"]["width"] )
+        chart.layout( font_size=12 )
+
+        legend = f"{self.config['symbol']}"
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=legend )
+
         try:
             tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close'], 'volume':df['volume']} )
         except Exception as e:
             print(f"Error converting timestamp to datetime: {e}")
 
-        print( "Initializing window" )
-
-        window_width = 800
-        window_height = 600
-        if 1:
-            screen_width, screen_height = self.get_screen_resolution()
-            window_width = int(screen_width * 0.65)
-            window_height = int(screen_height * 0.65)
-        chart = Chart( window_width, window_height )
-
-        legend = f"{self.config['symbol']} - {descriptor['timeframe']} - candles:{len(df)}"
-        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=legend )
-
         try:
             chart.set( tmpdf )
         except Exception as e:
             print(f"Error setting chart dataframe: {e}")
+
+        # create subpanels if assigned
+        for n in self.panels.keys():
+            if n == 'main': continue
+            self.showRealTimeCandle = False
+            panel = self.panels[n]
+            panel["chart"] = subchart = chart.create_subchart( panel["position"], width = panel["width"], height = panel["height"], sync=chart.id )
+            allow_line_names = False # FIXME: Add setting
+            subchart.legend( visible=True, ohlc=False, percent=False, lines = allow_line_names, font_size=14, text=n ) # lines info crash the script when enabled
+            subchart.crosshair( horz_visible=False )
+            subchart.price_line( label_visible=False, line_visible=False )
+            subchart.layout( font_size=14 )
+            subchart.set(tmpdf)
+            if not panel["show_candles"]:subchart.hide_data()
             
-        self.chart = chart
+
+
+
+        # self.subchart = subchart = self.chart.create_subchart('bottom', width = 1.0, height = 0.2, sync=self.chart.id)
+        # subchart.legend( visible=True, ohlc=False, percent=False, lines = False, font_size=14 )
+        # subchart.legend( visible=True, ohlc=False, percent=False, lines = False, font_size=14 ) # lines info crash the script when enabled
+        # subchart.time_scale( visible=True, time_visible=True )
+        # subchart.crosshair( horz_visible=False )
+        # subchart.price_line( label_visible=False, line_visible=False )
+        # subchart.layout( font_size=14 )
+        # # subchart.precision( self.bottompanel_precision )
+        # # subchart.price_scale(minimum_width=price_column_width)
+        # subchart.hide_data()
+        # print ( self.subchart )
+        # self.subchart.set(tmpdf)
+
         self.descriptor = descriptor
-        # self.df = df # FIXME: We may not need to keep this in memory
         self.columns = df.columns
 
         self.createPlots(df)
@@ -90,6 +160,7 @@ class window_c:
 
         task = chart.show_async()
         tasks.registerTask( 'window', task )
+
 
     def createPlots(self, df:pd.DataFrame):
         plotsList = self.descriptor['plots']
@@ -108,9 +179,13 @@ class window_c:
             )
             
             if plot.panel:
-                continue
-
-            chart = self.chart
+                panel = self.panels.get(plot.panel)
+                if panel == None:
+                    print( f"WARNING: Couldn't find panel [{plot.panel}] for plot [{plot.name}]" )
+                    continue
+                chart = panel['chart']
+            else:
+                chart = self.panels['main']['chart']
             
             if plot.type == c.PLOT_LINE :
                 plot.instance = chart.create_line( plot.name, plot.color, plot.style, plot.width, price_line=False, price_label=False )
@@ -136,10 +211,15 @@ class window_c:
                 instance = None
             )
 
+            chart = self.panels['main']['chart']
             if marker.panel:
-                continue
+                panel = self.panels.get(marker.panel)
+                if panel == None:
+                    print( f"WARNING: Couldn't find panel [{marker.panel}] for marker]" )
+                else:
+                    chart = panel['chart']
+                
 
-            chart = self.chart
             marker.instance = chart.marker( time = pd.to_datetime( marker.timestamp, unit='ms' ),
                         position = marker.position,
                         shape = marker.shape,
@@ -166,7 +246,9 @@ class window_c:
             'volume': row[c.DF_VOLUME]
         }
         
-        self.chart.update( pd.Series(data_dict) )
+        for n in self.panels.keys():
+            chart = self.panels[n]['chart']
+            chart.update( pd.Series(data_dict) )
 
     def newRow(self, msg):
         row = msg.get('data')
@@ -185,7 +267,9 @@ class window_c:
         }
         
         series = pd.Series(data_dict)
-        self.chart.update(series)
+        for n in self.panels.keys():
+            chart = self.panels[n]['chart']
+            chart.update( pd.Series(data_dict) )
 
         # Second part - full data update
         if columns is None:
@@ -306,7 +390,7 @@ async def send_command(socket, command: str, params: str = ""):
                     return None
                 
                 # initialize the window with the dataframe and open it
-                window.openWindow( descriptor, df )
+                window.loadChartData( descriptor, df )
                 status = CLIENT_READY
                 return data
 
@@ -362,7 +446,7 @@ async def run_client():
     cmd_socket = context.socket(zmq.REQ)
     cmd_socket.connect("tcp://127.0.0.1:5555")
 
-    print("Client is running and connected to server...")
+    if debug : print("Client is running and connected to server...")
 
     try:
         # Start the update listener

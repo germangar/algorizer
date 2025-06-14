@@ -14,15 +14,15 @@ from candle import candle_c
 import calcseries as calc
 from calcseries import generatedSeries_c # just for making lives easier
 
-from window import window_c # I should try to get rid of this import
+# from window import window_c # I should try to get rid of this import
 
-from server import push_row_update, push_tick_update
+from server import push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
 
 import active
 
 import server
 
-# ALLOW_NEGATIVE_ILOC = False
+
 SHOW_VOLUME = False
 verbose = False
 
@@ -163,25 +163,17 @@ class marker_c:
         self.panel = chart_name
         self.chart = None
         self.marker = None
-    
-    def __del__( self ):
-        self.remove()
 
-    def remove( self ):
-        if( self.marker != None ):
-            if( self.chart ):
-                self.chart.remove_marker( self.marker )
-                self.marker = None
-
-    def refreshInChart( self ):
-        if( self.chart ):
-            self.remove()
-            self.marker = self.chart.marker( time = pd.to_datetime( self.timestamp, unit='ms' ),
-                                            position = self.position,
-                                            shape = self.shape,
-                                            color = self.color,
-                                            text = self.text )
-
+    def descriptor(self):
+        return {
+                'id':0,
+                'timestamp':self.timestamp,
+                'position':self.position,
+                'shape':self.shape,
+                'color':self.color,
+                'panel':self.panel,
+                'text':self.text
+            }
 
 
 class timeframe_c:
@@ -357,9 +349,6 @@ class timeframe_c:
                 self.realtimeCandle.bottom = min( self.realtimeCandle.open, self.realtimeCandle.close )
                 self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
 
-                if( not self.stream.initializing and self.window != None ):
-                    self.window.updateChart(self)
-
                 if not self.stream.initializing:
                     push_tick_update( self )
 
@@ -395,8 +384,6 @@ class timeframe_c:
 
             if not self.stream.initializing :
                 print( f"NEW CANDLE {self.timeframeStr} : {int(self.df.iloc[self.barindex]['timestamp'])} DELTA: {self.realtimeCandle.timestamp - int(self.df.iloc[self.barindex]['timestamp'])}" )
-                if( self.window != None ):
-                    self.window.updateChart(self)
 
             if( self.callback != None ):
                 self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
@@ -475,10 +462,10 @@ class timeframe_c:
             di[p.name] = plot
         return di
 
-    def jumpstartPlots( self ):
-        for plot in self.registeredPlots.values():
-            if not plot.initialized:
-                plot.update( None, self )
+    # def jumpstartPlots( self ):
+    #     for plot in self.registeredPlots.values():
+    #         if not plot.initialized:
+    #             plot.update( None, self )
 
 
     def indexForTimestamp( self, timestamp:int )->int:
@@ -531,6 +518,7 @@ class stream_c:
         self.mintick = 0.0
 
         self.markers:list[marker_c] = []
+        self.registeredPanels:dict = {}
 
         #################################################
         # Validate de timeframes list and find 
@@ -614,12 +602,7 @@ class stream_c:
                     }) 
         except Exception as e:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
-        
-        
-        # We're done. Start fetching
-        # tasks.registerTask( 'cli', cli_task(self) )
-        # tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
-        # tasks.registerTask( 'clocks', update_clocks(self) )
+ 
 
     def run(self):
         # We're done. Start fetching
@@ -659,6 +642,25 @@ class stream_c:
 
         await exchange.close()
 
+    
+    def registerPanel( self, name:str, width:float, height:float, show_candles:bool = False, ptype = c.PANEL_HORIZONTAL ):
+        """width and height are percentages of the window in 0/1 scale"""
+        # to do: ensure the name isn't in use
+        if name == None or not isinstance(name, str):
+            raise ValueError( f"panels_c:registerPanel - name is not a valid string [{name}]" )
+        
+        for n in self.registeredPanels.keys():
+            if n == name:
+                raise ValueError( f"panels_c:registerPanel - name [{name}] is already registered " )
+        panel = {
+            "position": "bottom",
+            "type": ptype,
+            "width": min(1.0, max(0.0, width)),
+            "height": min(1.0, max(0.0, height)),
+            "show_candles": show_candles
+        }
+        self.registeredPanels[name] = panel
+
 
     def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name:str = None )->marker_c:
         '''MARKER_POSITION = Literal['above', 'below', 'inside']
@@ -667,32 +669,21 @@ class stream_c:
             timestamp = self.timeframes[self.timeframeFetch].timestamp
         marker = marker_c( text, timestamp, location, shape, color, chart_name )
         self.markers.append( marker )
+        if not self.initializing:
+            push_marker_update( marker )
         return marker
+    
+    def removeMarker( self, marker:marker_c ):
+        if marker != None and isinstance(marker, marker_c):
+            if not self.initializing:
+                push_remove_marker_update( marker )
+            self.markers.remove( marker )
     
     def getMarkersList( self )->list:
         di = []
         for m in self.markers:
-            # MARKER_POSITION = Literal['above', 'below', 'inside']
-            # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
-            marker = {
-                'id':0,
-                'timestamp':m.timestamp,
-                'position':m.position,
-                'shape':m.shape,
-                'color':m.color,
-                'panel':m.panel,
-                'text':m.text
-            }
-            di.append( marker )
-
+            di.append( m.descriptor() )
         return di
-
-
-    def createWindow( self, timeframeStr ):
-        # FIXME: Add proper checks
-        timeframe = self.timeframes[tools.timeframeString( timeframeStr )]
-        timeframe.window = window_c( timeframe )
-        timeframe.jumpstartPlots()
 
 
 def getRealtimeCandle()->candle_c:
@@ -724,9 +715,7 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
 def createMarker( text, location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name = None )->marker_c:
     '''MARKER_POSITION = Literal['above', 'below', 'inside']
         MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
-    if( active.timeframe == None ):
-        return None
-    return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name )
+    return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name ) or None
 
 def isInitializing():
     return active.timeframe.stream.initializing
@@ -740,8 +729,8 @@ async def update_clocks( stream:stream_c ):
 
         for timeframe in stream.timeframes.values():
             timeframe.realtimeCandle.updateRemainingTime()
-            if timeframe.window != None:
-                timeframe.window.updateClock()
+            # if timeframe.window != None:
+            #     timeframe.window.updateClock()
 
 
 
@@ -752,14 +741,9 @@ async def cli_task(stream):
 
         if command.lower() == 'chart':
             print( 'opening chart' )
-            stream.timeframes[stream.timeframeFetch].window = stream.createWindow( stream.timeframeFetch )
 
         if command.lower() == 'close':
             print( 'closing chart' )
-            if stream.timeframes[stream.timeframeFetch].window and stream.timeframes[stream.timeframeFetch].window.chart:
-                stream.timeframes[stream.timeframeFetch].window.chart.exit()
-                stream.timeframes[stream.timeframeFetch].window = None
-                
         
         await asyncio.sleep(0.05)
 
@@ -843,7 +827,7 @@ if __name__ == '__main__':
 
     # strategy.print_strategy_stats()
 
-    stream.createWindow( '1m' )
+    # stream.createWindow( '1m' )
 
     stream.run()
 
