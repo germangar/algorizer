@@ -34,6 +34,10 @@ def hx2rgba(hex_color):
     #return (r, g, b, a)
 
 
+def emptyFunction(func):
+    return func.__code__.co_consts == (None,)
+
+
 ''' # CCXT timeframe conventions
 def parse_timeframe(timeframe):
         amount = int(timeframe[0:-1])
