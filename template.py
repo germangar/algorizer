@@ -18,7 +18,7 @@ rsi30m = None
 def runCloseCandle_slow( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
     global rsi30m
     rsi30m = calc.IFTrsi(close, 14)
-    rsi30m.plot('panel')
+    rsi30m.plot('rsi')
 
     
 
@@ -33,7 +33,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
 
     rsi14 = calc.RSI(close, 14)
     rsiSlow = requestValue( rsi30m.name, '30m' )
-    plot( rsiSlow, 'rsiSlow', 'rsi' ) # plotting a float takes a huge dent on performance
+    # plot( rsiSlow, 'rsiSlow', 'rsi' ) # plotting a float takes a huge dent on performance
 
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsiSlow < -0.7
@@ -70,10 +70,10 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
         else:
             createMarker('△', 'below', color = "#BDBDBD", timestamp=thisPivot.timestamp)
 
-    # macd_line, signal_line, histo = calc.MACD(close)
-    # histo.histogram( 'macd', "#4A545D" )
-    # macd_line.plot( 'macd', color = "#AB1212", width=2 )
-    # signal_line.plot( 'macd', color = "#1BC573" )
+    macd_line, signal_line, histo = calc.MACD(close)
+    histo.histogram( 'macd', "#4A545D" )
+    macd_line.plot( 'macd', color = "#AB1212", width=2 )
+    signal_line.plot( 'macd', color = "#1BC573" )
 
 
 
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '5m'], [runCloseCandle_slow, runCloseCandle_fast], 20000, plots = True )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 10000, plots = True )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
@@ -122,8 +122,8 @@ if __name__ == '__main__':
 
     # print(stream.timeframes[stream.timeframeFetch].df.columns)
 
-    # stream.registerPanel('macd', 1.0, 0.2, show_timescale=False )
-    stream.registerPanel('rsi', 1.0, 0.2 )
+    stream.registerPanel('macd', 1.0, 0.1, show_timescale=False )
+    # stream.registerPanel('rsi', 1.0, 0.2 )
 
 
     stream.createWindow( '1m' )

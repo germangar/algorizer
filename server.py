@@ -8,6 +8,7 @@ import numpy as np
 import active
 import pandas as pd
 from constants import c
+import tools
 
 # Fix for Windows proactor event loop
 if sys.platform == 'win32':
@@ -111,6 +112,7 @@ def create_data_descriptor(df, timeframeStr: str) -> str:
         "type": "data_descriptor",
         "datatype": "dataframe",
         "timeframe": timeframeStr,
+        "timeframemsec": tools.timeframeMsec(timeframeStr),
         "rows": len(df),
         "columns": list(df.columns),
         "dtypes": {col: str(df[col].dtype) for col in df.columns},

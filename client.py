@@ -33,6 +33,7 @@ debug = False
 
 ############################ CHART WINDOW ################################
 from constants import c
+from candle import candle_c
 from lightweight_charts import Chart
 # from lightweight_charts_esistjosh import Chart
 from typing import Optional, Any
@@ -70,6 +71,7 @@ class window_c:
         self.markers:list = []
         self.showRealTimeCandle = True
         self.numpanels = 0
+        self.lastCandle:candle_c = None
 
         # calculate the panels sizes
         self.panels = config['panels']
@@ -133,12 +135,12 @@ class window_c:
             down_color=f'rgba(200,127,130,{volume_alpha})')
 
         try:
-            tmpdf = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close'], 'volume':df['volume']} )
+            time_df = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close'], 'volume':df['volume']} )
         except Exception as e:
             print(f"Error converting timestamp to datetime: {e}")
 
         try:
-            chart.set( tmpdf )
+            chart.set( time_df )
         except Exception as e:
             print(f"Error setting chart dataframe: {e}")
 
@@ -155,18 +157,35 @@ class window_c:
             subchart.price_line( label_visible=panel["show_labels"], line_visible=panel["show_priceline"] )
             # subchart.precision( self.bottompanel_precision )
             # subchart.price_scale(minimum_width=price_column_width)
-            
-            subchart.set(tmpdf)
-            if not panel["show_candles"]:subchart.hide_data()
+            subchart.set(time_df)
+            if not panel["show_candles"]:
+                subchart.hide_data()
 
         self.descriptor = descriptor
         self.columns = df.columns
+
+        self.lastCandle = candle_c( df.iloc[-1].tolist() ) # create a candle object for the clock
+        self.lastCandle.timeframemsec = descriptor["timeframemsec"]
+        self.lastCandle.index = df.index[-1]
+        self.lastCandle.timestamp += self.lastCandle.timeframemsec # cheat for the clock until receiving the first tick
+        self.lastCandle.updateRemainingTime()
+        tasks.registerTask( 'clocks', self.update_clocks() )
 
         self.createPlots(df)
         self.createMarkers()
 
         task = chart.show_async()
         tasks.registerTask( 'window', task )
+
+    async def update_clocks( self ):
+        from datetime import datetime
+
+        while True:
+            await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+            self.lastCandle.updateRemainingTime()
+            chart = self.panels['main']['chart']
+            chart.price_line( True, True, self.lastCandle.remainingTimeStr() )
+
 
 
     def createPlots(self, df:pd.DataFrame):
@@ -240,11 +259,15 @@ class window_c:
         return chart.is_alive
 
     def newTick(self, msg):
-        if not self.showRealTimeCandle or msg is None :
-            return
         
         row = msg.get('data')
         if not row:
+            return
+        
+        self.lastCandle.updateFromSource(row) # for the clock
+        self.lastCandle.updateRemainingTime()
+        
+        if not self.showRealTimeCandle :
             return
         
         # OHLCV update to the chart
@@ -257,9 +280,10 @@ class window_c:
             'volume': row[c.DF_VOLUME]
         }
         
+        series = pd.Series(data_dict)
         for n in self.panels.keys():
             chart = self.panels[n]['chart']
-            chart.update( pd.Series(data_dict) )
+            chart.update( series )
 
     def newRow(self, msg):
         row = msg.get('data')
@@ -280,7 +304,7 @@ class window_c:
         series = pd.Series(data_dict)
         for n in self.panels.keys():
             chart = self.panels[n]['chart']
-            chart.update( pd.Series(data_dict) )
+            chart.update( series )
 
         # Second part - full data update
         if columns is None:

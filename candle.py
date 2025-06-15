@@ -1,7 +1,7 @@
 
 
 class candle_c:
-    def __init__( self ):
+    def __init__( self, source = None ):
         self.timestamp = 0
         self.open = 0.0
         self.high = 0.0
@@ -21,6 +21,21 @@ class candle_c:
         self.remaininghours = 0
         self.remainingdays = 0
 
+        if source:
+            self.updateFromSource(source)
+        
+
+    def updateFromSource(self, source):
+        if source and isinstance(source, list):
+            self.timestamp = source[0]
+            self.open = source[1]
+            self.high = source[2]
+            self.low = source[3]
+            self.close = source[4]
+            self.volume = source[5]
+            self.top = max(self.open, self.close)
+            self.bottom = min(self.open, self.close)
+                
     def str( self ):
         return f'timestamp:{self.timestamp} open:{self.open} high:{self.high} low:{self.low} close:{self.close} volume:{self.volume}'
     
