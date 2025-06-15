@@ -93,6 +93,7 @@ class marker_c:
     def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
         # MARKER_POSITION = Literal['above', 'below', 'inside']
         # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
+        self.id = pd.Timestamp.now().value
         self.timestamp = timestamp
         self.text = text
         self.position = position
@@ -104,7 +105,7 @@ class marker_c:
 
     def descriptor(self):
         return {
-                'id':0,
+                'id':self.id,
                 'timestamp':self.timestamp,
                 'position':self.position,
                 'shape':self.shape,

@@ -6,6 +6,7 @@ import tasks
 import json
 import pandas as pd
 import numpy as np
+import bisect
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -177,16 +178,6 @@ class window_c:
         task = chart.show_async()
         tasks.registerTask( 'window', task )
 
-    async def update_clocks( self ):
-        from datetime import datetime
-
-        while True:
-            await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-            self.lastCandle.updateRemainingTime()
-            chart = self.panels['main']['chart']
-            chart.price_line( True, True, self.lastCandle.remainingTimeStr() )
-
-
 
     def createPlots(self, df:pd.DataFrame):
         plotsList = self.descriptor['plots']
@@ -221,42 +212,105 @@ class window_c:
                 plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( df['timestamp'], unit='ms' ), plot.name: df[plot.name]} ) )
 
             self.plots.append( plot )
-    
-    def createMarkers(self):
-        markersList = self.descriptor['markers']
 
-        for m in markersList:
-            marker = marker_c(
+    def createMarker( self, m ):
+        marker = marker_c(
                 id = m.get('id'),
                 timestamp = int(m.get('timestamp')),
                 position = m.get('position'),
                 shape = m.get('shape'),
                 color = m.get('color'),
-                panel = m.get('panel'),
+                panel = m.get('panel') if m.get('panel') != None else 'main',
                 text = m.get('text'),
                 instance = None
             )
 
-            chart = self.panels['main']['chart']
-            if marker.panel:
-                panel = self.panels.get(marker.panel)
-                if panel == None:
-                    print( f"WARNING: Couldn't find panel [{marker.panel}] for marker]" )
-                else:
-                    chart = panel['chart']
-                
+        chart = self.panels['main']['chart']
 
-            marker.instance = chart.marker( time = pd.to_datetime( marker.timestamp, unit='ms' ),
-                        position = marker.position,
-                        shape = marker.shape,
-                        color = marker.color,
-                        text = marker.text )
+        panel = self.panels.get(marker.panel)
+        if panel == None:
+            print( f"WARNING: Couldn't find panel [{marker.panel}] for marker. Using main]" )
+            marker.panel = 'main'
+            chart = panel['main']
+        else:
+            chart = panel['chart']
             
-            self.markers.append( marker )
 
-    def isAlive(self)->bool:
-        chart:Chart = self.panels['main']['chart']
-        return chart.is_alive
+        marker.instance = chart.marker( time = pd.to_datetime( marker.timestamp, unit='ms' ),
+                    position = marker.position,
+                    shape = marker.shape,
+                    color = marker.color,
+                    text = marker.text )
+        
+        self.markers.append( marker )
+    
+    def createMarkers(self):
+        markersList = self.descriptor['markers']
+
+        for m in markersList:
+            self.createMarker(m)
+            
+    def addMarker( self, msg ):
+        
+        if len(self.markers) == 0:
+            self.createMarker(msg)
+            return
+        
+        # verify the timestamp is not older than the last marker
+        lastMarker = self.markers[-1]
+        if lastMarker.timestamp <= msg["timestamp"] :
+            self.createMarker( msg )
+            return
+        
+        # we're screwed. We need to remove the most recent markers and put them back.
+        try:
+            marker = marker_c(
+                id = msg.get('id'),
+                timestamp = int(msg.get('timestamp')),
+                position = msg.get('position'),
+                shape = msg.get('shape'),
+                color = msg.get('color'),
+                panel = msg.get('panel') if msg.get('panel') != None else 'main',
+                text = msg.get('text'),
+                instance = None
+            )
+
+            insertion_index = bisect.bisect_left( [m.timestamp for m in self.markers], marker.timestamp )
+
+            # now we need to remove all the ones above the index from the chart and add them again
+            for index in range(len(self.markers) - 1, insertion_index - 1, -1):
+                cm = self.markers[index]
+                if cm.instance == None: 
+                    continue
+
+                assert(cm.panel != None)
+                chart = self.panels[cm.panel]['chart']
+                assert(chart.remove_marker(cm.instance) == None)
+                cm.instance = None
+
+            # self.createMarker(msg) # add the new one
+            marker.instance = chart.marker( time = pd.to_datetime( marker.timestamp, unit='ms' ),
+                position = marker.position,
+                shape = marker.shape,
+                color = marker.color,
+                text = marker.text )
+            self.markers.insert(insertion_index, marker)
+
+            # now add them all back
+            for index in range(insertion_index, len(self.markers)):
+                cm = self.markers[index]
+                if cm.instance != None: 
+                    continue
+                cm.instance = chart.marker( time = pd.to_datetime( cm.timestamp, unit='ms' ),
+                    position = cm.position,
+                    shape = cm.shape,
+                    color = cm.color,
+                    text = cm.text )
+
+        except Exception as e:
+            print( "Deleting markers failed with:", e )
+    
+
 
     def newTick(self, msg):
         
@@ -332,6 +386,18 @@ class window_c:
         self.newTick( msg.get('tick') )
         
     
+    async def update_clocks( self ):
+        from datetime import datetime
+
+        while True:
+            await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+            self.lastCandle.updateRemainingTime()
+            chart = self.panels['main']['chart']
+            chart.price_line( True, True, self.lastCandle.remainingTimeStr() )
+
+    def isAlive(self)->bool:
+        chart:Chart = self.panels['main']['chart']
+        return chart.is_alive
 
     # There is no reason for this to be a method other than grouping all the window stuff together
     def get_screen_resolution(self):
@@ -458,6 +524,12 @@ async def listen_for_updates(context):
                         window.newRow(data)
                     elif data['type'] == 'tick':
                         window.newTick(data)
+                    elif data['type'] == 'marker':
+                        if data['action'] == 'add':
+                            window.addMarker( data['data'] )
+                        elif data['action'] == 'remove':
+                            pass
+                    
                 except json.JSONDecodeError:
                     print(f"Error: Received invalid JSON update")
                 

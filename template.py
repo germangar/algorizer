@@ -75,7 +75,13 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     macd_line.plot( 'macd', color = "#AB1212", width=2 )
     signal_line.plot( 'macd', color = "#1BC573" )
 
-
+    if 1:
+        import random
+        r = random.randint(0, 4)
+        if( r == 2 ):
+            createMarker( "R", "above", "square", "#009befdf" )
+        if( random.randint(0, 4) == 2 ):
+            createMarker( "T", "above", "square", "#ef00bbdf", timestamp=timeframe.timestamp - (15*timeframe.timeframeMsec) )
 
 
 # 
@@ -114,7 +120,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 10000, plots = True )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 1000, plots = True )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
@@ -122,7 +128,7 @@ if __name__ == '__main__':
 
     # print(stream.timeframes[stream.timeframeFetch].df.columns)
 
-    stream.registerPanel('macd', 1.0, 0.1, show_timescale=False )
+    stream.registerPanel('macd', 1.0, 0.1, show_timescale=True )
     # stream.registerPanel('rsi', 1.0, 0.2 )
 
 

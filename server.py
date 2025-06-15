@@ -149,11 +149,15 @@ async def send_dataframe(cmd_socket, df, timeframe_str):
 
 def push_marker_update(marker) -> str:
     """A new marker was created"""
+    if client.status != CLIENT_LISTENING :
+        return
     
     message = {
         "type": "marker",
+        "action": "add",
         "data": marker.descriptor()
     }
+    
     asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
 
 
