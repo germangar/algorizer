@@ -39,13 +39,17 @@ class plot_c:
         self.screen_name = screen_name
         self.iat_index = -1
 
-        timeframe = active.timeframe # FIXME
+        # --- NEW: Temporary storage for plot values during initial processing ---
+        self._temp_values = [] 
 
-        # these types will create a new column in the dataframe where to store values
+        timeframe = active.timeframe # FIXME - ensure active.timeframe is set before plot_c init
+
+        # These types will create a new column in the dataframe where to store values.
+        # During __init__, if the source is a direct value (float/int), we prepare the column name
+        # but defer filling it until batch processing or real-time updates.
         if source is None or isinstance( source, (float, int) ):
-            # we need to figure out the column name
             if name:
-                if name in timeframe.df.columns: # we can't use this name. Do we have an alternative?
+                if name in timeframe.df.columns: 
                     raise ValueError( f"plot_c:name [{name}] is already in use" )
                 # Names starting with an underscore are reserved for generated series
                 # and must already exist in the dataframe
@@ -54,40 +58,95 @@ class plot_c:
                 self.name = name
                 if not self.screen_name:
                     self.screen_name = self.name
-                timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
+                
+                # We need to ensure the column exists when plot_c is initialized, 
+                # especially since `parseCandleUpdate` expects it to be there for `iat_index`.
+                # Initialize it with NaNs. The values will be filled later.
+                if self.name not in timeframe.df.columns:
+                    timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
+                self.iat_index = timeframe.df.columns.get_loc(self.name)
+
 
         elif isinstance( source, (pd.Series, generatedSeries_c) ):
             self.name = source.name
+            # For Series or generatedSeries, the data is already managed by Pandas
+            # or the generatedSeries_c object, so no need for _temp_values or iat_index here.
+            # The `update` method below will return early for these types.
 
         if not self.name or self.name not in timeframe.df.columns:
+            # This check ensures that either a new column was successfully prepared for a value source,
+            # or an existing Series/generatedSeries was successfully referenced.
             raise ValueError( f"plot_c:Couldn't assign a name to the plot [{name}]" )
 
-        self.iat_index = timeframe.df.columns.get_loc(self.name)
+        # Ensure iat_index is set if it's a value-based plot that created a column
+        if self.iat_index == -1 and (source is None or isinstance(source, (float, int))):
+             self.iat_index = timeframe.df.columns.get_loc(self.name)
 
 
     def update( self, source, timeframe ):
-
-        # this shouldn't be neccesary anymore. I gotta check it
+        """
+        Updates the plot's data. 
+        - If `timeframe.jumpstart` is True, it does nothing (as plots shouldn't collect during this phase).
+        - If `timeframe.shadowcopy` is True (historical backtesting), it appends values to a temporary list for bulk processing later.
+        - Otherwise (real-time updates), it directly updates the DataFrame using .iat.
+        """
+        # If the source is already a Pandas Series or a generatedSeries_c,
+        # its data is managed elsewhere (already in the DataFrame or by calcseries).
+        # We don't need to do anything here for these types.
         if isinstance(source, (pd.Series, generatedSeries_c)):
-            return
+            return 
         
-        
+        # If the source is a direct value (float, int, or None), we handle it.
         if isinstance(source, (int, float, type(None))) :
-            # Create a column in the dataframe for it if there's none, and keep updating it
-            # This never happens. It is already created at initializing the object
-            # if self.iat_index == -1:
-            #     timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
-            #     self.iat_index = timeframe.df.columns.get_loc(self.name)
-            assert( self.iat_index != -1 )
-
-            if timeframe.jumpstart : # Do not assign values in the jumpstart row
+            # During the *single* `jumpstart` phase, plots do not collect data.
+            if timeframe.jumpstart : 
                 return
-
-            # timeframe.df.at[timeframe.barindex, self.name] = source
-            timeframe.df.iat[timeframe.barindex, self.iat_index] = source
+            # During the historical backtesting run (`shadowcopy=True`),
+            # we append the value to a temporary list.
+            elif timeframe.shadowcopy:
+                self._temp_values.append(source)
+            else:
+                # For real-time updates, directly assign to the DataFrame using .iat.
+                # This is efficient enough for single row updates.
+                assert( self.iat_index != -1 ) # iat_index must be set if it's a value-based plot
+                timeframe.df.iat[timeframe.barindex, self.iat_index] = source
             return
 
+        # If we reach here, the source type is unexpected.
         raise ValueError( f"Unvalid plot type {self.name}: {type(source)}" )
+
+    def _apply_batch_updates(self, timeframe_df):
+        """
+        Applies all collected temporary values to the DataFrame column in a single,
+        efficient vectorized operation. Called after the initial historical data processing.
+        """
+        if not self._temp_values:
+            return # Nothing to apply
+
+        # Ensure the column exists before attempting to assign.
+        # This redundant check is for robustness, as it should already be created in __init__.
+        if self.name not in timeframe_df.columns:
+            timeframe_df[self.name] = pd.Series(np.nan, index=timeframe_df.index, dtype=np.float64)
+
+        # Assign the collected values. This is the key optimization.
+        # Use .loc with a slice to assign the list of values to the corresponding rows.
+        # Ensure the length of _temp_values does not exceed the DataFrame's length.
+        num_values = len(self._temp_values)
+        
+        # --- FIX: Explicitly convert to numpy array with float64 dtype ---
+        values_to_assign = np.array(self._temp_values, dtype=np.float64)
+
+        if num_values > len(timeframe_df):
+            print(f"Warning: Plot '{self.name}' has more collected values ({num_values}) than DataFrame rows ({len(timeframe_df)}). Truncating values_to_assign.")
+            # Truncate the values_to_assign if it's longer than the DataFrame slice
+            values_to_assign = values_to_assign[:len(timeframe_df)]
+            num_values = len(timeframe_df)
+            
+        timeframe_df.loc[timeframe_df.index[:num_values], self.name] = values_to_assign
+
+        # Clear the temporary storage after applying the updates
+        self._temp_values = []
+
 
 
 class marker_c:
@@ -197,6 +256,15 @@ class timeframe_c:
         ###############################################################################
 
         print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
+
+        # --- Phase 3: Apply batch updates for plots ---
+        # This MUST happen after the shadowcopy loop is finished,
+        # as all plot values for historical data would have been collected in _temp_values by now.
+        print(f"Applying batch updates for plots in {self.timeframeStr}...")
+        for plot_obj in self.registeredPlots.values():
+            plot_obj._apply_batch_updates(self.df)
+        print(f"Finished applying batch updates for plots in {self.timeframeStr}.")
+
 
 
     def parseCandleUpdate( self, rows ):
@@ -340,7 +408,13 @@ class timeframe_c:
             gse = generatedSeries_c( type, source, period, func, param, always_reset, self )
             self.generatedSeries[name] = gse
 
-        gse.update( source )
+        # If we are in the jumpstart phase, initialize and update the series immediately.
+        # Otherwise, the update will be handled by generatedSeries_c.update
+        # This part should remain as is for generatedSeries which are pre-calculated for speed.
+        if self.jumpstart:
+            gse.initialize( source ) # Full series calculation during jumpstart
+        else:
+            gse.update( source ) # Incremental update during live/shadowcopy
         return gse
 
 
