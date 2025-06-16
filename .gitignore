@@ -6,3 +6,4 @@ main.py
 ohlcv.csv
 test.py
 compare_algorizer.py
+compare_calcseries.py
