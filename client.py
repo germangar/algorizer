@@ -288,7 +288,7 @@ class window_c:
                 assert(chart.remove_marker(cm.instance) == None)
                 cm.instance = None
 
-            # self.createMarker(msg) # add the new one
+            # add the new one
             marker.instance = chart.marker( time = pd.to_datetime( marker.timestamp, unit='ms' ),
                 position = marker.position,
                 shape = marker.shape,

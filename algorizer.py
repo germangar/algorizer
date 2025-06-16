@@ -602,10 +602,18 @@ class stream_c:
     def createMarker( self, text:str = '', location:str = 'below', shape:str = 'circle', color:str = "#DEDEDE", timestamp:int = None, chart_name:str = None )->marker_c:
         '''MARKER_POSITION = Literal['above', 'below', 'inside']
         MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
+        import bisect
+
         if timestamp == None:
             timestamp = self.timeframes[self.timeframeFetch].timestamp
         marker = marker_c( text, timestamp, location, shape, color, chart_name )
-        self.markers.append( marker )
+
+        if len(self.markers) and marker.timestamp < self.markers[-1].timestamp: # we need to insert back in time
+            insertion_index = bisect.bisect_left( [m.timestamp for m in self.markers], marker.timestamp )
+            self.markers.insert(insertion_index, marker)
+        else:
+            self.markers.append( marker )
+            
         if not self.initializing:
             push_marker_update( marker )
         return marker
