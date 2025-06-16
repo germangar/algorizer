@@ -647,7 +647,7 @@ class stream_c:
             
             await asyncio.sleep(0.01)
 
-        await exchange.close()
+        await self.exchange.close()
 
     
     def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False ):
