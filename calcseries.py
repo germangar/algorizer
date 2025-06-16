@@ -805,7 +805,14 @@ class generatedSeries_c:
             return np.nan # Return NaN for out-of-bounds access
             
         return self.timeframe.df[self.name].iat[index]
-
+    iat = iloc # alias for the same method
+    value = iloc # alias for the same method
+    
+    
+    def current( self ):
+        '''returns the last value in the series'''
+        return self.iloc(-1)
+    
 
     def series( self ):
         return self.timeframe.df[self.name]
