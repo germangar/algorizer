@@ -287,9 +287,6 @@ class timeframe_c:
                     active.barindex = self.barindex
                     # self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
                     self.timestamp = int(self.df.iat[self.barindex, 0]) # trying to win performance in every corner
-
-                    if( newrow_timestamp != self.timestamp ):
-                        print( "** NEWROW TIMESTAMP != SELF TIMESTAMP")
                     
                     # copy the last row into the realtimeCandle row. This would be incorrect in realtime. Only for shadowcopying
                     self.realtimeCandle.timestamp = newrow_timestamp
