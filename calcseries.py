@@ -1,4 +1,3 @@
-
 import pandas as pd
 try:
     import talib
@@ -1006,10 +1005,10 @@ class generatedSeries_c:
     
     def crossingUp( self, other ):
         df = self.timeframe.df
-        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.iloc(-1) == None or self.iloc(-2) == None ):
+        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or pd.isna(self.iloc(-1)) or pd.isna(self.iloc(-2)) ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0  or other.iloc(-1) == None or other.iloc(-2) == None ):
+            if( other.lastUpdatedTimestamp == 0  or pd.isna(other.iloc(-1)) or pd.isna(other.iloc(-2)) ):
                 return False
             return ( self.iloc(-2) <= other.iloc(-2) and self.iloc(-1) >= other.iloc(-1) and self.iloc(-1) != self.iloc(-2) )
         if isinstance( other, pd.Series ):
@@ -1030,7 +1029,7 @@ class generatedSeries_c:
         if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.iloc(-1) == None or self.iloc(-2) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0  or other.iloc(-1) == None or other.iloc(-2) == None ):
+            if( other.lastUpdatedTimestamp == 0  or pd.isna(other.iloc(-1)) or pd.isna(other.iloc(-2)) ):
                 return False
             return ( self.iloc(-2) >= other.iloc(-2) and self.iloc(-1) <= other.iloc(-1) and self.iloc(-1) != self.iloc(-2) )
         if isinstance( other, pd.Series ):
@@ -1786,8 +1785,31 @@ def crossingUp( self, other ):
         bool: True if a crossing up occurred, False otherwise.
     """
     if isinstance( self, generatedSeries_c ):
-        return self.crossingUp( other )
+        # Directly use self.iloc(-1) and self.iloc(-2) for current and previous values
+        current_self_val = self.iloc(-1)
+        previous_self_val = self.iloc(-2)
+        if pd.isna(current_self_val) or pd.isna(previous_self_val):
+            return False
+
+        if isinstance( other, generatedSeries_c ):
+            current_other_val = other.iloc(-1)
+            previous_other_val = other.iloc(-2)
+            if pd.isna(current_other_val) or pd.isna(previous_other_val):
+                return False
+            return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
+        elif isinstance( other, pd.Series ):
+            # Use iloc directly from the pd.Series
+            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
+                return False
+            return ( previous_self_val <= other.iloc[active.barindex-1] and current_self_val >= other.iloc[active.barindex] and current_self_val != previous_self_val )
+        else: # assuming float or int
+            try:
+                float_other = float(other)
+            except ValueError:
+                return False
+            return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
     
+    # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
     if isinstance( self, int ):
         self = float(self)
 
@@ -1813,10 +1835,11 @@ def crossingUp( self, other ):
             other_old = other.iloc[active.barindex-1]
             other_new = other.iloc[active.barindex]
         elif isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
+            # Directly use other.iloc(-1) and other.iloc(-2)
+            if pd.isna(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
                 return False
             other_old = other.iloc(-2)
-            other_new = other.iloc(-1)
+            other_new = other.iloc(-1) 
         else:
             try:
                 float(other)
@@ -1849,8 +1872,31 @@ def crossingDown( self, other ):
         bool: True if a crossing down occurred, False otherwise.
     """
     if isinstance( self, generatedSeries_c ):
-        return self.crossingDown( other )
-    
+        # Directly use self.iloc(-1) and self.iloc(-2) for current and previous values
+        current_self_val = self.iloc(-1)
+        previous_self_val = self.iloc(-2)
+        if pd.isna(current_self_val) or pd.isna(previous_self_val):
+            return False
+
+        if isinstance( other, generatedSeries_c ):
+            current_other_val = other.iloc(-1)
+            previous_other_val = other.iloc(-2)
+            if pd.isna(current_other_val) or pd.isna(previous_other_val):
+                return False
+            return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
+        elif isinstance( other, pd.Series ):
+            # Use iloc directly from the pd.Series
+            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
+                return False
+            return ( previous_self_val >= other.iloc[active.barindex-1] and current_self_val <= other.iloc[active.barindex] and current_self_val != previous_self_val )
+        else: # assuming float or int
+            try:
+                float_other = float(other)
+            except ValueError:
+                return False
+            return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
+
+    # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
     if isinstance( self, int ):
         self = float(self)
 
@@ -1876,10 +1922,11 @@ def crossingDown( self, other ):
             other_old = other.iloc[active.barindex-1]
             other_new = other.iloc[active.barindex]
         elif isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
+            # Directly use other.iloc(-1) and other.iloc(-2)
+            if pd.isna(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
                 return False
             other_old = other.iloc(-2)
-            other_new = other.iloc(-1)
+            other_new = other.iloc(-1) 
         else:
             try:
                 float(other)
@@ -1910,4 +1957,4 @@ def crossing( self, other ):
     Returns:
         bool: True if a crossing (up or down) occurred, False otherwise.
     """
-    return crossingUp( other, self ) or crossingDown( other, self )
+    return crossingUp( self, other ) or crossingDown( self, other )

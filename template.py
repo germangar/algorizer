@@ -127,6 +127,6 @@ if __name__ == '__main__':
     stream.registerPanel('rsi', 1.0, 0.1 )
 
 
-    # stream.createWindow( '1m' )
+    stream.createWindow( '1m' )
 
     stream.run()
