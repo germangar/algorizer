@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import pandas_ta as pt
@@ -207,9 +206,11 @@ class timeframe_c:
 
         print( f"Calculating generated series {self.timeframeStr}" )
 
-        # do the jump-starting with the last row of the dataframe
+        # --- Phase 1: Jumpstart (single last row for generatedSeries initialization) ---
         start_time = time.time()
 
+        # Set barindex and timestamp for the second to last element of the initial historical data 
+        # (this is where the generatedSeries will effectively "start" their calculation from after jumpstart)
         self.barindex = active.barindex = self.df.iloc[-2].name
         self.timestamp = self.df.iloc[-2]['timestamp']
         self.realtimeCandle.timestamp = int(self.df.iloc[-1]['timestamp'])
@@ -236,16 +237,12 @@ class timeframe_c:
         ###############################################################################
 
         # if there is no callback function we don't have anything to compute
-        if self.callback is None:
-            print( "No call back funtion defined. Skipping. Total time: {:.2f} seconds".format(time.time() - start_time))
-            return
-        
-        if tools.emptyFunction( self.callback ):
-            print( "Callback function is empty. Skipping. Total time: {:.2f} seconds".format(time.time() - start_time))
+        if self.callback is None or tools.emptyFunction( self.callback ):
+            print( "No callback function defined or is empty. Skipping. Total time: {:.2f} seconds".format(time.time() - start_time))
             return
         
     
-        # run the script logic accross all the rows
+        # --- Phase 2: Shadowcopy (row-by-row backtest simulation) ---
         
         self.shadowcopy = True
         self.barindex = 0
@@ -279,7 +276,8 @@ class timeframe_c:
             newrow_close = newrow[4]
             newrow_volume = newrow[5]
 
-            if self.shadowcopy:
+            # PROCESSING HISTORICAL DATA (either jumpstart or shadowcopy)
+            if self.shadowcopy or self.jumpstart:
                 if( self.barindex == 0 and self.timestamp == 0 ): # setup the first row
                     # self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
                     self.timestamp = int(self.df.iat[self.barindex, 0]) # trying to win performance in every corner
@@ -308,7 +306,8 @@ class timeframe_c:
                         self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
 
                     if self.barindex % 5000 == 0:
-                        print( self.barindex, "candles processed." )
+                        if not self.jumpstart:
+                            print( self.barindex, "candles processed." )
 
                     continue
 
@@ -361,17 +360,20 @@ class timeframe_c:
 
                 continue
 
-            # NEW CANDLE
-            self.df.loc[self.barindex+1, 'timestamp'] = self.realtimeCandle.timestamp
-            self.df.loc[self.barindex+1, 'open'] = self.realtimeCandle.open
-            self.df.loc[self.barindex+1, 'high'] = self.realtimeCandle.high
-            self.df.loc[self.barindex+1, 'low'] = self.realtimeCandle.low
-            self.df.loc[self.barindex+1, 'close'] = self.realtimeCandle.close
-            self.df.loc[self.barindex+1, 'volume'] = self.realtimeCandle.volume
-            self.df.loc[self.barindex+1, 'top'] = max( self.realtimeCandle.open, self.realtimeCandle.close )
-            self.df.loc[self.barindex+1, 'bottom'] = min( self.realtimeCandle.open, self.realtimeCandle.close )
+            # NEW CANDLE - REAL-TIME
+            # Append a new row to the DataFrame for the closed candle data
+            # Use .loc with a new index (barindex + 1) to add the new row
+            new_idx = self.barindex + 1
+            self.df.loc[new_idx, 'timestamp'] = self.realtimeCandle.timestamp
+            self.df.loc[new_idx, 'open'] = self.realtimeCandle.open
+            self.df.loc[new_idx, 'high'] = self.realtimeCandle.high
+            self.df.loc[new_idx, 'low'] = self.realtimeCandle.low
+            self.df.loc[new_idx, 'close'] = self.realtimeCandle.close
+            self.df.loc[new_idx, 'volume'] = self.realtimeCandle.volume
+            self.df.loc[new_idx, 'top'] = max( self.realtimeCandle.open, self.realtimeCandle.close )
+            self.df.loc[new_idx, 'bottom'] = min( self.realtimeCandle.open, self.realtimeCandle.close )
 
-            # copy newrow into realtimeCandle
+            # copy newrow into realtimeCandle for the NEXT incoming tick
             self.realtimeCandle.timestamp = newrow_timestamp
             self.realtimeCandle.open = newrow_open
             self.realtimeCandle.high = newrow_high
@@ -380,10 +382,10 @@ class timeframe_c:
             self.realtimeCandle.volume = newrow_volume
             self.realtimeCandle.bottom = min( newrow_open, newrow_close )
             self.realtimeCandle.top = max( newrow_open, newrow_close )
-            self.realtimeCandle.index = self.barindex + 2
+            self.realtimeCandle.index = new_idx + 1
             self.realtimeCandle.updateRemainingTime()
 
-            self.barindex = self.barindex+ 1
+            self.barindex = new_idx
             active.barindex = self.barindex
             self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
             if self.timeframeStr == self.stream.timeframeFetch :
@@ -440,13 +442,13 @@ class timeframe_c:
         return plot
 
     
-    def plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1)->plot_c:
+    def plot( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
         '''
         source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
         chart_name: Leave empty for the main panel. Use 'panel' for plotting in the subpanel.
         color: in a string. Can be hexadecial '#DADADADA' or rgba format 'rgba(255,255,255,1.0)'
-        style: plots LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
-        width: with of the line. For plots.
+        style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
+        width: int
         '''
         return self.register_plot( source, name, chart_name, color, style, width )
     
