@@ -546,38 +546,38 @@ def _generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFra
 
 def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame, param=None) -> pd.Series:
     BBmult = param
-    sma_name = tools.generatedSeriesNameFormat('sma', series, period)
-    stdev_name = tools.generatedSeriesNameFormat('stdev', series, period)
+    # Correctly reference the SMA and STDEV columns from the provided DataFrame `df`
+    sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
+    stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
 
-    if len(series) == period:
-        # Real-time update case — return just last value
-        upper = df[sma_name].iloc[-1] + BBmult * df[stdev_name].iloc[-1]
-        return pd.Series([upper], index=[df.index[-1]])
-
-    # Initialization case — full series calculation
+    # Ensure these names exist in the df passed to this function
+    if sma_name not in df.columns or stdev_name not in df.columns:
+        raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBUpper: {sma_name}, {stdev_name}")
+    
     return df[sma_name] + (BBmult * df[stdev_name])
 
 def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame, param=None) -> pd.Series:
     BBmult = param
-    sma_name = tools.generatedSeriesNameFormat('sma', series, period)
-    stdev_name = tools.generatedSeriesNameFormat('stdev', series, period)
+    sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
+    stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
 
-    if len(series) == period:
-        # Real-time update case — compute only the last value
-        lower = df[sma_name].iloc[-1] - BBmult * df[stdev_name].iloc[-1]
-        return pd.Series([lower], index=[df.index[-1]])
+    if sma_name not in df.columns or stdev_name not in df.columns:
+        raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBLower: {sma_name}, {stdev_name}")
 
-    # Initialization case — full series
     return df[sma_name] - (BBmult * df[stdev_name])
 
 def _generatedseries_calculate_inverse_fisher_rsi(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    rsi = df[tools.generatedSeriesNameFormat("rsi", series, period)]
+    # This function now correctly expects 'series' to be the direct RSI data,
+    # and it will perform its calculation on that. The 'df' parameter (the overall dataframe up to current bar)
+    # is not needed for this specific calculation if RSI is already provided via 'series'.
+    rsi = series 
+
     v1 = 0.1 * (rsi - 50)
 
+    # Use rolling window on the full (growing) series for WMA
     weights = np.arange(1, period + 1)
     wma = v1.rolling(window=period).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
 
-    # Clip v2 before exponentiation to prevent overflow
     v2_clipped = wma.clip(lower=-10, upper=10)
     exp_val = np.exp(2 * v2_clipped)
     iftrsi = (exp_val - 1) / (exp_val + 1)
@@ -1005,45 +1005,54 @@ class generatedSeries_c:
     
     def crossingUp( self, other ):
         df = self.timeframe.df
-        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or pd.isna(self.iloc(-1)) or pd.isna(self.iloc(-2)) ):
+        current_self_val = self.iloc(-1)
+        previous_self_val = self.iloc(-2)
+
+        if pd.isna(current_self_val) or pd.isna(previous_self_val):
             return False
+
         if isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0  or pd.isna(other.iloc(-1)) or pd.isna(other.iloc(-2)) ):
+            current_other_val = other.iloc(-1)
+            previous_other_val = other.iloc(-2)
+            if pd.isna(current_other_val) or pd.isna(previous_other_val):
                 return False
-            return ( self.iloc(-2) <= other.iloc(-2) and self.iloc(-1) >= other.iloc(-1) and self.iloc(-1) != self.iloc(-2) )
-        if isinstance( other, pd.Series ):
-            if( len(other) < 2 ):
+            return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
+        elif isinstance( other, pd.Series ):
+            # Use iloc directly from the pd.Series
+            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
                 return False
-            if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
+            return ( previous_self_val <= other.iloc[active.barindex-1] and current_self_val >= other.iloc[active.barindex] and current_self_val != previous_self_val )
+        else: # assuming float or int
+            try:
+                float_other = float(other)
+            except ValueError:
                 return False
-            return ( self.iloc(-2) <= other.iloc[self.timeframe.barindex-1] and self.iloc(-1) >= other.iloc[self.timeframe.barindex] and self.iloc(-1) != self.iloc(-2) )
-        try:
-            float(other)
-        except ValueError:
-            return False
-        else:
-            return ( self.iloc(-2) <= float(other) and self.iloc(-1) >= float(other) and self.iloc(-1) != self.iloc(-2) )
+            return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
     
     def crossingDown( self, other ):
         df = self.timeframe.df
-        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.iloc(-1) == None or self.iloc(-2) == None ):
+        current_self_val = self.iloc(-1)
+        previous_self_val = self.iloc(-2)
+        if pd.isna(current_self_val) or pd.isna(previous_self_val):
             return False
+
         if isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0  or pd.isna(other.iloc(-1)) or pd.isna(other.iloc(-2)) ):
+            current_other_val = other.iloc(-1)
+            previous_other_val = other.iloc(-2)
+            if pd.isna(current_other_val) or pd.isna(previous_other_val):
                 return False
-            return ( self.iloc(-2) >= other.iloc(-2) and self.iloc(-1) <= other.iloc(-1) and self.iloc(-1) != self.iloc(-2) )
-        if isinstance( other, pd.Series ):
-            if( len(other) < 2 ):
+            return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
+        elif isinstance( other, pd.Series ):
+            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]) :
                 return False
-            if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
+            return ( previous_self_val >= other.iloc[active.barindex-1] and current_self_val <= other.iloc[active.barindex] and current_self_val != previous_self_val )
+        else: 
+            try:
+                float_other = float(other)
+            except ValueError:
                 return False
-            return ( self.iloc(-2) >= other.iloc[self.timeframe.barindex-1] and self.iloc(-1) <= other.iloc[self.timeframe.barindex] and self.iloc(-1) != self.iloc(-2) )
-        try:
-            float(other)
-        except ValueError:
-            return False
-        else:
-            return ( self.iloc(-2) >= float(other) and self.iloc(-1) <= float(other) and self.iloc(-1) != self.iloc(-2) )
+            else:
+                return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
     
     def crossing( self, other ):
         return self.crossingUp(other) or self.crossingDown(other)
@@ -1435,7 +1444,7 @@ def BBl( source:pd.Series, period:int, mult:float, timeframe = None )->generated
 def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
     rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
-    return timeframe.calcGeneratedSeries( 'iftrsi', timeframe.df['close'], period, _generatedseries_calculate_inverse_fisher_rsi )
+    return timeframe.calcGeneratedSeries( 'iftrsi', rsi.series(), period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
@@ -1556,7 +1565,10 @@ def indexWhenTrue( source ):
         else:
             raise ValueError( "calcIndexWhenTrue must be called with a series" )
     boolean_source = source.astype(bool) if source.dtype != bool else source
-    return boolean_source[::-1].idxmax() if source.any() else None
+    if boolean_source.any():
+        return boolean_source[::-1].idxmax()
+    else:
+        return None 
 
 
 def barsSince( source ):
@@ -1570,7 +1582,7 @@ def barsSince( source ):
         int or None: The number of bars since the last True value, or None if not found.
     """
     index_when_true = indexWhenTrue( source )
-    if( index_when_true == None ):
+    if index_when_true is None: 
         return None
     return active.barindex - index_when_true
 
@@ -1590,17 +1602,13 @@ def indexWhenFalse( source ):
             source = source.series()
         else:
             raise ValueError( "calcIndexWhenFalse must be called with a series" )
-    if not source.empty and source.any():
-        # Ensure the source is boolean
-        boolean_source = source.astype(bool) if source.dtype != bool else source
-        
-        # Reverse the boolean source and Calculate the cumulative sum of the negated values
-        cumsum_negated = (~boolean_source[::-1]).cumsum()
-        first_false_index = cumsum_negated[cumsum_negated == 1].index.min() # Find the first 1 in the cumulative sum (which means the first False in the original series from the end)
-
-        return first_false_index
+    
+    boolean_source = source.astype(bool) if source.dtype != bool else source
+    
+    if (~boolean_source).any(): 
+        return (~boolean_source[::-1]).idxmin() 
     else:
-        return 0  # Return 0 if the series is empty or has no True values''
+        return None 
 
 
 def barsWhileTrue( source ):
@@ -1615,7 +1623,7 @@ def barsWhileTrue( source ):
         int or None: The number of bars while True, or None if not found.
     """
     index_when_false = indexWhenFalse( source )
-    if( index_when_false == None ):
+    if index_when_false is None: 
         return None
     return active.barindex - index_when_false
 
