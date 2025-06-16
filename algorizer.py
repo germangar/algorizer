@@ -301,7 +301,7 @@ class timeframe_c:
                     self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
 
                 # Print progress only during the main historical processing loop
-                if self.barindex % 5000 == 0 and self.shadowcopy: 
+                if self.barindex % 5000 == 0 and not self.jumpstart: 
                     print( self.barindex, "candles processed." )
 
                 self.jumpstart = False
@@ -388,13 +388,11 @@ class timeframe_c:
             if self.timeframeStr == self.stream.timeframeFetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
 
-            if not self.stream.initializing :
-                print( f"NEW CANDLE {self.timeframeStr} : {int(self.df.iloc[self.barindex]['timestamp'])} DELTA: {self.realtimeCandle.timestamp - int(self.df.iloc[self.barindex]['timestamp'])}" )
+            print( f"NEW CANDLE {self.timeframeStr} : {newrow}" )
 
             if( self.callback != None ):
                 self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
 
-            # To Do: push a row update to the server
             if not self.stream.initializing:
                 push_row_update( self )
 

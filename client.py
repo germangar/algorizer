@@ -168,7 +168,6 @@ class window_c:
         self.lastCandle = candle_c( df.iloc[-1].tolist() ) # create a candle object for the clock
         self.lastCandle.timeframemsec = descriptor["timeframemsec"]
         self.lastCandle.index = df.index[-1]
-        self.lastCandle.timestamp += self.lastCandle.timeframemsec # cheat for the clock until receiving the first tick
         self.lastCandle.updateRemainingTime()
         tasks.registerTask( 'clocks', self.update_clocks() )
 
