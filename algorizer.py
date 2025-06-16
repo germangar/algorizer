@@ -201,8 +201,8 @@ class timeframe_c:
 
         active.timeframe = self
 
-        # take out the last row to jumpstart the generatedSeries later
-        self.df = ohlcvDF.loc[:len(ohlcvDF) - 2].copy() # self.df = ohlcvDF.iloc[:-1].copy()
+        # Create a copy of all but the last row for the main historical dataframe
+        self.df = ohlcvDF.loc[:len(ohlcvDF) - 2].copy()
 
         print( f"Calculating generated series {self.timeframeStr}" )
 
@@ -211,8 +211,8 @@ class timeframe_c:
 
         # Set barindex and timestamp for the second to last element of the initial historical data 
         # (this is where the generatedSeries will effectively "start" their calculation from after jumpstart)
-        self.barindex = active.barindex = self.df.iloc[-2].name
-        self.timestamp = self.df.iloc[-2]['timestamp']
+        self.barindex = active.barindex = self.df.iloc[-2].name if len(self.df) >= 2 else 0 
+        self.timestamp = int(self.df.iloc[-2]['timestamp']) if len(self.df) >= 2 else 0 
         self.realtimeCandle.timestamp = int(self.df.iloc[-1]['timestamp'])
         self.realtimeCandle.open = self.df.iloc[-1]['open']
         self.realtimeCandle.high = self.df.iloc[-1]['high']
