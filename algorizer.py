@@ -279,14 +279,12 @@ class timeframe_c:
             # PROCESSING HISTORICAL DATA (either jumpstart or shadowcopy)
             if self.shadowcopy or self.jumpstart:
                 if( self.barindex == 0 and self.timestamp == 0 ): # setup the first row
-                    # self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
-                    self.timestamp = int(self.df.iat[self.barindex, 0]) # trying to win performance in every corner
+                    self.timestamp = int(self.df.iat[self.barindex, 0] - self.timeframeMsec)
 
                 if newrow_timestamp > self.timestamp :
                     self.barindex = self.df.iloc[self.barindex].name + 1
                     active.barindex = self.barindex
-                    # self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
-                    self.timestamp = int(self.df.iat[self.barindex, 0]) # trying to win performance in every corner
+                    self.timestamp = int(self.df.iat[self.barindex, 0])
                     
                     # copy the last row into the realtimeCandle row. This would be incorrect in realtime. Only for shadowcopying
                     self.realtimeCandle.timestamp = newrow_timestamp

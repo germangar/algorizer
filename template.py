@@ -121,8 +121,8 @@ if __name__ == '__main__':
 
     # print(stream.timeframes[stream.timeframeFetch].df.columns)
 
-    stream.registerPanel('macd', 1.0, 0.1, show_timescale=True )
-    stream.registerPanel('rsi', 1.0, 0.2 )
+    stream.registerPanel('macd', 1.0, 0.15, show_timescale=True )
+    stream.registerPanel('rsi', 1.0, 0.1 )
 
 
     stream.createWindow( '1m' )
