@@ -727,9 +727,10 @@ class generatedSeries_c:
         self.func = func
         self.timeframe = timeframe
         self.lastUpdatedTimestamp = 0
-        self.current = 0
         self.alwaysReset = always_reset
         self.iat_index = -1
+        self.__current_cache = np.nan # will update on demmand when calling iloc. Don't use from here.
+        self.__cached_barindex = -1
 
         if( self.timeframe == None ):
             raise SystemError( f"Generated Series has no assigned timeframe [{self.name}]")
@@ -754,16 +755,12 @@ class generatedSeries_c:
             self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df, self.param).dropna()
             self.lastUpdatedTimestamp = self.timeframe.df['timestamp'].iloc[barindex]
             self.iat_index = self.timeframe.df.columns.get_loc(self.name)
-            self.current = self.timeframe.df.iat[self.timeframe.barindex, self.iat_index]
-            # self.current = self.timeframe.df[self.name].loc[self.timeframe.barindex]
             if( self.timeframe.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
 
     def update( self, source:pd.Series ):
         if( self.timeframe.shadowcopy ):
-            self.current = self.timeframe.df[self.name].iloc[self.timeframe.barindex]
-            # self.current = self.timeframe.df.iat[self.timeframe.barindex, self.iat_index]
             return
         
         timeframe = self.timeframe
@@ -782,18 +779,35 @@ class generatedSeries_c:
         # timeframe.df.loc[timeframe.df.index[-1], self.name] = newval
         timeframe.df.iat[timeframe.barindex, self.iat_index] = newval
         self.lastUpdatedTimestamp = timeframe.timestamp
-        self.current = newval
 
 
     def iloc( self, index = -1 ):
         barindex = self.timeframe.barindex
-        # Handle negative indices (Python-style: -1 = last, -2 = second last)
+        
+        # Handle lazy-loading cache for the current bar (index -1)
+        if index == -1:
+            # Check if the cache is valid for the current active.barindex
+            if self.__cached_barindex == active.barindex and not pd.isna(self.__current_cache):
+                return self.__current_cache
+            else:
+                # If cache is invalid or not yet populated, fetch from DataFrame
+                if barindex >= 0 and barindex < len(self.timeframe.df):
+                    value = self.timeframe.df[self.name].iloc[barindex]
+                    self.__current_cache = value
+                    self.__cached_barindex = active.barindex
+                    return value
+                else:
+                    # Handle out-of-bounds access for current bar
+                    return np.nan # Or raise an error, depending on desired behavior
+        
+        # Original iloc logic for other indices
         if index < 0:
-            index = barindex + 1 + index  # +1 because -1 is last element
-        else:
-            index = index
-        # Clamp to [0, max_idx] (no wrapping for out-of-bounds)
-        index = max( 0, min(index, barindex) )
+            index = barindex + 1 + index
+        
+        # Ensure the index is within valid bounds after translation/clamping
+        if index < 0 or index >= len(self.timeframe.df):
+            return np.nan # Return NaN for out-of-bounds access
+            
         return self.timeframe.df[self.name].iloc[index]
 
 
@@ -992,45 +1006,45 @@ class generatedSeries_c:
     
     def crossingUp( self, other ):
         df = self.timeframe.df
-        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
+        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.iloc(-1) == None or self.iloc(-2) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0  or other.current == None or other.iloc(-2) == None ):
+            if( other.lastUpdatedTimestamp == 0  or other.iloc(-1) == None or other.iloc(-2) == None ):
                 return False
-            return ( self.iloc(-2) <= other.iloc(-2) and self.current >= other.current and self.current != self.iloc(-2) )
+            return ( self.iloc(-2) <= other.iloc(-2) and self.iloc(-1) >= other.iloc(-1) and self.iloc(-1) != self.iloc(-2) )
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
             if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
                 return False
-            return ( self.iloc(-2) <= other.iloc[self.timeframe.barindex-1] and self.current >= other.iloc[self.timeframe.barindex] and self.current != self.iloc(-2) )
+            return ( self.iloc(-2) <= other.iloc[self.timeframe.barindex-1] and self.iloc(-1) >= other.iloc[self.timeframe.barindex] and self.iloc(-1) != self.iloc(-2) )
         try:
             float(other)
         except ValueError:
             return False
         else:
-            return ( self.iloc(-2) <= float(other) and self.current >= float(other) and self.current != self.iloc(-2) )
+            return ( self.iloc(-2) <= float(other) and self.iloc(-1) >= float(other) and self.iloc(-1) != self.iloc(-2) )
     
     def crossingDown( self, other ):
         df = self.timeframe.df
-        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
+        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.iloc(-1) == None or self.iloc(-2) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.lastUpdatedTimestamp == 0  or other.current == None or other.iloc(-2) == None ):
+            if( other.lastUpdatedTimestamp == 0  or other.iloc(-1) == None or other.iloc(-2) == None ):
                 return False
-            return ( self.iloc(-2) >= other.iloc(-2) and self.current <= other.current and self.current != self.iloc(-2) )
+            return ( self.iloc(-2) >= other.iloc(-2) and self.iloc(-1) <= other.iloc(-1) and self.iloc(-1) != self.iloc(-2) )
         if isinstance( other, pd.Series ):
             if( len(other) < 2 ):
                 return False
             if pd.isna(other.iloc[self.timeframe.barindex-1]) or pd.isna(other.iloc[self.timeframe.barindex]) :
                 return False
-            return ( self.iloc(-2) >= other.iloc[self.timeframe.barindex-1] and self.current <= other.iloc[self.timeframe.barindex] and self.current != self.iloc(-2) )
+            return ( self.iloc(-2) >= other.iloc[self.timeframe.barindex-1] and self.iloc(-1) <= other.iloc[self.timeframe.barindex] and self.iloc(-1) != self.iloc(-2) )
         try:
             float(other)
         except ValueError:
             return False
         else:
-            return ( self.iloc(-2) >= float(other) and self.current <= float(other) and self.current != self.iloc(-2) )
+            return ( self.iloc(-2) >= float(other) and self.iloc(-1) <= float(other) and self.iloc(-1) != self.iloc(-2) )
     
     def crossing( self, other ):
         return self.crossingUp(other) or self.crossingDown(other)
@@ -1802,7 +1816,7 @@ def crossingUp( self, other ):
             if( other.lastUpdatedTimestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
             other_old = other.iloc(-2)
-            other_new = other.current
+            other_new = other.iloc(-1)
         else:
             try:
                 float(other)
@@ -1865,7 +1879,7 @@ def crossingDown( self, other ):
             if( other.lastUpdatedTimestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
             other_old = other.iloc(-2)
-            other_new = other.current
+            other_new = other.iloc(-1)
         else:
             try:
                 float(other)
