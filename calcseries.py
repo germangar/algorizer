@@ -726,15 +726,13 @@ class generatedSeries_c:
         self.param = param
         self.func = func
         self.timeframe = timeframe
-        self.timestamp = 0
+        self.lastUpdatedTimestamp = 0
         self.current = 0
         self.alwaysReset = always_reset
+        self.iat_index = -1
 
         if( self.timeframe == None ):
             raise SystemError( f"Generated Series has no assigned timeframe [{self.name}]")
-        
-        if( self.timeframe.shadowcopy ):
-            raise SystemError( f'Tried to create series [{self.name}] while shadowcopying.' )
 
         if( self.func == None ):
             raise SystemError( f"Generated Series without a func [{self.name}]")
@@ -748,37 +746,42 @@ class generatedSeries_c:
 
     def initialize( self, source:pd.Series ):
         if( len(source) >= self.period and ( not self.name in self.timeframe.df.columns or self.alwaysReset ) ):
-            if( self.timeframe.shadowcopy ):
+            if( self.timeframe.shadowcopy and not self.timeframe.jumpstart ):
                 raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
+            
+            barindex = len(source)-1 # if self.timeframe.jumpstart else self.timeframe.barindex
             start_time = time.time()
             self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df, self.param).dropna()
-            self.timestamp = self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
-            self.current = self.timeframe.df[self.name].loc[self.timeframe.barindex]
+            self.lastUpdatedTimestamp = self.timeframe.df['timestamp'].iloc[barindex]
+            self.iat_index = self.timeframe.df.columns.get_loc(self.name)
+            self.current = self.timeframe.df.iat[self.timeframe.barindex, self.iat_index]
+            # self.current = self.timeframe.df[self.name].loc[self.timeframe.barindex]
             if( self.timeframe.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
 
     def update( self, source:pd.Series ):
         if( self.timeframe.shadowcopy ):
+            self.current = self.timeframe.df[self.name].iloc[self.timeframe.barindex]
+            # self.current = self.timeframe.df.iat[self.timeframe.barindex, self.iat_index]
             return
         
         timeframe = self.timeframe
 
-        # has this row already been updated?
-        if( self.timestamp >= timeframe.df.iat[timeframe.barindex, 0] ): # same as self.timeframe.df['timestamp'].iloc[self.timeframe.barindex]
-            return
-
         # if non existant try to create new. A few need to be made new every time
-        if( self.timestamp == 0 or self.alwaysReset ):
+        if( self.alwaysReset or self.lastUpdatedTimestamp == 0 ):
             self.initialize( source )
             return
 
-        # realtime updates
+        # has this row already been updated?
+        if self.lastUpdatedTimestamp >= timeframe.timestamp:
+            return
 
         # slice the required block of candles to calculate the current value of the generated series
         newval = self.func(source[-self.period:], self.period, timeframe.df, self.param).loc[timeframe.barindex]
-        timeframe.df.loc[timeframe.df.index[-1], self.name] = newval
-        self.timestamp = timeframe.timestamp
+        # timeframe.df.loc[timeframe.df.index[-1], self.name] = newval
+        timeframe.df.iat[timeframe.barindex, self.iat_index] = newval
+        self.lastUpdatedTimestamp = timeframe.timestamp
         self.current = newval
 
 
@@ -971,7 +974,7 @@ class generatedSeries_c:
         style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
         width: int
         '''
-        if( self.timestamp > 0 ):
+        if( self.lastUpdatedTimestamp > 0 ):
             self.timeframe.plot( self.series(), self.name, chart_name, color, style, width )
             return self
     def histogram( self, chart_name = None, color = "#4A545D", margin_top = 0.0, margin_bottom = 0.0 ):
@@ -983,16 +986,16 @@ class generatedSeries_c:
         style: LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
         width: int
         '''
-        if( self.timestamp > 0 ):
+        if( self.lastUpdatedTimestamp > 0 ):
             self.timeframe.histogram( self.series(), self.name, chart_name, color, margin_top, margin_bottom )
             return self
     
     def crossingUp( self, other ):
         df = self.timeframe.df
-        if( self.timestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
+        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0  or other.current == None or other.iloc(-2) == None ):
+            if( other.lastUpdatedTimestamp == 0  or other.current == None or other.iloc(-2) == None ):
                 return False
             return ( self.iloc(-2) <= other.iloc(-2) and self.current >= other.current and self.current != self.iloc(-2) )
         if isinstance( other, pd.Series ):
@@ -1010,10 +1013,10 @@ class generatedSeries_c:
     
     def crossingDown( self, other ):
         df = self.timeframe.df
-        if( self.timestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
+        if( self.lastUpdatedTimestamp == 0 or len(df)<2 or self.current == None or self.iloc(-2) == None ):
             return False
         if isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0  or other.current == None or other.iloc(-2) == None ):
+            if( other.lastUpdatedTimestamp == 0  or other.current == None or other.iloc(-2) == None ):
                 return False
             return ( self.iloc(-2) >= other.iloc(-2) and self.current <= other.current and self.current != self.iloc(-2) )
         if isinstance( other, pd.Series ):
@@ -1796,7 +1799,7 @@ def crossingUp( self, other ):
             other_old = other.iloc[active.barindex-1]
             other_new = other.iloc[active.barindex]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
+            if( other.lastUpdatedTimestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
             other_old = other.iloc(-2)
             other_new = other.current
@@ -1859,7 +1862,7 @@ def crossingDown( self, other ):
             other_old = other.iloc[active.barindex-1]
             other_new = other.iloc[active.barindex]
         elif isinstance( other, generatedSeries_c ):
-            if( other.timestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
+            if( other.lastUpdatedTimestamp == 0 or len(other.series()) < 2 or active.barindex < 1 ):
                 return False
             other_old = other.iloc(-2)
             other_new = other.current

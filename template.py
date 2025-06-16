@@ -75,6 +75,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     macd_line.plot( 'macd', color = "#AB1212", width=2 )
     signal_line.plot( 'macd', color = "#1BC573" )
 
+    # if timeframe.barindex == 0 or timeframe.barindex == 1:
+    #     print( timeframe.df )
 
 
 # 
