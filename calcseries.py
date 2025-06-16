@@ -727,7 +727,6 @@ class generatedSeries_c:
         self.timeframe = timeframe
         self.lastUpdatedTimestamp = 0
         self.alwaysReset = always_reset
-        self.iat_index = -1
         self.__current_cache = np.nan # will update on demmand when calling iloc. Don't use from here.
         self.__cached_barindex = -1
 
@@ -752,8 +751,7 @@ class generatedSeries_c:
             barindex = len(source)-1 # if self.timeframe.jumpstart else self.timeframe.barindex
             start_time = time.time()
             self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df, self.param).dropna()
-            self.lastUpdatedTimestamp = self.timeframe.df['timestamp'].iloc[barindex]
-            self.iat_index = self.timeframe.df.columns.get_loc(self.name)
+            self.lastUpdatedTimestamp = self.timeframe.df['timestamp'].iat[barindex]
             if( self.timeframe.stream.initializing ):
                 print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
@@ -775,8 +773,7 @@ class generatedSeries_c:
 
         # slice the required block of candles to calculate the current value of the generated series
         newval = self.func(source[-self.period:], self.period, timeframe.df, self.param).loc[timeframe.barindex]
-        # timeframe.df.loc[timeframe.df.index[-1], self.name] = newval
-        timeframe.df.iat[timeframe.barindex, self.iat_index] = newval
+        timeframe.df[self.name].iat[timeframe.barindex] = newval
         self.lastUpdatedTimestamp = timeframe.timestamp
 
 
@@ -791,7 +788,7 @@ class generatedSeries_c:
             else:
                 # If cache is invalid or not yet populated, fetch from DataFrame
                 if barindex >= 0 and barindex < len(self.timeframe.df):
-                    value = self.timeframe.df[self.name].iloc[barindex]
+                    value = self.timeframe.df[self.name].iat[barindex]
                     self.__current_cache = value
                     self.__cached_barindex = active.barindex
                     return value
@@ -807,7 +804,7 @@ class generatedSeries_c:
         if index < 0 or index >= len(self.timeframe.df):
             return np.nan # Return NaN for out-of-bounds access
             
-        return self.timeframe.df[self.name].iloc[index]
+        return self.timeframe.df[self.name].iat[index]
 
 
     def series( self ):
@@ -1745,7 +1742,7 @@ class pivots_c:
                 index=index,
                 type=type,
                 price=price,
-                timestamp=int(active.timeframe.df.iat[index, c.DF_TIMESTAMP])
+                timestamp=int(active.timeframe.df['timestamp'].iat[index])
                 )
         if len(self.pivots) >= 500:
             self.pivots = self.pivots[1:] + [pivot]  # Slicing out the oldest element

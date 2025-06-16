@@ -108,7 +108,7 @@ class plot_c:
                 # For real-time updates, directly assign to the DataFrame using .iat.
                 # This is efficient enough for single row updates.
                 assert( self.iat_index != -1 ) # iat_index must be set if it's a value-based plot
-                timeframe.df.iat[timeframe.barindex, self.iat_index] = source
+                timeframe.df[self.name].iat[timeframe.barindex] = source
             return
 
         # If we reach here, the source type is unexpected.
@@ -202,31 +202,14 @@ class timeframe_c:
 
         active.timeframe = self
 
-        # Create a copy of all but the last row for the main historical dataframe
+        # Create a copy of the dataframe
         self.df = ohlcvDF.copy()
 
-        print( f"Calculating generated series {self.timeframeStr}" )
-
+ 
         # --- Phase 1: Jumpstart (single last row for generatedSeries initialization) ---
         start_time = time.time()
 
-        # Set barindex and timestamp for the second to last element of the initial historical data 
-        # (this is where the generatedSeries will effectively "start" their calculation from after jumpstart)
-        self.realtimeCandle.timestamp = int(self.df.iloc[0]['timestamp'])
-        self.realtimeCandle.open = self.df.iloc[0]['open']
-        self.realtimeCandle.high = self.df.iloc[0]['high']
-        self.realtimeCandle.low = self.df.iloc[0]['low']
-        self.realtimeCandle.close = self.df.iloc[0]['close']
-        self.realtimeCandle.volume = self.df.iloc[0]['volume']
-
-
         print( f"Computing script logic {self.timeframeStr}" )
-        # at this point we have the generatedSeries initialized for the whole dataframe
-        # move the dataframe to use it as source for running the script logic.
-        # Start with a new dataframe with only the first row copied from the precomputed dataframe.
-        # The precomputed data will be (shadow)copied into the new dataframe as we progress
-        # through the bars.
-        ###############################################################################
 
         # if there is no callback function we don't have anything to compute
         if self.callback is None or tools.emptyFunction( self.callback ):
@@ -235,19 +218,17 @@ class timeframe_c:
         
     
         # --- Phase 2: Shadowcopy (row-by-row backtest simulation) ---
-        
-        self.shadowcopy = True
-        self.jumpstart = True
         self.barindex = -1
-        self.timestamp = int(self.df.iat[self.barindex, 0] - self.timeframeMsec)
-        # Set barindex and timestamp for the second to last element of the initial historical data 
-        # (this is where the generatedSeries will effectively "start" their calculation from after jumpstart)
-        self.realtimeCandle.timestamp = self.timestamp #int(self.df.iloc[0]['timestamp'])
+        self.timestamp = self.df['timestamp'].iat[self.barindex]
+        self.realtimeCandle.timestamp = self.timestamp
         self.realtimeCandle.open = self.df.iloc[0]['open']
         self.realtimeCandle.high = self.df.iloc[0]['high']
         self.realtimeCandle.low = self.df.iloc[0]['low']
         self.realtimeCandle.close = self.df.iloc[0]['close']
         self.realtimeCandle.volume = self.df.iloc[0]['volume']
+
+        self.shadowcopy = True
+        self.jumpstart = True
         self.parseCandleUpdate(self.df)
         self.shadowcopy = False
 
@@ -309,7 +290,7 @@ class timeframe_c:
             
 
             # NOT SHADOWCOPY: This is realtime
-            last_timestamp = int(self.df.iloc[self.barindex]['timestamp']) 
+            last_timestamp = int(self.df['timestamp'].iat[self.barindex]) 
             if( newrow_timestamp < last_timestamp ):
                 # print( f"SKIPPING {self.timeframeStr}: {int( newrow.timestamp)}")
                 continue
@@ -384,7 +365,7 @@ class timeframe_c:
 
             self.barindex = new_idx
             active.barindex = self.barindex
-            self.timestamp = int(self.df.iloc[self.barindex]['timestamp'])
+            self.timestamp = int(self.df['timestamp'].iat[self.barindex])
             if self.timeframeStr == self.stream.timeframeFetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
 
@@ -475,7 +456,7 @@ class timeframe_c:
 
     def indexForTimestamp( self, timestamp:int )->int:
         # Estimate the index by dividing the offset by the time difference between rows
-        baseTimestamp = int(self.df['timestamp'].iloc[0])
+        baseTimestamp = int(self.df['timestamp'].iat[0])
         index = (timestamp - baseTimestamp) // self.timeframeMsec
         return max(-1, index - 1) # Return the previous index or -1 if not found
 
@@ -486,11 +467,7 @@ class timeframe_c:
             return None
         if column_name not in self.df.columns:
             raise ValueError(f"Column '{column_name}' not found in DataFrame.")
-        return self.df[column_name].iloc[index]
-
-    def valueByColumnIdx( self, column_index:int, index:int = None ):
-        if index == None: index = self.barindex
-        return self.df.iat[index, column_index]
+        return self.df[column_name].iat[index]
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
