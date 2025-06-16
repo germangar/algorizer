@@ -68,16 +68,17 @@ class plot_c:
     def update( self, source, timeframe ):
 
         # this shouldn't be neccesary anymore. I gotta check it
-        if isinstance(source, (pd.Series, generatedSeries_c)): # and self.name in timeframe.df.columns:
-            # if self.iat_index == -1:
-            #     self.iat_index = timeframe.df.columns.get_loc(self.name)
+        if isinstance(source, (pd.Series, generatedSeries_c)):
             return
+        
         
         if isinstance(source, (int, float, type(None))) :
             # Create a column in the dataframe for it if there's none, and keep updating it
-            if self.iat_index == -1:
-                timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
-                self.iat_index = timeframe.df.columns.get_loc(self.name)
+            # This never happens. It is already created at initializing the object
+            # if self.iat_index == -1:
+            #     timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
+            #     self.iat_index = timeframe.df.columns.get_loc(self.name)
+            assert( self.iat_index != -1 )
 
             if timeframe.jumpstart : # Do not assign values in the jumpstart row
                 return
@@ -613,7 +614,7 @@ class stream_c:
             self.markers.insert(insertion_index, marker)
         else:
             self.markers.append( marker )
-            
+
         if not self.initializing:
             push_marker_update( marker )
         return marker

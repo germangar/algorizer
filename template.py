@@ -33,7 +33,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
 
     rsi14 = calc.RSI(close, 14)
     rsiSlow = requestValue( rsi30m.name, '30m' )
-    # plot( rsiSlow, 'rsiSlow', 'rsi' ) # plotting a float takes a huge dent on performance
+    plot( rsiSlow, 'rsiSlow', 'rsi' ) # plotting a float takes a huge dent on performance
 
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsiSlow < -0.7
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 10000, plots = True )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 25000, plots = True )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     # print(stream.timeframes[stream.timeframeFetch].df.columns)
 
     stream.registerPanel('macd', 1.0, 0.1, show_timescale=True )
-    # stream.registerPanel('rsi', 1.0, 0.2 )
+    stream.registerPanel('rsi', 1.0, 0.2 )
 
 
     stream.createWindow( '1m' )
