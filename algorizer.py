@@ -728,7 +728,8 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''
     if not timestamp : 
         timestamp = active.timeframe.timestamp
-
+    if timeframeName not in active.timeframe.stream.timeframes.keys():
+        raise ValueError(f"Timeframe {timeframeName} is not in the stream")
     targetTimeframe = active.timeframe.stream.timeframes[timeframeName] if timeframeName is not None else active.timeframe
     return targetTimeframe.valueAtTimestamp( column_name, timestamp )
     

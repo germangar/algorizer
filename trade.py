@@ -22,7 +22,7 @@ class strategy_c:
     """
     Represents the overall trading strategy, managing positions and global statistics.
     """
-    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False, currency_mode: str = 'USD', leverage_long: float = 1.0, leverage_short: float = 1.0):
+    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False, currency_mode: str = 'USD', leverage_long: float = 1.0, leverage_short: float = 1.0, broker_event_callback: callable = None):
         self.positions = []   # List to hold all positions (both active and closed, Long and Short)
         self.total_profit_loss = 0.0 # Global variable to keep track of the total profit/loss for the entire strategy
         self.initial_liquidity = initial_liquidity # Starting capital for the strategy
@@ -46,6 +46,7 @@ class strategy_c:
         self.first_order_timestamp = None # NEW: To track the very first order timestamp in the strategy
         self.leverage_long = leverage_long   # Default leverage for LONG trades
         self.leverage_short = leverage_short # Default leverage for SHORT trades
+        self.broker_event_callback = broker_event_callback # NEW: Callback for broker events
 
         # Validate currency_mode
         if self.currency_mode not in ['USD', 'BASE']:
@@ -172,6 +173,9 @@ class strategy_c:
             print(f"Error: Invalid command '{cmd}'. Must be 'buy' or 'sell'.")
             return
 
+        # Initialize affected_pos to None; it will be set if an operation occurs
+        affected_pos = None
+
         # Handle USD capital clamping if currency_mode is 'USD'
         if self.currency_mode == 'USD':
             current_active_pos = self.get_active_position() # Get the single active position in one-way mode
@@ -236,7 +240,7 @@ class strategy_c:
                         clamped_quantity_final = round_to_tick_size(min(actual_quantity_to_process_base_units, self.max_position_size), getPrecision())
 
                     if clamped_quantity_final > EPSILON:
-                        self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
+                        affected_pos = self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
                     elif self.verbose or not isInitializing():
                         print(f"Warning: Attempted to open new position, but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No position opened.")
                 else:
@@ -255,6 +259,7 @@ class strategy_c:
 
                     if clamped_quantity_final > EPSILON:
                         active_target_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
+                        affected_pos = active_target_pos # This position was affected
                     elif self.verbose or not isInitializing():
                         print(f"Warning: Attempted to increase {active_target_pos.type} position but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No change to position.")
                 else:
@@ -262,11 +267,13 @@ class strategy_c:
                     if actual_quantity_to_process_base_units < active_target_pos.size - EPSILON:
                         # Partial close: reduce the existing position
                         active_target_pos.update(order_direction, current_price, actual_quantity_to_process_base_units, leverage)
+                        affected_pos = active_target_pos # This position was affected
                     elif actual_quantity_to_process_base_units >= active_target_pos.size - EPSILON:
                         # Full close: close the existing position (or oversized order that just closes)
                         
                         # Store current position reference before it gets closed for profit check
                         closing_position_reference = active_target_pos
+                        affected_pos = closing_position_reference # This position will be affected
                         
                         # Get size BEFORE calling close for printing warnings
                         pos_size_to_close = closing_position_reference.size 
@@ -299,7 +306,7 @@ class strategy_c:
                         clamped_quantity_final = round_to_tick_size(min(actual_quantity_to_process_base_units, self.max_position_size), getPrecision())
                         
                     if clamped_quantity_final > EPSILON:
-                        self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
+                        affected_pos = self.open_position(target_position_type, current_price, clamped_quantity_final, leverage)
                     elif self.verbose or not isInitializing():
                         print(f"Warning: Attempted to open new position, but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No position opened.")
                 else:
@@ -317,6 +324,7 @@ class strategy_c:
 
                 if clamped_quantity_final > EPSILON:
                     current_overall_active_pos.update(order_direction, current_price, clamped_quantity_final, leverage)
+                    affected_pos = current_overall_active_pos # This position was affected
                 elif self.verbose or not isInitializing():
                     print(f"Warning: Attempted to increase {current_overall_active_pos.type} position but calculated final quantity ({clamped_quantity_final:.2f} base units) is effectively zero. No change to position.")
 
@@ -332,6 +340,8 @@ class strategy_c:
                     closing_position_reference = current_overall_active_pos 
 
                     closing_position_reference.close(current_price) # This calculates and sets closing_position_reference.profit
+                    # The closing part means this position is affected
+                    affected_pos = closing_position_reference
 
                     # Determine marker based on the position's profit after it's closed
                     marker_text = 'W' if closing_position_reference.profit > EPSILON else ('L' if closing_position_reference.profit < -EPSILON else 'E')
@@ -358,7 +368,11 @@ class strategy_c:
                             clamped_new_pos_quantity_base_units = round_to_tick_size(min(remaining_quantity_base_units_for_new_pos, self.max_position_size), getPrecision())
 
                         if clamped_new_pos_quantity_base_units > EPSILON:
-                            self.open_position(order_direction, current_price, clamped_new_pos_quantity_base_units, leverage)
+                            # This open_position call will trigger another execute_order, which will trigger broker_event.
+                            # So, we should *not* call broker_event here again for the opening part.
+                            # We just need to ensure the `affected_pos` points to the *new* position if one is opened.
+                            new_pos_obj = self.open_position(order_direction, current_price, clamped_new_pos_quantity_base_units, leverage)
+                            affected_pos = new_pos_obj # Set affected_pos to the newly opened position
                             if self.verbose or not isInitializing():
                                 print(f"Position reversed: Closed {'LONG' if closing_position_reference.type == c.LONG else 'SHORT'} position and opened new {order_direction} position with {clamped_new_pos_quantity_base_units:.2f} base units.")
                         elif self.verbose or not isInitializing():
@@ -368,8 +382,42 @@ class strategy_c:
                 else:
                     # Partial close of the existing position
                     current_overall_active_pos.update(order_direction, current_price, actual_quantity_to_process_base_units, leverage)
+                    affected_pos = current_overall_active_pos # This position was affected
                     if self.verbose or not isInitializing():
                         print(f"Partial close: Reduced {current_overall_active_pos.type} position by {actual_quantity_to_process_base_units:.2f} base units.")
+
+        # NEW: Call the broker_event_callback after the order is processed and position state is updated
+        if self.broker_event_callback and affected_pos is not None:
+            final_position_type_for_broker_event = 0
+            final_position_size_base_for_broker_event = 0.0
+            final_position_size_dollars_for_broker_event = 0.0
+            final_position_collateral_dollars_for_broker_event = 0.0 # NEW
+
+            if affected_pos.active and affected_pos.size > EPSILON:
+                final_position_type_for_broker_event = affected_pos.type
+                final_position_size_base_for_broker_event = affected_pos.size * affected_pos.type # Signed
+                final_position_size_dollars_for_broker_event = affected_pos.active_capital_invested * affected_pos.type # Signed (notional value including leverage)
+                # Position collateral is priceAvg * size (no leverage applied here)
+                final_position_collateral_dollars_for_broker_event = (affected_pos.priceAvg * affected_pos.size) * affected_pos.type # Signed
+            # If position is inactive and size is effectively zero, it means it's flat, so leave values as 0.0
+
+            # The order_type for broker event should be the direction of the order itself (BUY/SELL)
+            order_type_for_broker_event = c.LONG if cmd == 'buy' else c.SHORT
+
+            # The quantity_dollars for broker event refers to the *order's* notional value
+            order_quantity_dollars = actual_quantity_to_process_base_units * current_price
+
+            self.broker_event_callback(
+                type=order_type_for_broker_event,
+                quantity=actual_quantity_to_process_base_units,
+                quantity_dollars=order_quantity_dollars,
+                position_type=final_position_type_for_broker_event, # The type of the *resulting* position
+                position_size_base=final_position_size_base_for_broker_event,
+                position_size_dollars=final_position_size_dollars_for_broker_event,
+                position_collateral_dollars=final_position_collateral_dollars_for_broker_event,
+                leverage=leverage
+            )
+
 
     def close_position(self, pos_type: int = None): # pos_type is now optional
         """
@@ -543,7 +591,7 @@ class strategy_c:
 
 
         # Print header
-        print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'WinRate(L)':<12} {'WinRate(S)':<12} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Acct PnL %':<12}")
+        print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Acct PnL %':<12}")
         # Print values
         print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {pnl_percentage_vs_liquidity:<12.2f}")
         
@@ -993,17 +1041,18 @@ class position_c:
 
 # Global instance of the strategy.
 # Initialized with currency_mode='USD' as requested.
+# The user's script will set the broker_event_callback on this instance if needed.
 strategy = strategy_c(hedged=False, currency_mode='USD') 
 
 # The following global functions will now call methods on the 'strategy' instance.
 # This maintains compatibility with existing calls from other modules (e.g., algorizer.py).
-def openPosition(pos_type: int, price: float, quantity: float, leverage: int) -> position_c:
+def openPosition(pos_type: int, price: float, quantity: float, leverage: int) -> 'position_c':
     """
     Opens a new position. Quantity must be in base units.
     """
     return strategy.open_position(pos_type, price, quantity, leverage)
 
-def getActivePosition(pos_type: int = None) -> position_c:
+def getActivePosition(pos_type: int = None) -> 'position_c':
     return strategy.get_active_position(pos_type)
 
 def direction() -> int:
@@ -1068,7 +1117,7 @@ def order(cmd: str, target_position_type: int, quantity: float = None, leverage:
         actual_quantity_base_units = round_to_tick_size(actual_quantity_base_units, getPrecision())
 
 
-    strategy.execute_order(cmd, target_position_type, actual_quantity_base_units, selected_leverage) # Corrected variable name
+    strategy.execute_order(cmd, target_position_type, actual_quantity_base_units, selected_leverage) 
 
 def close(pos_type: int = None):
     strategy.close_position(pos_type)
