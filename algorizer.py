@@ -488,7 +488,7 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, callbackList, max_amount = 5000, plots:bool = True ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, broker_event_callback = None, max_amount = 5000, plots:bool = True ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.isRunning = False
@@ -498,6 +498,9 @@ class stream_c:
         self.timeframes: dict[str, timeframe_c] = {}
         self.precision = 0.0
         self.mintick = 0.0
+        self.broker_event_callback = broker_event_callback
+        if broker_event_callback == None:
+            self.broker_event_callback = globals().get('broker_event')
 
         self.markers:list[marker_c] = []
         self.registeredPanels:dict = {}
@@ -557,8 +560,8 @@ class stream_c:
 
             timeframe = timeframe_c( self, t )
 
-            if i < len(callbackList):
-                timeframe.callback = callbackList[i]
+            if i < len(callbacks):
+                timeframe.callback = callbacks[i]
             else:
                 func_name = f'runCloseCandle_{t}'
                 timeframe.callback = globals().get(func_name)
@@ -623,6 +626,20 @@ class stream_c:
             await asyncio.sleep(0.01)
 
         await self.exchange.close()
+
+
+    def broker_event( self, type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
+        '''
+        type (Buy/Sell Event): represented as the constants c.LONG (1) and c.SHORT (-1)
+        quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.001 BTC).
+        quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD (e.g., if you buy 0.001 BTC at $60,000, this would be $60).
+        position_type (New Position Type: Long/Short/Flat)
+        position_size_base (New Position Size in Base Currency): The total quantity of the base asset currently held (signed for long/short).
+        position_size_dollars (New Position Size in Dollars, Leveraged): This represents the total notional exposure of the position, including the effect of leverage.
+        leverage (Leverage of the Order)
+        position_collateral_dollars (Un-leveraged Capital in Position)
+        '''
+        self.broker_event_callback( self, type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage )
 
     
     def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False ):

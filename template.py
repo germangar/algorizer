@@ -7,9 +7,26 @@ from candle import candle_c
 import trade
 import broker_alerts as broker
 
-# from window import window_c # Importing window_c is only required if you want direct access to lightweight charts
 
-
+# the strategy code has issued an order. When running in realtime it will call this
+# function so a real order can be sent to the broker. The type of broker is up to
+# the user to import and configure and issue the order here for it. In this case we
+# send an alert with broker_alerts
+def broker_event( stream:stream_c, type:int, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
+        '''
+        type (Buy/Sell Event): represented as the constants c.LONG (1) and c.SHORT (-1)
+        quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.001 BTC).
+        quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD (e.g., if you buy 0.001 BTC at $60,000, this would be $60).
+        position_type (New Position Type: Long/Short/Flat)
+        position_size_base (New Position Size in Base Currency): The total quantity of the base asset currently held (signed for long/short).
+        position_size_dollars (New Position Size in Dollars, Leveraged): This represents the total notional exposure of the position, including the effect of leverage.
+        leverage (Leverage of the Order)
+        position_collateral_dollars (Un-leveraged Capital in Position)
+        '''
+        exchange = "blabla"
+        message = f"{exchange} {stream.symbol} pos {position_collateral_dollars:.4f}$ {leverage}x"
+        if( broker.alert( message, 'https://webhook.site/ae09b310-eab0-4086-a0d1-2da80ab722d1' ) ):
+            print( 'Alert sent:', message )
 
 
 
@@ -79,9 +96,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     histo.histogram( 'macd', "#4A545D" )
     macd_line.plot( 'macd', color = "#AB1212", width=2 )
     signal_line.plot( 'macd', color = "#1BC573" )
+    
 
-    # if timeframe.barindex == 0 or timeframe.barindex == 1:
-    #     print( timeframe.df )
 
 
 # 
@@ -99,19 +115,6 @@ if __name__ == '__main__':
     trade.strategy.max_position_size = 1000
     trade.strategy.leverage_long = 1
     trade.strategy.leverage_short = 1
-
-    def broker_event( type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
-        # the strategy code has issued an order. When running in realtime it will call this
-        # function so a real order can be sent to the broker. The type of broker is up to
-        # the user to import and configure and issue the order here for it. In this case we
-        # send an alert with broker_alerts
-        accountName = "blabla"
-        message = f"{accountName} 'LDO/USDT:USDT' pos {position_collateral_dollars:.4f}$ {leverage}x"
-        print( 'Alert:', message )
-        if( broker.alert( message, 'https://webhook.site/ae09b310-eab0-4086-a0d1-2da80ab722d1' ) ):
-            print( 'Alert:ok' )
-
-    trade.strategy.broker_event_callback = broker_event
     
     # Start the candles stream:
     #
@@ -132,7 +135,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 1000, plots = True )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], broker_event, 20000, plots = True )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
@@ -142,19 +145,6 @@ if __name__ == '__main__':
 
     stream.registerPanel('macd', 1.0, 0.15, show_timescale=True )
     stream.registerPanel('rsi', 1.0, 0.1 )
-
-    '''
-    type (Buy/Sell Event): This is fundamental. Every broker needs to know if the user intends to buy or sell.
-    quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.001 BTC). This is the core of any order.
-    quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD (e.g., if you buy 0.001 BTC at $60,000, this would be $60). Many broker UIs and some APIs operate with notional USD values, so this is very useful for flexibility and clarity.
-    position_type (New Position Type: Long/Short/Flat): This tells the broker's integration what the resulting direction of the overall position is after the trade. Crucial for brokers that have specific long/short modes or require explicit position setting.
-    position_size_base (New Position Size in Base Currency): The total quantity of the base asset currently held (signed for long/short). This is vital for managing the actual inventory of the asset.
-    position_size_dollars (New Position Size in Dollars, Leveraged): This represents the total notional exposure of the position, including the effect of leverage. This is critical for brokers that calculate margin requirements or risk based on the total value of your leveraged position.
-    leverage (Leverage of the Order): Knowing the specific leverage applied to this particular order is important because some brokers allow varying leverage per trade or require it for specific order types (e.g., isolated margin trades).
-    position_collateral_dollars (Un-leveraged Capital in Position): This is an excellent addition! It clearly separates the actual capital you've committed (margin) from the leveraged notional size. Brokers often distinguish between the total value of your position (size) and the actual collateral (margin) you put up. This parameter provides that direct, un-leveraged capital amount, which is essential for accurate margin tracking and potentially avoiding margin calls.
-    '''
-    
-
 
     stream.createWindow( '1m' )
 

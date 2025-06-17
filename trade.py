@@ -22,7 +22,7 @@ class strategy_c:
     """
     Represents the overall trading strategy, managing positions and global statistics.
     """
-    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False, currency_mode: str = 'USD', leverage_long: float = 1.0, leverage_short: float = 1.0, broker_event_callback: callable = None):
+    def __init__(self, initial_liquidity: float = 10000.0, verbose: bool = False, order_size: float = 100.0, max_position_size: float = 100.0, hedged: bool = False, currency_mode: str = 'USD', leverage_long: float = 1.0, leverage_short: float = 1.0):
         self.positions = []   # List to hold all positions (both active and closed, Long and Short)
         self.total_profit_loss = 0.0 # Global variable to keep track of the total profit/loss for the entire strategy
         self.initial_liquidity = initial_liquidity # Starting capital for the strategy
@@ -46,7 +46,6 @@ class strategy_c:
         self.first_order_timestamp = None # NEW: To track the very first order timestamp in the strategy
         self.leverage_long = leverage_long   # Default leverage for LONG trades
         self.leverage_short = leverage_short # Default leverage for SHORT trades
-        self.broker_event_callback = broker_event_callback # NEW: Callback for broker events
 
         # Validate currency_mode
         if self.currency_mode not in ['USD', 'BASE']:
@@ -386,8 +385,8 @@ class strategy_c:
                     if self.verbose or not isInitializing():
                         print(f"Partial close: Reduced {current_overall_active_pos.type} position by {actual_quantity_to_process_base_units:.2f} base units.")
 
-        # NEW: Call the broker_event_callback after the order is processed and position state is updated
-        if self.broker_event_callback and affected_pos is not None:
+        # NEW: Call the broker_event after the order is processed and position state is updated
+        if not isInitializing() and affected_pos is not None:
             final_position_type_for_broker_event = 0
             final_position_size_base_for_broker_event = 0.0
             final_position_size_dollars_for_broker_event = 0.0
@@ -407,7 +406,7 @@ class strategy_c:
             # The quantity_dollars for broker event refers to the *order's* notional value
             order_quantity_dollars = actual_quantity_to_process_base_units * current_price
 
-            self.broker_event_callback(
+            active.timeframe.stream.broker_event(
                 type=order_type_for_broker_event,
                 quantity=actual_quantity_to_process_base_units,
                 quantity_dollars=order_quantity_dollars,
@@ -1041,7 +1040,6 @@ class position_c:
 
 # Global instance of the strategy.
 # Initialized with currency_mode='USD' as requested.
-# The user's script will set the broker_event_callback on this instance if needed.
 strategy = strategy_c(hedged=False, currency_mode='USD') 
 
 # The following global functions will now call methods on the 'strategy' instance.
