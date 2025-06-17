@@ -1,4 +1,3 @@
-'''
 
 
 import pandas as pd
@@ -72,7 +71,6 @@ class window_c:
 
         chart.set( tmpdf )
 
-        chart.create_line()
 
 
         # bottom panel
@@ -149,5 +147,3 @@ async def on_button_press(chart):
     chart.topbar['my_button'].set(new_button_value)
     print(f'Turned something {new_button_value.lower()}.')
 
-
-'''

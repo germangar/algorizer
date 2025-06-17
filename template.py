@@ -38,6 +38,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsiSlow < -0.7
     sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and rsiSlow > 0.65
+    # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and rsiSlow < -0.7
+    # sellSignal = rsi14 < 50.0 and BBupper.crossingUp(close) and rsiSlow > 0.65
 
     shortpos = trade.getActivePosition(c.SHORT)
     longpos = trade.getActivePosition(c.LONG)
@@ -115,7 +117,7 @@ if __name__ == '__main__':
     #
     # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 25000, plots = True )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], 10000, plots = True )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()

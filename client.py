@@ -73,6 +73,7 @@ class window_c:
         self.showRealTimeCandle = True
         self.numpanels = 0
         self.lastCandle:candle_c = None
+        self.timerOnPriceLabel = False
 
         # calculate the panels sizes
         self.panels = config['panels']
@@ -126,7 +127,7 @@ class window_c:
             chart.time_scale( visible=False, time_visible=False )
 
         legend = f"{self.config['symbol']}"
-        chart.legend( visible=True, ohlc=False, percent=False, font_size=18, text=legend )
+        chart.legend( visible=True, ohlc=False, percent=False, font_size=17, text=legend )
 
         volume_alpha = 0.8 if self.panels["main"]["show_volume"] else 0.0
         chart.volume_config(
@@ -134,6 +135,9 @@ class window_c:
             scale_margin_bottom = 0.0, 
             up_color=f'rgba(83,141,131,{volume_alpha})', 
             down_color=f'rgba(200,127,130,{volume_alpha})')
+        
+        # buttons
+        self.initTopbar( chart )
 
         try:
             time_df = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close'], 'volume':df['volume']} )
@@ -173,6 +177,8 @@ class window_c:
 
         self.createPlots(df)
         self.createMarkers()
+
+        
 
         task = chart.show_async()
         tasks.registerTask( 'window', task )
@@ -391,8 +397,14 @@ class window_c:
         while True:
             await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
             self.lastCandle.updateRemainingTime()
-            chart = self.panels['main']['chart']
-            chart.price_line( True, True, self.lastCandle.remainingTimeStr() )
+            chart:Chart = self.panels['main']['chart']
+            if self.timerOnPriceLabel:
+                chart.price_line( True, True, self.lastCandle.remainingTimeStr() )
+            else:
+                chart.price_line( True, True, '' )
+
+            # chart.topbar['clock'].set(datetime.now().strftime('%H:%M:%S'))
+            chart.topbar['timer'].set( f'{ self.lastCandle.remainingTimeStr() } { self.config["symbol"] }' )
 
     def isAlive(self)->bool:
         chart:Chart = self.panels['main']['chart']
@@ -407,8 +419,36 @@ class window_c:
         screen_height = root.winfo_screenheight()
         root.destroy()  # Destroy the window after getting the resolution
         return screen_width, screen_height
+    
+    def initTopbar(self, chart:Chart):
+        
+        try:
+            chart.topbar.button('timer1', 'Timer on price ▢', func=self.on_button_press, align= 'right')
+            chart.topbar.textbox("timer", self.config['symbol'], align= 'right')
+            chart.topbar.menu( "hal", ("hol", "hil", "hal"), "hil") 
+            chart.topbar.switcher( 'thisthat', ("this", "that"), "that" )
+        except Exception as e:
+            print( f'{e}')
+    
+    async def on_button_press(self, chart):
+        try:
+            # 'Timer on price ▢■▭▬▮▯▩▧▦▣■□▢▥□▣'
+            timeron = 'Timer on price ▣'
+            timeroff = 'Timer on price ▢'
+            new_button_value = timeron if chart.topbar['timer1'].value == timeroff else timeron
+            if chart.topbar['timer1'].value == timeron:
+                chart.topbar['timer1'].set(timeroff)
+            elif chart.topbar['timer1'].value == timeroff:
+                chart.topbar['timer1'].set(timeron)
+            self.timerOnPriceLabel = not self.timerOnPriceLabel
+            # print(f'Turned something {new_button_value.lower()}.')
+        except Exception as e:
+            print( f'Exception {e}')
 
 window:window_c = None
+
+
+
 
 ###########################################################################
 ###########################################################################
