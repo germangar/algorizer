@@ -57,7 +57,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
 
     rsi14 = calc.RSI(close, 14)
     rsiSlow = requestValue( rsi30m.name, '30m' )
-    plot( rsiSlow, 'rsiSlow', 'rsi' ) # plotting a float takes a huge dent on performance
+    plot( rsiSlow, 'rsiSlow', 'rsi' )
 
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsiSlow < -0.7
