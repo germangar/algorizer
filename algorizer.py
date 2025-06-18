@@ -408,7 +408,6 @@ class timeframe_c:
         hist_margin_top: for histograms only. Scalar margin above the histogram.
         hist_margin_bottom: for histograms only. Scalar margin below the histogram.
         '''
-        if self.stream.noplots : return
         plot = self.registeredPlots.get( name )
 
         if( plot == None ):
@@ -488,11 +487,10 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, broker_event_callback = None, max_amount = 5000, plots:bool = True ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, broker_event_callback = None, max_amount = 5000 ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.isRunning = False
-        self.noplots = not plots
         self.timeframeFetch = None
         self.timestampFetch = -1
         self.timeframes: dict[str, timeframe_c] = {}
