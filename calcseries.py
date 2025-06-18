@@ -956,7 +956,7 @@ class generatedSeries_c:
                 float_other = float(other)
             except ValueError:
                 return False
-            # Corrected line: Use previous_self_val in the last condition
+            # Corrected: Changed `previous_other_val` to `previous_self_val` for constant comparison.
             return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
     
     def crossing( self, other ):
@@ -1550,14 +1550,15 @@ class pivots_c:
         
         # State variables
         self.trend = c.LONG  # Start assuming uptrend
-        self.current_HH = None
-        self.current_LL = None
-        self.current_HH_index = None
-        self.current_LL_index = None
-        self.last_pivot_price = None
-        self.last_pivot_move = None
+        self._current_trend_high_extrema = None
+        self._current_trend_low_extrema = None
+        self._current_trend_high_extrema_index = None
+        self._current_trend_low_extrema_index = None
+        self._last_confirmed_pivot_price = None
+        self._last_confirmed_pivot_reversal_magnitude = None
         self.isNewPivot = False # a new pivot was created in the last update
         self.pivots:list[pivot_c] = []
+        self.temp_pivot: pivot_c = None # Stores the potential pivot in progress
         
     def process_candle(self, index: int, high: float, low: float)->bool:
         self.isNewPivot = False
@@ -1566,81 +1567,92 @@ class pivots_c:
         self.barindex = index
 
         # Initialize on first candle
-        if self.current_HH is None:
-            self.current_HH = high
-            self.current_LL = low
-            self.current_HH_index = index
-            self.current_LL_index = index
+        if self._current_trend_high_extrema is None:
+            self._current_trend_high_extrema = high
+            self._current_trend_low_extrema = low
+            self._current_trend_high_extrema_index = index
+            self._current_trend_low_extrema_index = index
+            # Initialize temp_pivot for the first time
+            if self.trend > 0: # Long trend implies potential high pivot
+                self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
+            else: # Short trend implies potential low pivot
+                self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
             return False
             
-        if self.trend > 0:
+        if self.trend > 0: # Currently in an uptrend (looking for high pivot)
             # Track new high if we make one
-            if high >= self.current_HH:
-                self.current_HH = high
-                self.current_HH_index = index
+            if high >= self._current_trend_high_extrema:
+                self._current_trend_high_extrema = high
+                self._current_trend_high_extrema_index = index
+                self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
                 return False
             
             # Check for potential reversal
-            min_range_threshold = self.current_HH * (1 - self.min_range_pct * 0.01)
+            min_range_threshold = self._current_trend_high_extrema * (1 - self.min_range_pct * 0.01)
             
             if low < min_range_threshold:
-                current_reversal = self.current_HH - low
+                current_reversal = self._current_trend_high_extrema - low
                 
                 # If we have a previous pivot to compare to
-                if self.last_pivot_price is not None:
-                    reversal_threshold = self.last_pivot_move * (self.reversal_pct * 0.01)
+                if self._last_confirmed_pivot_price is not None:
+                    reversal_threshold = self._last_confirmed_pivot_reversal_magnitude * (self.reversal_pct * 0.01)
                     if current_reversal >= reversal_threshold:
                         # Confirmed down pivot
-                        self.addPivot(self.current_HH_index, self.trend, self.current_HH)
+                        self.addPivot(self._current_trend_high_extrema_index, c.PIVOT_HIGH, self._current_trend_high_extrema) # Add the high pivot
                         self.trend = c.SHORT
-                        self.last_pivot_price = self.current_HH
-                        self.last_pivot_move = current_reversal
-                        self.current_LL = low
-                        self.current_LL_index = index
+                        self._last_confirmed_pivot_price = self._current_trend_high_extrema
+                        self._last_confirmed_pivot_reversal_magnitude = current_reversal
+                        self._current_trend_low_extrema = low
+                        self._current_trend_low_extrema_index = index
+                        self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
                         return True
                 else:
                     # First pivot, only use min_range
-                    self.addPivot( self.current_HH_index, self.trend, self.current_HH)
+                    self.addPivot( self._current_trend_high_extrema_index, c.PIVOT_HIGH, self._current_trend_high_extrema) # Add the high pivot
                     self.trend = c.SHORT
-                    self.last_pivot_price = self.current_HH
-                    self.last_pivot_move = current_reversal
-                    self.current_LL = low
-                    self.current_LL_index = index
+                    self._last_confirmed_pivot_price = self._current_trend_high_extrema
+                    self._last_confirmed_pivot_reversal_magnitude = current_reversal
+                    self._current_trend_low_extrema = low
+                    self._current_trend_low_extrema_index = index
+                    self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
                     return True
                     
-        else:  # Downtrend
+        else:  # Currently in a downtrend (looking for low pivot)
             # Track new low if we make one
-            if low <= self.current_LL:
-                self.current_LL = low
-                self.current_LL_index = index
+            if low <= self._current_trend_low_extrema:
+                self._current_trend_low_extrema = low
+                self._current_trend_low_extrema_index = index
+                self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
                 return False
                 
             # Check for potential reversal
-            min_range_threshold = self.current_LL * (1 + self.min_range_pct * 0.01)
+            min_range_threshold = self._current_trend_low_extrema * (1 + self.min_range_pct * 0.01)
             
             if high > min_range_threshold:
-                current_reversal = high - self.current_LL
+                current_reversal = high - self._current_trend_low_extrema
                 
                 # If we have a previous pivot to compare to
-                if self.last_pivot_price is not None:
-                    reversal_threshold = self.last_pivot_move * (self.reversal_pct * 0.01)
+                if self._last_confirmed_pivot_price is not None:
+                    reversal_threshold = self._last_confirmed_pivot_reversal_magnitude * (self.reversal_pct * 0.01)
                     if current_reversal >= reversal_threshold:
                         # Confirmed up pivot
-                        self.addPivot( self.current_LL_index, self.trend, self.current_LL)
+                        self.addPivot( self._current_trend_low_extrema_index, c.PIVOT_LOW, self._current_trend_low_extrema) # Add the low pivot
                         self.trend = c.LONG
-                        self.last_pivot_price = self.current_LL
-                        self.last_pivot_move = current_reversal
-                        self.current_HH = high
-                        self.current_HH_index = index
+                        self._last_confirmed_pivot_price = self._current_trend_low_extrema
+                        self._last_confirmed_pivot_reversal_magnitude = current_reversal
+                        self._current_trend_high_extrema = high
+                        self._current_trend_high_extrema_index = index
+                        self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
                         return True
                 else:
                     # First pivot, only use min_range
-                    self.addPivot( self.current_LL_index, self.trend, self.current_LL)
+                    self.addPivot( self._current_trend_low_extrema_index, c.PIVOT_LOW, self._current_trend_low_extrema) # Add the low pivot
                     self.trend = c.LONG
-                    self.last_pivot_price = self.current_LL
-                    self.last_pivot_move = current_reversal
-                    self.current_HH = high
-                    self.current_HH_index = index
+                    self._last_confirmed_pivot_price = self._current_trend_low_extrema
+                    self._last_confirmed_pivot_reversal_magnitude = current_reversal
+                    self._current_trend_high_extrema = high
+                    self._current_trend_high_extrema_index = index
+                    self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
                     return True
         
         return False
@@ -1656,6 +1668,8 @@ class pivots_c:
             self.pivots = self.pivots[1:] + [pivot]  # Slicing out the oldest element
         else:
             self.pivots.append(pivot)
+        self.isNewPivot = True # Set to True when a pivot is successfully added
+
 
     def getLast(self, type:int = None, since:int = None)->pivot_c|None:
         if since is None:since = active.barindex
@@ -1720,7 +1734,7 @@ def crossingUp( self, other ):
                 float_other = float(other)
             except ValueError:
                 return False
-            # Corrected: Changed `previous_other_val` to `previous_self_val` for constant comparison.
+            # Corrected line: Use previous_self_val in the last condition
             return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
     
     # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
