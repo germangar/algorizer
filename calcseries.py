@@ -84,7 +84,6 @@ def _generatedseries_calculate_lowestbars(series: pd.Series, period: int, df: pd
     length = len(values)
     result = np.full(length, np.nan)
     
-    # Only process when we have enough data
     if length >= period:
         # Create strided array view for rolling windows
         strides = np.lib.stride_tricks.sliding_window_view(values, period)
@@ -249,124 +248,101 @@ def _generatedseries_calculate_fwma(series: pd.Series, period: int, df:pd.DataFr
     return pt.fwma( series, period )
 
 def _generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    if 1:
-        return pt.mad( series, period )
-    else:
-        # Calculate the average deviation over a given rolling window in a pandas Series.
-        # Initialize a list to hold the deviation values
-        deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
-        # Iterate over each rolling window
-        for i in range(period - 1, len(series)):
-            rolwindow = series[i - period + 1:i + 1]
-            mean = rolwindow.mean()
-            deviation = (rolwindow - mean).abs().sum() / period
-            deviations.append(deviation)
-        return pd.Series(deviations, index=series.index).dropna()
+    return pt.mad( series, period )
+
+    '''# Calculate the average deviation over a given rolling window in a pandas Series.
+    # Initialize a list to hold the deviation values
+    deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
+    # Iterate over each rolling window
+    for i in range(period - 1, len(series)):
+        rolwindow = series[i - period + 1:i + 1]
+        mean = rolwindow.mean()
+        deviation = (rolwindow - mean).abs().sum() / period
+        deviations.append(deviation)
+    return pd.Series(deviations, index=series.index).dropna()'''
 
 def _generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    """
-        Calculate Williams %R for a given series using OHLC data from df over a period.
+    return pt.willr( df['high'], df['low'], df['close'], length=period )
 
-        Args:
-        - series: pd.Series, typically a placeholder, but required for compatibility with generatedSeries_c.
-        - period: int, the period/window for the Williams %R calculation.
+    '''# Ensure the DataFrame has the required columns
+    # if not all(col in df.columns for col in ['high', 'low', 'close']):
+    #     raise ValueError("The global DataFrame must contain 'high', 'low', and 'close' columns")
 
-        Returns:
-        - pd.Series, the calculated Williams %R values.
-        """
-    if 1:
-        return pt.willr( df['high'], df['low'], df['close'], length=period )
-    else:
-        # Ensure the DataFrame has the required columns
-        # if not all(col in df.columns for col in ['high', 'low', 'close']):
-        #     raise ValueError("The global DataFrame must contain 'high', 'low', and 'close' columns")
+    if len(df) < period:
+        return pd.Series([pd.NA] * len(df), index=df.index)  # Not enough data to calculate Williams %R
 
-        if len(df) < period:
-            return pd.Series([pd.NA] * len(df), index=df.index)  # Not enough data to calculate Williams %R
+    # Initialize a list to hold the Williams %R values
+    williams_r_values = [pd.NA] * (period - 1)  # NA for the initial period
 
-        # Initialize a list to hold the Williams %R values
-        williams_r_values = [pd.NA] * (period - 1)  # NA for the initial period
+    # Calculate Williams %R for each rolling window
+    for i in range(period - 1, len(df)):
+        highest_high = df['high'].iloc[i - period + 1:i + 1].max()
+        lowest_low = df['low'].iloc[i - period + 1:i + 1].min()
+        current_close = df['close'].iloc[i]
 
-        # Calculate Williams %R for each rolling window
-        for i in range(period - 1, len(df)):
-            highest_high = df['high'].iloc[i - period + 1:i + 1].max()
-            lowest_low = df['low'].iloc[i - period + 1:i + 1].min()
-            current_close = df['close'].iloc[i]
+        if highest_high == lowest_low:  # Prevent division by zero
+            williams_r_values.append(pd.NA)
+        else:
+            williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100
+            williams_r_values.append(williams_r)
 
-            if highest_high == lowest_low:  # Prevent division by zero
-                williams_r_values.append(pd.NA)
-            else:
-                williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100
-                williams_r_values.append(williams_r)
-
-        return pd.Series(williams_r_values, index=df.index)
+    return pd.Series(williams_r_values, index=df.index)'''
 
 def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame, param=None) -> pd.Series:
-    if 1:
-        # Convert to numpy array for faster operations
-        values = series.to_numpy()
-        deltas = np.diff(values, prepend=np.nan)
-        length = len(values)
-        result = np.full(length, np.nan)
+    # Convert to numpy array for faster operations
+    values = series.to_numpy()
+    deltas = np.diff(values, prepend=np.nan)
+    length = len(values)
+    result = np.full(length, np.nan)
+    
+    if length >= period:
+        # Separate gains and losses
+        gains = np.where(deltas > 0, deltas, 0)
+        losses = -np.where(deltas < 0, deltas, 0)
         
-        if length >= period:
-            # Separate gains and losses
-            gains = np.where(deltas > 0, deltas, 0)
-            losses = -np.where(deltas < 0, deltas, 0)
-            
-            # Create strided views for rolling windows
-            gains_windows = np.lib.stride_tricks.sliding_window_view(gains, period)
-            losses_windows = np.lib.stride_tricks.sliding_window_view(losses, period)
-            
-            # Calculate means for each window
-            avg_gains = np.mean(gains_windows, axis=1)
-            avg_losses = np.mean(losses_windows, axis=1)
-            
-            # Calculate RS and RSI
-            # Add small epsilon to avoid division by zero
-            rs = avg_gains / (avg_losses + 1e-10)  
-            rsi = 100 - (100 / (1 + rs))
-            
-            # Assign results
-            result[period-1:] = rsi
-
-        return pd.Series(result, index=series.index)
-    else:
-        deltas = series.diff()
-        gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
-        loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
-        rs = gain / loss
+        # Create strided views for rolling windows
+        gains_windows = np.lib.stride_tricks.sliding_window_view(gains, period)
+        losses_windows = np.lib.stride_tricks.sliding_window_view(losses, period)
+        
+        # Calculate means for each window
+        avg_gains = np.mean(gains_windows, axis=1)
+        avg_losses = np.mean(losses_windows, axis=1)
+        
+        # Calculate RS and RSI
+        # Add small epsilon to avoid division by zero
+        rs = avg_gains / (avg_losses + 1e-10)  
         rsi = 100 - (100 / (1 + rs))
-        return rsi
+        
+        # Assign results
+        result[period-1:] = rsi
+
+    return pd.Series(result, index=series.index)
+
+    '''deltas = series.diff()
+    gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
+    loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi'''
 
 
 def _generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    """
-    Calculate the True Range (TR) for a given series.
 
-    Args:
-    - series: pd.Series, the input series (only used to align with generatedSeries_c interface).
-    - period: int, the period for the True Range calculation.
+    if len(series) < period:
+        return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
+    return pt.true_range( df['high'], df['low'], df['close'], length=period )
+    
+    '''    
+    high = df['high']
+    low = df['low']
+    close = df['close']
 
-    Returns:
-    - pd.Series, the calculated True Range series.
-    """
-    if 1:
-        if len(series) < period:
-            return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-        return pt.true_range( df['high'], df['low'], df['close'], length=period )
-    else:
-        
-        high = df['high']
-        low = df['low']
-        close = df['close']
+    high_low = high - low
+    high_close_prev = (high - close.shift()).abs()
+    low_close_prev = (low - close.shift()).abs()
 
-        high_low = high - low
-        high_close_prev = (high - close.shift()).abs()
-        low_close_prev = (low - close.shift()).abs()
-
-        tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
-        return tr
+    tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
+    return tr'''
 
 def _generatedseries_calculate_atr(series, period, df:pd.DataFrame, param=None) -> pd.Series:
     if len(series) < period:
@@ -375,16 +351,6 @@ def _generatedseries_calculate_atr(series, period, df:pd.DataFrame, param=None) 
     
 
 def _generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
-    """
-    Check if the series has been rising for the given length of time.
-
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the number of periods to check.
-
-    Returns:
-    - pd.Series, a boolean series indicating where the series is rising.
-    """
     if len(series) < length:
         return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
 
@@ -398,16 +364,6 @@ def _generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.Data
     return is_rising
 
 def _generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
-    """
-    Check if the series has been falling for the given length of time.
-
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the number of periods to check.
-
-    Returns:
-    - pd.Series, a boolean series indicating where the series is falling.
-    """
     if len(series) < length:
         return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
     
@@ -420,108 +376,61 @@ def _generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.Dat
     return is_falling
 
 def _generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    """
-    Calculate the Weighted Moving Average (WMA) for a given series and length.
-    
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the period/window for the WMA calculation.
-    
-    Returns:
-    - pd.Series, the calculated WMA series.
-    """
-    if 1:
-        if len(series) < period:
-            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-        return pt.wma( series, period )
-    else:
-        
-        weights = pd.Series(range(1, period + 1))
-        wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
-        return wma
 
-def _generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    """
-    Calculate the Hull Moving Average (HMA) for a given series and length.
-    
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the period/window for the HMA calculation.
-    
-    Returns:
-    - pd.Series, the calculated HMA series.
-    """
-    if 1:
-        if len(series) < period:
-            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-        return pt.hma( series, period )
-    else:
-        if len(series) < period:
-            return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the HMA
-        
-        half_length = int(period / 2)
-        sqrt_length = int(period ** 0.5)
-        
-        wma_half_length = pt.wma(series, half_length)
-        wma_full_length = pt.wma(series, period)
-        
-        diff_wma = 2 * wma_half_length - wma_full_length
-        
-        hma = pt.wma(diff_wma, sqrt_length)
-        
-        return hma
-
-def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    """
-    Calculate the slope of a rolling window for a given length in a pandas Series without using numpy.
-
-    Args:
-    - series: pd.Series, the input series.
-    - length: int, the period/window for the slope calculation.
-
-    Returns:
-    - pd.Series, the calculated slope series.
-    """
     if len(series) < period:
         return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
+    return pt.wma( series, period )
     
-    if 1: 
-        return pt.slope( series, period )
-    else:
-        # this one doesn't fail on single candle updates but it's slower than recalculating it all using pandas_ta
-        def slope_calc(y):
-            x = range(len(y))
-            n = len(y)
-            x_mean = sum(x) / n
-            y_mean = sum(y) / n
+    '''weights = pd.Series(range(1, period + 1))
+    wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
+    return wma'''
 
-            num = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y))
-            den = sum((x_i - x_mean) ** 2 for x_i in x)
+def _generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
+    if len(series) < period:
+        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
+    return pt.hma( series, period )
 
-            if den == 0:
-                return 0  # Prevent division by zero
+    '''if len(series) < period:
+        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the HMA
+    
+    half_length = int(period / 2)
+    sqrt_length = int(period ** 0.5)
+    
+    wma_half_length = pt.wma(series, half_length)
+    wma_full_length = pt.wma(series, period)
+    
+    diff_wma = 2 * wma_half_length - wma_full_length
+    
+    hma = pt.wma(diff_wma, sqrt_length)
+    
+    return hma'''
 
-            slope = num / den
-            return slope
+def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
+    if len(series) < period:
+        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
 
-        # Apply the slope calculation to each rolling window
-        slope_series = series.rolling(window=period).apply(slope_calc, raw=False)
+    return pt.slope( series, period )
 
-        return slope_series
+    '''# this one doesn't fail on single candle updates but it's slower than recalculating it all using pandas_ta
+    def slope_calc(y):
+        x = range(len(y))
+        n = len(y)
+        x_mean = sum(x) / n
+        y_mean = sum(y) / n
+
+        num = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y))
+        den = sum((x_i - x_mean) ** 2 for x_i in x)
+
+        if den == 0:
+            return 0  # Prevent division by zero
+
+        slope = num / den
+        return slope
+    # Apply the slope calculation to each rolling window
+    slope_series = series.rolling(window=period).apply(slope_calc, raw=False)
+    return slope_series'''
 
 def _generatedseries_calculate_vhma(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    """
-    Calculate the Vertical Horizontal Moving Average (VHMA) for a given series.
-
-    Args:
-        series (pd.Series): The input series (e.g., close price).
-        period (int): The period for the VHMA calculation.
-        df (pd.DataFrame): The DataFrame containing the data.
-        param (None): Not used.
-
-    Returns:
-        pd.Series: The calculated VHMA series.
-    """
     highest = series.rolling(window=period).max()
     lowest = series.rolling(window=period).min()
     R = highest - lowest
@@ -567,9 +476,6 @@ def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame, param=N
     return df[sma_name] - (BBmult * df[stdev_name])
 
 def _generatedseries_calculate_inverse_fisher_rsi(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    # This function now correctly expects 'series' to be the direct RSI data,
-    # and it will perform its calculation on that. The 'df' parameter (the overall dataframe up to current bar)
-    # is not needed for this specific calculation if RSI is already provided via 'series'.
     rsi = series 
 
     v1 = 0.1 * (rsi - 50)
@@ -653,9 +559,7 @@ def _generatedseries_calculate_barssince(series: pd.Series, period: int, df: pd.
     return pd.Series(result, index=series.index)
 
 
-def _generatedseries_calculate_indexwhentrue(
-    series: pd.Series, period: int, df: pd.DataFrame, param=None
-) -> pd.Series:
+def _generatedseries_calculate_indexwhentrue( series: pd.Series, period: int, df: pd.DataFrame, param=None ) -> pd.Series:
     length = len(series)
     out = np.full(length, np.nan)
     last_true = -1
@@ -667,9 +571,7 @@ def _generatedseries_calculate_indexwhentrue(
     return pd.Series(out, index=series.index)
 
 
-def _generatedseries_calculate_indexwhenfalse(
-    series: pd.Series, period: int, df: pd.DataFrame, param=None
-) -> pd.Series:
+def _generatedseries_calculate_indexwhenfalse( series: pd.Series, period: int, df: pd.DataFrame, param=None ) -> pd.Series:
     length = len(series)
     out = np.full(length, np.nan)
     last_false = -1
@@ -681,9 +583,7 @@ def _generatedseries_calculate_indexwhenfalse(
     return pd.Series(out, index=series.index)
 
 
-def _generatedseries_calculate_barswhiletrue(
-    series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None
-) -> pd.Series:
+def _generatedseries_calculate_barswhiletrue( series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None ) -> pd.Series:
     arr = series.values.astype(bool)
     counts = np.zeros_like(arr, dtype=int)
     c = 0
@@ -1031,6 +931,7 @@ class generatedSeries_c:
                 float_other = float(other)
             except ValueError:
                 return False
+            # Corrected line: Use previous_self_val in the last condition
             return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
     
     def crossingDown( self, other ):
@@ -1047,7 +948,7 @@ class generatedSeries_c:
                 return False
             return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
         elif isinstance( other, pd.Series ):
-            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]) :
+            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
                 return False
             return ( previous_self_val >= other.iloc[active.barindex-1] and current_self_val <= other.iloc[active.barindex] and current_self_val != previous_self_val )
         else: 
@@ -1055,8 +956,8 @@ class generatedSeries_c:
                 float_other = float(other)
             except ValueError:
                 return False
-            else:
-                return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
+            # Corrected line: Use previous_self_val in the last condition
+            return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
     
     def crossing( self, other ):
         return self.crossingUp(other) or self.crossingDown(other)
@@ -1819,6 +1720,7 @@ def crossingUp( self, other ):
                 float_other = float(other)
             except ValueError:
                 return False
+            # Corrected: Changed `previous_other_val` to `previous_self_val` for constant comparison.
             return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
     
     # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
@@ -1897,17 +1799,17 @@ def crossingDown( self, other ):
                 return False
             return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
         elif isinstance( other, pd.Series ):
-            # Use iloc directly from the pd.Series
             if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
                 return False
             return ( previous_self_val >= other.iloc[active.barindex-1] and current_self_val <= other.iloc[active.barindex] and current_self_val != previous_self_val )
-        else: # assuming float or int
+        else: 
             try:
                 float_other = float(other)
             except ValueError:
                 return False
+            # Corrected: Changed `previous_other_val` to `previous_self_val` for constant comparison.
             return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
-
+    
     # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
     if isinstance( self, int ):
         self = float(self)
