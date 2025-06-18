@@ -332,6 +332,10 @@ class timeframe_c:
                 
                 self.realtimeCandle.bottom = min( self.realtimeCandle.open, self.realtimeCandle.close )
                 self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
+                self.realtimeCandle.updateRemainingTime()
+
+                if( self.timeframeStr == self.stream.timeframeFetch and self.stream.tick_callback != None ):
+                    self.stream.tick_callback( self.realtimeCandle )
 
                 if not self.stream.initializing:
                     push_tick_update( self )
@@ -370,6 +374,9 @@ class timeframe_c:
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
 
             print( f"NEW CANDLE {self.timeframeStr} : {newrow}" )
+
+            if( self.timeframeStr == self.stream.timeframeFetch and self.stream.tick_callback != None ):
+                    self.stream.tick_callback( self.realtimeCandle )
 
             if( self.callback != None ):
                 self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
@@ -487,7 +494,7 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, broker_event_callback = None, max_amount = 5000 ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, broker_event_callback = None, tick_callback = None, max_amount = 5000, cache_only = False ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.isRunning = False
@@ -496,6 +503,8 @@ class stream_c:
         self.timeframes: dict[str, timeframe_c] = {}
         self.precision = 0.0
         self.mintick = 0.0
+        self.cache_only = cache_only
+        self.tick_callback = tick_callback
         self.broker_event_callback = broker_event_callback
         if broker_event_callback == None:
             self.broker_event_callback = globals().get('broker_event')
@@ -535,7 +544,11 @@ class stream_c:
         self.mintick = fetcher.getMintick()
             
         # fetch OHLCVs
-        ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
+        if self.cache_only:
+            ohlcvs = fetcher.loadCache( self.symbol, self.timeframeFetch, max_amount * scale )
+            print( "LOADING FROM CACHE")
+        else:
+            ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
         if( len(ohlcvs) == 0 ):
             raise SystemExit( f'No candles available in {exchangeID}. Aborting')
         ohlcvDF = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
@@ -588,11 +601,10 @@ class stream_c:
  
 
     def run(self, backtest_only = False ):
-        # We're done. Start fetching
+        # We're done. Start fetching in real time
         self.isRunning = True
         tasks.registerTask( 'cli', cli_task(self) )
-        if not backtest_only :tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
-        tasks.registerTask( 'clocks', update_clocks(self) )
+        if not backtest_only and not self.cache_only : tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
         asyncio.run( tasks.runTasks() )
 
     def parseCandleUpdateMulti( self, rows ):
@@ -750,18 +762,6 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
     
 def isInitializing():
     return active.timeframe.stream.initializing
-
-
-# FIXME: Should I bother doing this anymore? Now that the window is open on its own, what is the clock good for?
-async def update_clocks( stream:stream_c ):
-    from datetime import datetime
-
-    while True:
-        await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-
-        for timeframe in stream.timeframes.values():
-            timeframe.realtimeCandle.updateRemainingTime()
-
 
 
 import aioconsole

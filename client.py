@@ -441,7 +441,6 @@ class window_c:
             elif chart.topbar['timer1'].value == timeroff:
                 chart.topbar['timer1'].set(timeron)
             self.timerOnPriceLabel = not self.timerOnPriceLabel
-            # print(f'Turned something {new_button_value.lower()}.')
         except Exception as e:
             print( f'Exception {e}')
 

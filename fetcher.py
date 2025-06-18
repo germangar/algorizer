@@ -152,6 +152,18 @@ class ohlcvs_c:
 
         return ohlcv_list
     
+
+    def loadCache( self, symbol, timeframe, grab_amount ):
+        grab_amount = grab_amount if( grab_amount != None ) else 0
+        ohlcv_cache = self.loadOHLCVfile( symbol, timeframe )
+        if( len(ohlcv_cache) > 0 ): # drop the last candle as it may have been incomplete when originally fetched.
+            ohlcv_cache.pop()
+        if( len(ohlcv_cache) > grab_amount ):
+            ohlcv_cache = ohlcv_cache[-grab_amount:]
+        print( f'Returning {len(ohlcv_cache)} bars. ')
+        return ohlcv_cache
+
+        
     def loadCacheAndFetchUpdate( self, symbol, timeframe, grab_amount ):
         grab_amount = grab_amount if( grab_amount != None ) else 0
         ohlcv_cache = self.loadOHLCVfile( symbol, timeframe )
@@ -205,10 +217,6 @@ class ohlcvs_c:
             ohlcvs = ohlcvs[-grab_amount:]
         print( f'Returning {len(ohlcvs)} bars. ')
         return ohlcvs
-    
-    def loadCacheAndFetchUpdateWithMarkets( self, symbol, timeframe, grab_amount ):
-        ohlcvs = self.loadCacheAndFetchUpdate( self, symbol, timeframe, grab_amount )
-        self.markets = self.exchange.load_markets()
     
     def fetchAll(self, symbol, timeframe):
         return self.fetchRange( symbol, timeframe )

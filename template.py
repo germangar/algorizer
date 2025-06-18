@@ -29,6 +29,10 @@ def broker_event( stream:stream_c, type:int, quantity, quantity_dollars, positio
             print( 'Alert sent:', message )
 
 
+def tick( realtimeCandle:candle_c ):
+    # print( realtimeCandle.str() )
+    pass
+
 
 # 
 #   RUNNING THE ALGO
@@ -145,9 +149,11 @@ if __name__ == '__main__':
     #   Amount of history candles to fetch and backtest. These candles refer to the last
     #   timeframe in the list of timeframes. The other timeframes will adjust to it.
     #
+    # - cache_only:
+    #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], broker_event, 25000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], broker_event, tick, 25000 )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
@@ -158,6 +164,6 @@ if __name__ == '__main__':
     stream.registerPanel('macd', 1.0, 0.15, show_timescale=True )
     stream.registerPanel('rsi', 1.0, 0.1 )
 
-    # stream.createWindow( '1m' )
+    stream.createWindow( '1m' )
 
-    stream.run(True)
+    stream.run()
