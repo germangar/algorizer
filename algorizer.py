@@ -589,11 +589,11 @@ class stream_c:
             raise SystemExit( "Couldn't initialize exchange:", exchangeID )
  
 
-    def run(self):
+    def run(self, backtest_only = False ):
         # We're done. Start fetching
         self.isRunning = True
         tasks.registerTask( 'cli', cli_task(self) )
-        tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
+        if not backtest_only :tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
         tasks.registerTask( 'clocks', update_clocks(self) )
         asyncio.run( tasks.runTasks() )
 
