@@ -196,15 +196,14 @@ class window_c:
         self.lastCandle.timeframemsec = descriptor["timeframemsec"]
         self.lastCandle.index = df.index[-1]
         self.lastCandle.updateRemainingTime()
-        tasks.registerTask( 'clocks', self.update_clocks() )
+        tasks.registerTask('clocks', self.update_clocks)
 
         self.createPlots(df)
         self.createMarkers()
 
         
 
-        task = chart.show_async()
-        tasks.registerTask( 'window', task )
+        tasks.registerTask('window', chart.show_async)
 
 
     def createPlots(self, df:pd.DataFrame):

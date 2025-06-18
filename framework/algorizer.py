@@ -603,8 +603,8 @@ class stream_c:
     def run(self, backtest_only = False ):
         # We're done. Start fetching in real time
         self.isRunning = True
-        tasks.registerTask( 'cli', cli_task(self) )
-        if not backtest_only and not self.cache_only : tasks.registerTask( 'fetch', self.fetchCandleUpdates() )
+        tasks.registerTask( 'cli', cli_task, self )
+        if not backtest_only and not self.cache_only : tasks.registerTask( 'fetch', self.fetchCandleUpdates )
         asyncio.run( tasks.runTasks() )
 
     def parseCandleUpdateMulti( self, rows ):

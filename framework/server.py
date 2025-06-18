@@ -437,7 +437,7 @@ async def run_server():
 
     try:
         # Start the update publisher task
-        tasks.registerTask("zmq_updates", publish_updates(pub_socket))
+        tasks.registerTask("zmq_updates", publish_updates, pub_socket)
 
         # Main command handling loop
         while True:
@@ -464,7 +464,7 @@ async def run_server():
         context.term()
 
 # Register the server as a task
-tasks.registerTask("zmq_server", run_server())
+tasks.registerTask("zmq_server", run_server)
 
 if __name__ == "__main__":
     try:

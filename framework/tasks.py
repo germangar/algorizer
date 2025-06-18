@@ -1,17 +1,35 @@
 import asyncio
+from typing import Union, Callable, Coroutine, Any
 
 pendingTasks = {}
 
 
-def registerTask( name, task ):
-    pendingTasks[name] = task
+def registerTask(name: str, func_or_coro: Union[Callable, Coroutine], *args, **kwargs):
+    """Register a task to be run
+    Args:
+        name: Name of the task
+        func_or_coro: Either an async function or a coroutine object
+        *args: Positional arguments (only used if func_or_coro is a function)
+        **kwargs: Keyword arguments (only used if func_or_coro is a function)
+    """
+    if asyncio.iscoroutine(func_or_coro):
+        # If we got a coroutine object directly, store it
+        pendingTasks[name] = (None, (func_or_coro,), {})
+    else:
+        # If we got a function (sync or async) and its arguments
+        pendingTasks[name] = (func_or_coro, args, kwargs)
 
 
 async def watch_for_new_tasks(tasks):
     while True:
         to_remove = []
-        for taskname, task_coro in pendingTasks.items():
-            t = asyncio.create_task(task_coro)
+        for taskname, (func, args, kwargs) in pendingTasks.items():
+            if func is None:
+                # This is a pre-created coroutine
+                t = asyncio.create_task(args[0])
+            else:
+                # This is a function to call with args
+                t = asyncio.create_task(func(*args, **kwargs))
             t.set_name(taskname)
             tasks.append(t)
             to_remove.append(taskname)
@@ -27,8 +45,13 @@ async def runTasks():
     tasks = []
 
     # Launch all currently registered pending tasks
-    for name, coro in list(pendingTasks.items()):
-        task = asyncio.create_task(coro)
+    for name, (func, args, kwargs) in list(pendingTasks.items()):
+        if func is None:
+            # This is a pre-created coroutine
+            task = asyncio.create_task(args[0])
+        else:
+            # This is a function to call with args
+            task = asyncio.create_task(func(*args, **kwargs))
         task.set_name(name)
         tasks.append(task)
         del pendingTasks[name]  # Clean them out of pendingTasks
@@ -42,7 +65,7 @@ async def runTasks():
     await asyncio.gather(*tasks)
     
 
-def findTask( taskname ):
+def findTask(taskname):
     for task in asyncio.all_tasks():
         if task.get_name() == taskname:
             print(f"FOUND TASK: Task Name: {task.get_name()}, Status: {task._state}")
@@ -50,24 +73,13 @@ def findTask( taskname ):
         
     print(f"TASK: {taskname} not found")
 
-def cancelTask( taskname ) :
+
+def cancelTask(taskname):
     running_tasks = asyncio.all_tasks()
     for task in running_tasks:
         if taskname == task.get_name():
-            if( task.cancelled() or task.cancelling() ):
-                print( "Task", taskname, "already cancelled")
+            if(task.cancelled() or task.cancelling()):
+                print("Task", taskname, "already cancelled")
             else:
                 task.cancel()
-                print( taskname, "cancelled")
-
-# async def runTasks(stream):
-#     task1 = asyncio.create_task(fetchCandleUpdates(stream))
-#     task2 = asyncio.create_task(update_clock(stream))
-
-#     tasks = [task1, task2]
-
-#     # Create a task that waits for window.chart to become available
-#     task3 = asyncio.create_task(watch_chart_and_add_task(tasks))
-#     tasks.append(task3)
-
-#     await asyncio.gather(*tasks)
+                print(taskname, "cancelled")

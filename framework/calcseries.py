@@ -1,10 +1,10 @@
 import pandas as pd
-try:
-    import talib
-    talib_available = True
-except ImportError:
-    talib_available = False
-    print("talib import failed")
+# try:
+#     import talib
+#     talib_available = True
+# except ImportError:
+#     talib_available = False
+#     print("talib import failed")
 import pandas_ta as pt
 import numpy as np
 import time
@@ -13,10 +13,10 @@ from .constants import c
 from . import active
 from . import tools
 
-if pt.Imports["talib"]:
-    print("pandas_ta is using talib")
-else:
-    print("pandas_ta is not using talib")
+# if pt.Imports["talib"]:
+#     print("pandas_ta is using talib")
+# else:
+#     print("pandas_ta is not using talib")
     
 
 # Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude

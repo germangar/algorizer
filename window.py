@@ -98,7 +98,7 @@ class window_c:
             return
         
         self.task = self.chart.show_async()
-        tasks.registerTask( 'window', self.task )
+        tasks.registerTask('window', self.task.coro)
         
     def destroyWindow( self ):
         self.chart = None
