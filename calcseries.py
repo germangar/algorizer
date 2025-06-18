@@ -645,8 +645,8 @@ class generatedSeries_c:
 
     def initialize( self, source:pd.Series ):
         if( len(source) >= self.period and ( not self.name in self.timeframe.df.columns or self.alwaysReset ) ):
-            if( self.timeframe.shadowcopy and not self.timeframe.jumpstart ):
-                raise SystemError( f"[{self.name}] tried to initialize as shadowcopy" )
+            if( self.timeframe.backtesting and not self.timeframe.jumpstart ):
+                raise SystemError( f"[{self.name}] tried to initialize as backtesting" )
             
             barindex = len(source)-1 # if self.timeframe.jumpstart else self.timeframe.barindex
             start_time = time.time()
@@ -657,7 +657,7 @@ class generatedSeries_c:
 
 
     def update( self, source:pd.Series ):
-        if( self.timeframe.shadowcopy ):
+        if( self.timeframe.backtesting ):
             return
         
         timeframe = self.timeframe

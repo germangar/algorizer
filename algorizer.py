@@ -86,7 +86,7 @@ class plot_c:
         """
         Updates the plot's data. 
         - If `timeframe.jumpstart` is True, it does nothing (as plots shouldn't collect during this phase).
-        - If `timeframe.shadowcopy` is True (historical backtesting), it appends values to a temporary list for bulk processing later.
+        - If `timeframe.backtesting` is True (historical backtesting), it appends values to a temporary list for bulk processing later.
         - Otherwise (real-time updates), it directly updates the DataFrame using .iat.
         """
         # If the source is already a Pandas Series or a generatedSeries_c,
@@ -100,9 +100,9 @@ class plot_c:
             # During the *single* `jumpstart` phase, plots do not collect data.
             if timeframe.jumpstart : 
                 return
-            # During the historical backtesting run (`shadowcopy=True`),
+            # During the historical backtesting run (`backtesting=True`),
             # we append the value to a temporary list.
-            elif timeframe.shadowcopy:
+            elif timeframe.backtesting:
                 self._temp_values.append(source)
             else:
                 # For real-time updates, directly assign to the DataFrame using .iat.
@@ -183,7 +183,7 @@ class timeframe_c:
         self.callback = None
         self.barindex = -1
         self.timestamp = 0
-        self.shadowcopy = False
+        self.backtesting = False
         self.jumpstart = False
 
         self.df:pd.DataFrame = []
@@ -217,7 +217,7 @@ class timeframe_c:
             return
         
     
-        # --- Phase 2: Shadowcopy (row-by-row backtest simulation) ---
+        # --- Phase 2: backtesting (row-by-row backtest simulation) ---
         self.barindex = -1
         self.timestamp = self.df['timestamp'].iat[self.barindex]
         self.realtimeCandle.timestamp = self.timestamp
@@ -227,13 +227,13 @@ class timeframe_c:
         self.realtimeCandle.close = self.df.iloc[0]['close']
         self.realtimeCandle.volume = self.df.iloc[0]['volume']
 
-        self.shadowcopy = True
+        self.backtesting = True
         self.jumpstart = True
         self.parseCandleUpdate(self.df)
-        self.shadowcopy = False
+        self.backtesting = False
 
         # --- Phase 3: Apply batch updates for plots ---
-        # This MUST happen after the shadowcopy loop is finished,
+        # This MUST happen after the backtesting loop is finished,
         # as all plot values for historical data would have been collected in _temp_values by now.
         print(f"Applying batch updates for plots in {self.timeframeStr}...")
         for plot_obj in self.registeredPlots.values():
@@ -257,8 +257,8 @@ class timeframe_c:
             newrow_close = newrow[4]
             newrow_volume = newrow[5]
 
-            # PROCESSING HISTORICAL DATA (either jumpstart or shadowcopy)
-            if self.shadowcopy:
+            # PROCESSING HISTORICAL DATA (either jumpstart or backtesting)
+            if self.backtesting:
                 # Increment barindex and timestamp for each historical row
                 self.barindex += 1 
                 active.barindex = self.barindex
@@ -289,7 +289,7 @@ class timeframe_c:
                 continue # Move to the next row in the `rows` input
             
 
-            # NOT SHADOWCOPY: This is realtime
+            # NOT BACKTESTING: This is realtime
             last_timestamp = int(self.df['timestamp'].iat[self.barindex]) 
             if( newrow_timestamp < last_timestamp ):
                 # print( f"SKIPPING {self.timeframeStr}: {int( newrow.timestamp)}")
@@ -400,7 +400,7 @@ class timeframe_c:
         if self.jumpstart:
             gse.initialize( source ) # Full series calculation during jumpstart
         else:
-            gse.update( source ) # Incremental update during live/shadowcopy
+            gse.update( source ) # Incremental update during live/backtesting
         return gse
 
 

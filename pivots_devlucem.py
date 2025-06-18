@@ -56,7 +56,7 @@ class pivotsLucem_c:
         if not self.initialized:
             self.initializeTrackingColumns()
         else:
-            if( not active.timeframe.shadowcopy ):
+            if( not active.timeframe.backtesting ):
                 active.timeframe.df.iat[barindex, self.OHDTEcolumnindex] = not self.heightDiffTopEnough
                 active.timeframe.df.iat[barindex, self.OHDBEcolumnindex] = not self.heightDiffBottomEnough
 
