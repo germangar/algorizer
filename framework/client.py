@@ -2,11 +2,34 @@ import zmq
 import zmq.asyncio
 import asyncio
 import sys
-import tasks
 import json
 import pandas as pd
 import numpy as np
 import bisect
+
+# from . import tasks
+# from .constants import c
+# from .candle import candle_c
+
+
+# REPLACE ALL IMPORTS WITH THESE:
+# import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))  # Add project root to path
+
+# Now use absolute imports
+from framework import tasks
+from framework.constants import c
+from framework.candle import candle_c
+
+# KEEP YOUR EXISTING ARGUMENT PARSER AND CODE
+
+
+
+
+
+
+
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -33,11 +56,11 @@ debug = False
 
 
 ############################ CHART WINDOW ################################
-from constants import c
-from candle import candle_c
 from lightweight_charts import Chart
 # from lightweight_charts_esistjosh import Chart
 from typing import Optional, Any
+
+
 
 from dataclasses import dataclass
 @dataclass

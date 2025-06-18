@@ -5,15 +5,15 @@ import asyncio
 import ccxt.pro as ccxt
 import time
 
-from constants import c
-import tasks
-import tools
-from fetcher import ohlcvs_c
-from candle import candle_c
-import calcseries as calc
-from calcseries import generatedSeries_c # just for making lives easier
-from server import push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
-import active
+from .constants import c
+from . import tasks
+from . import tools
+from .fetcher import ohlcvs_c
+from .candle import candle_c
+from . import calcseries as calc
+from .calcseries import generatedSeries_c # just for making lives easier
+from .server import start_window_server, push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
+from . import active
 
 
 verbose = False
@@ -710,7 +710,6 @@ class stream_c:
     def createWindow(self, timeframeStr):
         """Create and show a window for the given timeframe"""
         # TODO: add validation of the timeframe
-        from server import start_window_server
         start_window_server()
 
 

@@ -1,14 +1,15 @@
 import zmq
 import zmq.asyncio
 import asyncio
-import tasks
 import sys
 import json
 import numpy as np
-import active
 import pandas as pd
-from constants import c
-import tools
+
+from . import tasks
+from .constants import c
+from . import tools
+from . import active
 
 # Fix for Windows proactor event loop
 if sys.platform == 'win32':
@@ -298,7 +299,7 @@ async def proccess_message(msg: str, cmd_socket):
     client.update_last_send()
     return response if response else create_command_response("unknown command")
 
-
+'''
 def launch_client_window(cmd_port):
     """Launch the client window process with the specified port"""
     import os
@@ -324,6 +325,24 @@ def launch_client_window(cmd_port):
     except subprocess.SubprocessError as e:
         print(f"Error launching client window: {e}")
         return None
+'''
+
+def launch_client_window(cmd_port):
+    """Launch client.py - SIMPLE VERSION THAT JUST WORKS"""
+    import sys
+    from subprocess import Popen
+    from pathlib import Path
+    
+    # Get path to client.py (now with proper parentheses)
+    client_path = str(Path(__file__).parent / "client.py")
+    
+    # Launch with Python path set properly
+    process = Popen([
+        sys.executable,
+        client_path,
+        "--port", str(cmd_port)
+    ])
+    return process
 
 
 def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10):

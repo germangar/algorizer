@@ -2,12 +2,12 @@
 # THIS FILE HAS BEEN WRITTEN BY GEMINI AI 
 # I find this annoying to write so I just asked the AI to do it. 
 
-
-from candle import candle_c
-from algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle, getMintick, getPrecision
 from datetime import datetime, timezone
-from constants import c
-import active # Corrected: Import active to get active.barindex
+
+from .candle import candle_c
+from .algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle, getMintick, getPrecision
+from .constants import c
+from . import active # Corrected: Import active to get active.barindex
 
 # Define a small epsilon for floating point comparisons to determine if a size is effectively zero
 EPSILON = 1e-9

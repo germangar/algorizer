@@ -8,18 +8,15 @@ except ImportError:
 import pandas_ta as pt
 import numpy as np
 import time
-from constants import c
-import active
-import tools
+
+from .constants import c
+from . import active
+from . import tools
 
 if pt.Imports["talib"]:
     print("pandas_ta is using talib")
 else:
     print("pandas_ta is not using talib")
-    
-# from talib import abstract
-# from pprint import pprint
-# pprint( abstract.Function("SUB").info )
     
 
 # Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude
