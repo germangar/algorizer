@@ -116,24 +116,36 @@ if __name__ == '__main__':
     trade.strategy.leverage_long = 1
     trade.strategy.leverage_short = 1
     
-    # Start the candles stream:
+    #   Create the candles stream:
     #
-    # - The symbol in CCXT format. ('BTC/USDT' means spot, 'BTC/USDT:USDT' means futures PERP)
+    # - symbol: 
+    #   The symbol in CCXT format. ('BTC/USDT' means spot, 'BTC/USDT:USDT' means perpetual USDT contracts)
     #
-    # - The exchange to connect to. It must be a exchange supported by the CCXT library https://github.com/ccxt/ccxt?tab=readme-ov-file#certified-cryptocurrency-exchanges
-    #   Not all exchanges provide historic data to fetch.
+    # - exchange:
+    #   It must be a exchange supported by the CCXT library https://github.com/ccxt/ccxt?tab=readme-ov-file#certified-cryptocurrency-exchanges
+    #   Not all exchanges provide historic data to fetch. These are some good data providers (tested with Bitcoin only):
+    #   PERP: Bybit, kucoin, okx, binance, htx, poloniexfutures
+    #   SPOT: gate, kucoin, okx, binance, probit, upbit
     #
     # - timeframes list:
     #   It's a list of timeframes you want to run. The order in the list will determine the order of execution of
-    #   their 'runCloseCandle' function callbacks. The smallest timeframe will be used for fetching the price updates.
-    #   So, if you want to check, let's say, the 4h rsi in a 30m strategy you should add 4h first in the list and then 30m.
-    #
+    #   their 'closeCandle' function callbacks. If you want to read data from a bigger timeframe you should 
+    #   add the bigger one before in the list.
+    #   The smallest timeframe will be used for fetching the price updates from the exchange.
+    #   
     # - Callbacks list:
-    #   The functions that will be called when each timeframe closes a candle. That's where the heart of your algo resides.
+    #   The 'closeCandle' functions that will be called when each timeframe closes a candle.
+    #   These are where the heart of your algo resides.
     #
-    # - Amount of history candles *from the last timeframe in the list* to calculate. The other timeframes will adjust to it.
+    # - broker_event_callback: 
+    #   Funtion to be called when the trading strategy executes an order in real time. It provides
+    #   extensive information for you to translate the order to the real life broker/exchange/alerts-service.
     #
-    # - noplots: Disables the plots so processing the script is much faster. For when backtesting large dataframes and only interested in the results.
+    # - max_amount:
+    #   Amount of history candles to fetch and backtest. These candles refer to the last
+    #   timeframe in the list of timeframes. The other timeframes will adjust to it.
+    #
+
 
     stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], broker_event, 25000 )
 
