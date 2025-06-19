@@ -31,7 +31,6 @@ def broker_event( stream:stream_c, type:int, quantity, quantity_dollars, positio
 
 
 def tick( realtimeCandle:candle_c ):
-    # print( realtimeCandle.str() )
     pass
 
 
@@ -59,6 +58,11 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     rsi14 = calc.RSI(close, 14)
     rsiSlow = requestValue( rsi30m.name, '30m' )
     plot( rsiSlow, 'rsiSlow', 'rsi' )
+
+
+    hma = calc.HMA(close, 40).plot()
+    if not timeframe.backtesting:
+        print( hma.series() )
 
 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and rsiSlow < -0.7

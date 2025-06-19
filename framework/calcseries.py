@@ -224,7 +224,21 @@ def _generatedseries_calculate_ema(series: pd.Series, period: int, df:pd.DataFra
     return pt.ema( series, period )
 
 def _generatedseries_calculate_dema(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.dema( series, period )
+    # Calculate first EMA
+    ema1 = pd.Series(
+        series.ewm(span=period, adjust=False).mean(),
+        index=series.index
+    )
+    
+    # Calculate EMA of EMA
+    ema2 = pd.Series(
+        ema1.ewm(span=period, adjust=False).mean(),
+        index=series.index
+    )
+    
+    # Calculate DEMA
+    dema = 2 * ema1 - ema2
+    return dema
 
 def _generatedseries_calculate_linreg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     return pt.linreg( series, period )
@@ -381,26 +395,6 @@ def _generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFra
     '''weights = pd.Series(range(1, period + 1))
     wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
     return wma'''
-
-def _generatedseries_calculate_hma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    if len(series) < period:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-    return pt.hma( series, period )
-
-    '''if len(series) < period:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the HMA
-    
-    half_length = int(period / 2)
-    sqrt_length = int(period ** 0.5)
-    
-    wma_half_length = pt.wma(series, half_length)
-    wma_full_length = pt.wma(series, period)
-    
-    diff_wma = 2 * wma_half_length - wma_full_length
-    
-    hma = pt.wma(diff_wma, sqrt_length)
-    
-    return hma'''
 
 def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
     if len(series) < period:
@@ -1256,15 +1250,31 @@ def EMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 
 def DEMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( "dema", source, period, _generatedseries_calculate_dema, always_reset=True )
+    return timeframe.calcGeneratedSeries( "dema", source, period, _generatedseries_calculate_dema )
 
 def WMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "wma", source, period, _generatedseries_calculate_wma )
 
-def HMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def HMA( source: pd.Series, period: int, timeframe=None )->generatedSeries_c:
+    """Hull Moving Average implementation using multiple calculation steps
+    HMA = WMA(2*WMA(n/2) - WMA(n), sqrt(n))
+    """
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( "hma", source, period, _generatedseries_calculate_hma, always_reset=True )
+    
+    # First calculate WMA with half period
+    half_length = int(period / 2) 
+    wma_half = timeframe.calcGeneratedSeries( "wmahalf", source, half_length, _generatedseries_calculate_wma )
+    
+    # Calculate WMA with full period
+    wma_full = timeframe.calcGeneratedSeries( "wmafull", source, period,  _generatedseries_calculate_wma )
+    
+    # Calculate 2 * WMA(half) - WMA(full)
+    raw_hma = 2 * wma_half - wma_full
+    
+    # Final WMA with sqrt(period)
+    sqrt_period = int(np.sqrt(period))
+    return timeframe.calcGeneratedSeries( "hma", raw_hma.series(), sqrt_period, _generatedseries_calculate_wma )
 
 # def JMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 #     timeframe = timeframe or active.timeframe
