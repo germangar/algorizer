@@ -94,7 +94,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     # invRSI = requestValue( rsiSlow.name, '1d' ) 
 
     # but in this case it's easier to use the generatedSeries object to retrieve it.
-    # You can read its value here, but not operate with the object nor use the plot method.
+    # You can read its value here, but not operate with the object nor use the plot method
+    # since this object belongs to a different timeframe.
     invRSI = rsiSlow.current()
 
     # We convert the -1/+1 value to the scale of standard rsi so they can share the same panel.
