@@ -106,17 +106,17 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     # we can't directly plot the rsiSlow object/series/method as it belongs to a different timeframe
     plot( invRSI, 'rsiSlow', 'rsi', color="#ef38cd44", width=10 ) # The rsi panel was created by us. See below.
 
-    # standard rsi just for the same of it. Plots to the same panel as the slowRSI
+    # standard rsi
     rsi14 = calc.RSI(close, 14).plot( 'rsi' )
 
     # There's a built-in pivot indicator which is performance savy.
     # 'top' and 'bottom' are columns in the dataframe containing
     # the top and bottom prices of the candles bodies. Wicks excluded.
     # You can use high and low instead, or whatever you prefer.
-    # Ampliture is the main value you want to tweak for each symbol/timeframe
+    # 'Amplitude' is the main value you want to tweak for each symbol/timeframe
     pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 12 )
     if pivots.isNewPivot:
-        thisPivot = pivots.getLast()
+        thisPivot = pivots.getLast() # only confirmed pivots. You can check the WIP pivot values in pivots.temp_pivot
         if thisPivot.type == c.PIVOT_HIGH:
             createMarker('▽', 'above', color = "#BDBDBD", timestamp=thisPivot.timestamp)
         else:
