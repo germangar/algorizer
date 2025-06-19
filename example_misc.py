@@ -69,7 +69,7 @@ def runCloseCandle_slow( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
 
     # calc is where the generatedSeries operations reside. 
     # You can rename it to 'ta' if you like. It's the equivalent. I just like 'calc' better.
-    rsiSlow = calc.IFTrsi(close, 14)
+    rsiSlow = calc.IFTrsi(close, 8)
 
     # This plot will only show when charting this timeframe.
     # the main logic resides in the 'fast' timeframe, so you most likely will never see it unless
@@ -113,7 +113,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     # the top and bottom prices of the candles bodies. Wicks excluded.
     # You can use high and low instead, or whatever you prefer.
     # Ampliture is the main value you want to tweak for each symbol/timeframe
-    pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 16 )
+    pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 12 )
     if pivots.isNewPivot:
         thisPivot = pivots.getLast()
         if thisPivot.type == c.PIVOT_HIGH:
@@ -128,8 +128,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     signal_line.plot( 'macd', color = "#1BC573" )
 
     # trading logic 
-    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 35
-    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 65
+    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 30
+    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 70
 
     # same thing using methods
     # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 35
