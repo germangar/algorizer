@@ -670,18 +670,22 @@ class generatedSeries_c:
 
     def iloc( self, index = -1 ):
         barindex = self.timeframe.barindex
-        
+
+        if self.timeframe != active.timeframe :
+            timestamp = active.timeframe.timestamp + ( (index+1) * self.timeframe.timeframeMsec )
+            return self.timeframe.valueAtTimestamp( self.name, timestamp )
+
         # Handle lazy-loading cache for the current bar (index -1)
         if index == -1:
             # Check if the cache is valid for the current active.barindex
-            if self.__cached_barindex == active.barindex and not pd.isna(self.__current_cache):
+            if self.__cached_barindex == barindex and not pd.isna(self.__current_cache):
                 return self.__current_cache
             else:
                 # If cache is invalid or not yet populated, fetch from DataFrame
                 if barindex >= 0 and barindex < len(self.timeframe.df):
                     value = self.timeframe.df[self.name].iat[barindex]
                     self.__current_cache = value
-                    self.__cached_barindex = active.barindex
+                    self.__cached_barindex = barindex
                     return value
                 else:
                     # Handle out-of-bounds access for current bar
