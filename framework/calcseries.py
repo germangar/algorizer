@@ -1298,7 +1298,7 @@ def LINREG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
 
 def RSI( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
+    return timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi, always_reset=True )
 
 def DEV( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
