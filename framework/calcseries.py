@@ -300,6 +300,10 @@ def _generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.
     return pd.Series(williams_r_values, index=df.index)'''
 
 def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame, param=None) -> pd.Series:
+    return pt.rsi(series, period)
+
+    # I don't know why, but these rsi and pandas-ta's rsi produce different results.
+    '''
     # Convert to numpy array for faster operations
     values = series.to_numpy()
     deltas = np.diff(values, prepend=np.nan)
@@ -327,7 +331,7 @@ def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame, param=None) 
         # Assign results
         result[period-1:] = rsi
 
-    return pd.Series(result, index=series.index)
+    return pd.Series(result, index=series.index)'''
 
     '''deltas = series.diff()
     gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()

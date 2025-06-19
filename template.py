@@ -17,6 +17,7 @@ def event( stream:stream_c, event:str, param, numparams ):
             print( 'Echo ', args )
 
     elif event == "broker_event":
+        import requests
         assert( isinstance(param, tuple) and len(param) == numparams)
         '''
         order_type (Buy/Sell): represented as the constants c.LONG (1) and c.SHORT (-1)
@@ -28,113 +29,22 @@ def event( stream:stream_c, event:str, param, numparams ):
         leverage (Leverage of the Order)
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
-        import requests
-        
         order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage = param
 
-        # this is an example of an alert for my webhook 'whook': https://github.com/germangar/whook
-        account = "blabla"
-        url = 'https://webhook.site/ae09b310-eab0-4086-a0d1-2da80ab722d1'
+        # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
+        account = ""
+        url = ''
         message = f"{account} {stream.symbol} pos {position_collateral_dollars:.4f}$ {leverage}x"
         req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
 
-        
 
-
-
-
-
-
-# 
-#   RUNNING THE ALGO
-# 
-
-# realtime candle update. It won't be called during the backtest
 def tick( realtimeCandle:candle_c ):
     pass
 
 
-rsiSlow = None
-def runCloseCandle_slow( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
-    global rsiSlow
-    rsiSlow = calc.IFTrsi(close, 14)
-    rsiSlow.plot('rsi')
-    print( timeframe.barindex )
-
-
-def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
-
-    # bollinger bands
-    BBbasis, BBupper, BBlower = calc.BollingerBands( close, 350 )
-    BBbasis.plot( color = "#769EB4AC", width=2 )
-    BBupper.plot( style='dotted' )
-    BBlower.plot( style='dotted' )
-
-    rsi14 = calc.RSI(close, 14).plot( 'rsi' )
-    # invRSI = requestValue( rsiSlow.name, '1d' )
-    invRSI = rsiSlow.current()
-    if invRSI is not None:
-        invRSI = (invRSI * 50) + 50 # it's in -1/+1 scale. Convert it to match standard rsi so they can share the same panel.
-    plot( invRSI, 'rsiSlow', 'rsi', color="#ef38cd44", width=10 ) # The rsi panel was created by us
-
-
-    # hma = calc.HMA(close, 40).plot()
-    # if not timeframe.backtesting:
-    #     print( hma.series() )
-
-    macd_line, signal_line, histo = calc.MACD(close)
-    histo.histogram( 'macd', "#4A545D" )
-    macd_line.plot( 'macd', color = "#AB1212", width=2 ) # The macd panel was created by us
-    signal_line.plot( 'macd', color = "#1BC573" )
-
-
-    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 35
-    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 65
-
-    # same thing using methods
-    # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 35
-    # sellSignal = rsi14 < 50.0 and BBupper.crossingUp(close) and invRSI > 65
-
-    shortpos = trade.getActivePosition(c.SHORT)
-    longpos = trade.getActivePosition(c.LONG)
-
-    if buySignal:
-        if shortpos is not None:
-            trade.close(c.SHORT)
-        offset = 50
-        if longpos:
-            lastorderindex = longpos.get_order_by_direction(c.LONG)['barindex']
-            offset = timeframe.barindex - lastorderindex
-        if offset > 40:
-            trade.order( 'buy', c.LONG )
-
-    if sellSignal:
-        if longpos is not None:
-            trade.close(c.LONG)
-        offset = 50
-        if shortpos:
-            lastorderindex = shortpos.get_order_by_direction(c.SHORT)['barindex']
-            offset = timeframe.barindex - lastorderindex
-        if offset > 40:
-            trade.order( 'sell', c.SHORT )
-
-    pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 4 )
-    if pivots.isNewPivot:
-        thisPivot = pivots.getLast()
-        if thisPivot.type == c.PIVOT_HIGH:
-            createMarker('▽', 'above', color = "#BDBDBD", timestamp=thisPivot.timestamp)
-        else:
-            createMarker('△', 'below', color = "#BDBDBD", timestamp=thisPivot.timestamp)
-
-
-    
-    
-
-
-
-# 
-#   SETTING UP THE CANDLES FEED
-# 
+def runCloseCandle( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
+    calc.SMA(close, 200).plot()
+    calc.RSI(close, 14).plot('rsi')
 
 
 if __name__ == '__main__':
@@ -143,54 +53,19 @@ if __name__ == '__main__':
     trade.strategy.verbose = False
     trade.strategy.hedged = False
     trade.strategy.currency_mode = 'USD'
-    trade.strategy.order_size = 1000 # should allow only pyramiding of 5 orders
-    trade.strategy.max_position_size = 1000
+    trade.strategy.order_size = 1000
+    trade.strategy.max_position_size = 2000
     trade.strategy.leverage_long = 1
     trade.strategy.leverage_short = 1
     
-    #   Create the candles stream:
-    #
-    # - symbol: 
-    #   The symbol in CCXT format. ('BTC/USDT' means spot, 'BTC/USDT:USDT' means perpetual USDT contracts)
-    #
-    # - exchange:
-    #   It must be a exchange supported by the CCXT library https://github.com/ccxt/ccxt?tab=readme-ov-file#certified-cryptocurrency-exchanges
-    #   Not all exchanges provide historic data to fetch. These are some good data providers (tested with Bitcoin only):
-    #   PERP: Bybit, kucoin, okx, binance, htx, poloniexfutures
-    #   SPOT: gate, kucoin, okx, binance, probit, upbit
-    #
-    # - timeframes list:
-    #   It's a list of timeframes you want to run. The order in the list will determine the order of execution of
-    #   their 'closeCandle' function callbacks. If you want to read data from a bigger timeframe you should 
-    #   add the bigger one before in the list.
-    #   The smallest timeframe will be used for fetching the price updates from the exchange.
-    #   
-    # - Callbacks list:
-    #   The 'closeCandle' functions that will be called when each timeframe closes a candle.
-    #   These are where the heart of your algo resides.
-    #
-    # - event_callback: 
-    #   Funtion to be called when an event happens that the user could interpret.
-    #
-    # - max_amount:
-    #   Amount of history candles to fetch and backtest. These candles refer to the last
-    #   timeframe in the list of timeframes. The other timeframes will adjust to it.
-    #
-    # - cache_only:
-    #   Use the candle datas in cache without trying to fetch new candles to update it
+    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['1h'], [runCloseCandle], event, tick, 25000 )
 
+    stream.registerPanel('rsi', 1.0, 0.2 )
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], event, tick, 25000 )
+    stream.createWindow( '1h' )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
-
-    # print(stream.timeframes[stream.timeframeFetch].df.columns)
-
-    stream.registerPanel('macd', 1.0, 0.1, show_timescale=True )
-    stream.registerPanel('rsi', 1.0, 0.2 )
-
-    stream.createWindow( '1m' )
 
     stream.run()
