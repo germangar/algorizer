@@ -102,8 +102,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     if invRSI is not None:
         invRSI = (invRSI * 50) + 50
 
-    # we can plot a float using the plot function which is the current value of rsiSlow
-    # we can't directly plot with its method as it belongs to a different timeframe
+    # we can plot a float using the plot function
+    # we can't directly plot the rsiSlow object/series/method as it belongs to a different timeframe
     plot( invRSI, 'rsiSlow', 'rsi', color="#ef38cd44", width=10 ) # The rsi panel was created by us. See below.
 
     # standard rsi just for the same of it. Plots to the same panel as the slowRSI
