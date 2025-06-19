@@ -138,6 +138,8 @@ class window_c:
     def loadChartData(self, descriptor, df):
         if debug : print( "Initializing window" )
 
+        self.descriptor = descriptor
+
         window_width = 1024
         window_height = 768
         if 1:
@@ -418,21 +420,6 @@ class window_c:
         # finally add the opening of the realtime candle
         self.newTick( msg.get('tick') )
         
-    
-    async def update_clocks( self ):
-        from datetime import datetime
-
-        while True:
-            await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
-            self.lastCandle.updateRemainingTime()
-            chart:Chart = self.panels['main']['chart']
-            if self.timerOnPriceLabel:
-                chart.price_line( True, True, self.lastCandle.remainingTimeStr() )
-            else:
-                chart.price_line( True, True, '' )
-
-            # chart.topbar['clock'].set(datetime.now().strftime('%H:%M:%S'))
-            chart.topbar['timer'].set( f'{ self.lastCandle.remainingTimeStr() } { self.config["symbol"] }' )
 
     def isAlive(self)->bool:
         chart:Chart = self.panels['main']['chart']
@@ -448,11 +435,26 @@ class window_c:
         root.destroy()  # Destroy the window after getting the resolution
         return screen_width, screen_height
     
-    def initTopbar(self, chart:Chart):
         
+    async def update_clocks( self ):
+        from datetime import datetime
+
+        while True:
+            await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+            self.lastCandle.updateRemainingTime()
+            chart:Chart = self.panels['main']['chart']
+            if self.timerOnPriceLabel:
+                chart.price_line( True, True, self.lastCandle.remainingTimeStr() )
+            else:
+                chart.price_line( True, True, '' )
+
+            chart.topbar['timer'].set( f' { self.lastCandle.remainingTimeStr()}' )
+    
+    def initTopbar(self, chart:Chart):
         try:
+            chart.topbar.textbox("header", f'{ self.config["symbol"] } - { self.descriptor["timeframe"] } ', align= 'left')
             chart.topbar.button('timer1', 'Timer on price ▢', func=self.on_button_press, align= 'right')
-            chart.topbar.textbox("timer", self.config['symbol'], align= 'right')
+            chart.topbar.textbox("timer", "--:--", align= 'right')
             chart.topbar.menu( "hal", ("hol", "hil", "hal"), "hil") 
             chart.topbar.switcher( 'thisthat', ("this", "that"), "that" )
         except Exception as e:
