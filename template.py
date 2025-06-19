@@ -65,7 +65,7 @@ def runCloseCandle_slow( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
 def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
 
     # bollinger bands
-    BBbasis, BBupper, BBlower = calc.BollingerBands( close, 250 )
+    BBbasis, BBupper, BBlower = calc.BollingerBands( close, 350 )
     BBbasis.plot( color = "#769EB4AC", width=2 )
     BBupper.plot( style='dotted' )
     BBlower.plot( style='dotted' )
@@ -78,9 +78,9 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     plot( invRSI, 'rsiSlow', 'rsi', color="#ef38cd44", width=10 ) # The rsi panel was created by us
 
 
-    hma = calc.HMA(close, 40).plot()
-    if not timeframe.backtesting:
-        print( hma.series() )
+    # hma = calc.HMA(close, 40).plot()
+    # if not timeframe.backtesting:
+    #     print( hma.series() )
 
     macd_line, signal_line, histo = calc.MACD(close)
     histo.histogram( 'macd', "#4A545D" )
@@ -88,12 +88,12 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     signal_line.plot( 'macd', color = "#1BC573" )
 
 
-    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < -0.7
-    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 0.65
+    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 35
+    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 65
 
     # same thing using methods
-    # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < -0.7
-    # sellSignal = rsi14 < 50.0 and BBupper.crossingUp(close) and invRSI > 0.65
+    # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 35
+    # sellSignal = rsi14 < 50.0 and BBupper.crossingUp(close) and invRSI > 65
 
     shortpos = trade.getActivePosition(c.SHORT)
     longpos = trade.getActivePosition(c.LONG)
@@ -180,7 +180,7 @@ if __name__ == '__main__':
     #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['1d', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, tick, 2000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], event, tick, 25000 )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()
@@ -191,6 +191,6 @@ if __name__ == '__main__':
     stream.registerPanel('macd', 1.0, 0.1, show_timescale=True )
     stream.registerPanel('rsi', 1.0, 0.2 )
 
-    stream.createWindow( '1h' )
+    stream.createWindow( '1m' )
 
     stream.run()

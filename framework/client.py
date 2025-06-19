@@ -274,6 +274,12 @@ class window_c:
     def createMarkers(self):
         markersList = self.descriptor['markers']
 
+        lenMarkers = len(markersList)
+        if lenMarkers > 500:
+            print( f"* Warning: Very high marker count {len(markersList)}. The chart will take a long time to open")
+        elif lenMarkers > 250:
+            print( f"Hold on. High marker count [{len(markersList)}]")
+
         for m in markersList:
             self.createMarker(m)
             
