@@ -34,8 +34,13 @@ def event( stream:stream_c, event:str, param, numparams ):
         # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = ""
         url = ''
-        message = f"{account} {stream.symbol} pos {position_collateral_dollars:.4f}$ {leverage}x"
-        req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
+        if position_size_base == 0:
+            message = f"{account} {stream.symbol} close"
+        else:
+            order = 'buy' if order_type == c.LONG else 'sell'
+            message = f"{account} {stream.symbol} {order} {quantity_dollars:.4f}$ {leverage}x"
+        if url:
+            req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
 
 
 def tick( realtimeCandle:candle_c ):
