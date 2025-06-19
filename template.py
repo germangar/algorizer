@@ -6,17 +6,21 @@ import framework.calcseries as calc
 from framework import generatedSeries_c
 from framework.candle import candle_c
 from framework import trade
-from framework import broker
 
 
-# the strategy code has issued an order. When running in realtime it will call this
-# function so a real order can be sent to the broker. The type of broker is up to
-# the user to import and configure and issue the order here for it. In this case we
-# send an alert with broker_alerts
-def broker_event( stream:stream_c, type:int, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
+
+def event( stream:stream_c, event:str, param, numparams ):
+    if event == "cli_command":
+        assert( isinstance(param, tuple) and len(param) == numparams)
+        cmd, args = param
+        if cmd == 'echo': # command will always be lower case
+            print( 'Echo ', args )
+
+    elif event == "broker_event":
+        assert( isinstance(param, tuple) and len(param) == numparams)
         '''
-        type (Buy/Sell Event): represented as the constants c.LONG (1) and c.SHORT (-1)
-        quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.001 BTC).
+        order_type (Buy/Sell): represented as the constants c.LONG (1) and c.SHORT (-1)
+        quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.01 BTC).
         quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD (e.g., if you buy 0.001 BTC at $60,000, this would be $60).
         position_type (New Position Type: Long/Short/Flat)
         position_size_base (New Position Size in Base Currency): The total quantity of the base asset currently held (signed for long/short).
@@ -24,10 +28,18 @@ def broker_event( stream:stream_c, type:int, quantity, quantity_dollars, positio
         leverage (Leverage of the Order)
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
-        exchange = "blabla"
-        message = f"{exchange} {stream.symbol} pos {position_collateral_dollars:.4f}$ {leverage}x"
-        if( broker.alert( message, 'https://webhook.site/ae09b310-eab0-4086-a0d1-2da80ab722d1' ) ):
-            print( 'Alert sent:', message )
+        import requests
+        
+        order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage = param
+
+        # this is an example of an alert for my webhook 'whook': https://github.com/germangar/whook
+        account = "blabla"
+        url = 'https://webhook.site/ae09b310-eab0-4086-a0d1-2da80ab722d1'
+        message = f"{account} {stream.symbol} pos {position_collateral_dollars:.4f}$ {leverage}x"
+        req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
+
+        
+
 
 
 def tick( realtimeCandle:candle_c ):
@@ -146,9 +158,8 @@ if __name__ == '__main__':
     #   The 'closeCandle' functions that will be called when each timeframe closes a candle.
     #   These are where the heart of your algo resides.
     #
-    # - broker_event_callback: 
-    #   Funtion to be called when the trading strategy executes an order in real time. It provides
-    #   extensive information for you to translate the order to the real life broker/exchange/alerts-service.
+    # - event_callback: 
+    #   Funtion to be called when an event happens that the user could interpret.
     #
     # - max_amount:
     #   Amount of history candles to fetch and backtest. These candles refer to the last
@@ -158,7 +169,7 @@ if __name__ == '__main__':
     #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], broker_event, tick, 25000 )
+    stream = stream_c( 'LDO/USDT:USDT', 'bybit', ['30m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], event, tick, 2000 )
 
     # trade.print_strategy_stats()
     trade.print_summary_stats()

@@ -494,7 +494,7 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, broker_event_callback = None, tick_callback = None, max_amount = 5000, cache_only = False ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, event_callback = None, tick_callback = None, max_amount = 5000, cache_only = False ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.isRunning = False
@@ -505,9 +505,9 @@ class stream_c:
         self.mintick = 0.0
         self.cache_only = cache_only
         self.tick_callback = tick_callback
-        self.broker_event_callback = broker_event_callback
-        if broker_event_callback == None:
-            self.broker_event_callback = globals().get('broker_event')
+        self.event_callback = event_callback
+        if event_callback == None:
+            self.event_callback = globals().get('event')
 
         self.markers:list[marker_c] = []
         self.registeredPanels:dict = {}
@@ -638,9 +638,9 @@ class stream_c:
         await self.exchange.close()
 
 
-    def broker_event( self, type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
+    def broker_event( self, order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
         '''
-        type (Buy/Sell Event): represented as the constants c.LONG (1) and c.SHORT (-1)
+        order_type (Buy/Sell Event): represented as the constants c.LONG (1) and c.SHORT (-1)
         quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.001 BTC).
         quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD (e.g., if you buy 0.001 BTC at $60,000, this would be $60).
         position_type (New Position Type: Long/Short/Flat)
@@ -649,7 +649,7 @@ class stream_c:
         leverage (Leverage of the Order)
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
-        self.broker_event_callback( self, type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage )
+        self.event_callback( self, "broker_event", (order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage), 8 )
 
     
     def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False ):
@@ -764,18 +764,29 @@ def isInitializing():
 
 
 import aioconsole
-async def cli_task(stream:stream_c):
+async def cli_task(stream: 'stream_c'): # Added type hint for clarity
     while True:
-        command = await aioconsole.ainput()  # <-- Use aioconsole for non-blocking input
+        message = await aioconsole.ainput()  # Non-blocking input
 
-        if command.lower() == 'chart':
-            print( 'opening chart' )
-            stream.createWindow( "1m" ) # TODO: Allow the user to choose the timeframe as parameter and add validation
+        # Split the message into command and arguments
+        parts = message.split(' ', 1) # Split only on the first space
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else '' # Get args if they exist
 
-        if command.lower() == 'close':
+        if command == 'chart':
+            print('opening chart')
+            timeframeName =  stream.timeframeFetch
+            if( tools.validateTimeframeName( args ) ):
+                timeframeName = args
+            stream.createWindow(timeframeName)
+
+        elif command == 'close':
             # TODO: Function to send a command to the client to shutdown
-            print( 'closing chart' )
-        
+            print('closing chart')
+
+        else:
+            stream.event_callback(stream, "cli_command", (command, args), 2)
+
         await asyncio.sleep(0.05)
 
 

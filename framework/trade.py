@@ -386,7 +386,7 @@ class strategy_c:
                         print(f"Partial close: Reduced {current_overall_active_pos.type} position by {actual_quantity_to_process_base_units:.2f} base units.")
 
         # NEW: Call the broker_event after the order is processed and position state is updated
-        if not isInitializing() and affected_pos is not None:
+        if affected_pos is not None:
             final_position_type_for_broker_event = 0
             final_position_size_base_for_broker_event = 0.0
             final_position_size_dollars_for_broker_event = 0.0
@@ -407,7 +407,7 @@ class strategy_c:
             order_quantity_dollars = actual_quantity_to_process_base_units * current_price
 
             active.timeframe.stream.broker_event(
-                type=order_type_for_broker_event,
+                order_type=order_type_for_broker_event,
                 quantity=actual_quantity_to_process_base_units,
                 quantity_dollars=order_quantity_dollars,
                 position_type=final_position_type_for_broker_event, # The type of the *resulting* position
