@@ -97,12 +97,9 @@ class plot_c:
         
         # If the source is a direct value (float, int, or None), we handle it.
         if isinstance(source, (int, float, type(None))) :
-            # During the *single* `jumpstart` phase, plots do not collect data.
-            if timeframe.jumpstart : 
-                return
             # During the historical backtesting run (`backtesting=True`),
             # we append the value to a temporary list.
-            elif timeframe.backtesting:
+            if timeframe.backtesting:
                 self._temp_values.append(source)
             else:
                 # For real-time updates, directly assign to the DataFrame using .iat.
@@ -187,7 +184,6 @@ class timeframe_c:
         self.jumpstart = False
 
         self.df:pd.DataFrame = []
-        self.initdata:pd.DataFrame = []
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
 
@@ -202,9 +198,8 @@ class timeframe_c:
 
         active.timeframe = self
 
-        # Create a copy of the dataframe
-        self.df = ohlcvDF.copy()
-
+        # Create a copy of the dataframe skipping the last row as the candle is not closed
+        self.df = ohlcvDF.iloc[:-1].copy()
  
         # --- Phase 1: Jumpstart (single last row for generatedSeries initialization) ---
         start_time = time.time()
@@ -232,16 +227,27 @@ class timeframe_c:
         self.parseCandleUpdate(self.df)
         self.backtesting = False
 
+        # set the realtime candle to the row we skipped because it isn't yet closed
+        row = ohlcvDF.iloc[-1]
+        self.realtimeCandle.timestamp = row['timestamp']
+        self.realtimeCandle.open = row['open']
+        self.realtimeCandle.high = row['high']
+        self.realtimeCandle.low = row['low']
+        self.realtimeCandle.close = row['close']
+        self.realtimeCandle.volume = row['volume']
+        self.stream.timestampFetch = self.realtimeCandle.timestamp
+
+        print( len(self.df), "candles processed." )
+
         # --- Phase 3: Apply batch updates for plots ---
         # This MUST happen after the backtesting loop is finished,
         # as all plot values for historical data would have been collected in _temp_values by now.
-        print(f"Applying batch updates for plots in {self.timeframeStr}...")
         for plot_obj in self.registeredPlots.values():
             plot_obj._apply_batch_updates(self.df)
-        print(f"Finished applying batch updates for plots in {self.timeframeStr}.")
+        print(f"Batch updates applied to plots {self.timeframeStr}.")
         ###############################################################################
 
-        print( len(self.df), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
+        print( "Total time: {:.2f} seconds".format(time.time() - start_time))
 
         
 
@@ -259,26 +265,18 @@ class timeframe_c:
 
             # PROCESSING HISTORICAL DATA (either jumpstart or backtesting)
             if self.backtesting:
-                # Update realtimeCandle values to always have the most recent ones
+                # Increment barindex and timestamp for each historical row
+                self.barindex += 1 
+                active.barindex = self.barindex
+                self.timestamp = int(newrow_timestamp)
+
+                # Update realtimeCandle for the current historical bar being processed
                 self.realtimeCandle.timestamp = newrow_timestamp
                 self.realtimeCandle.open = newrow_open
                 self.realtimeCandle.high = newrow_high
                 self.realtimeCandle.low = newrow_low
                 self.realtimeCandle.close = newrow_close
                 self.realtimeCandle.volume = newrow_volume
-
-                # the last row in the dataframe will be incomplete so we
-                # need not to close it, but let the realtime management
-                # close it from the realtime updates.
-                if( self.barindex + 1 == len(self.df) - 1 ):
-                    continue
-
-                # Increment barindex and timestamp for each historical row (aka:close the candle)
-                self.barindex += 1 
-                active.barindex = self.barindex
-                self.timestamp = int(newrow_timestamp)
-
-                # advance realtimeCandle index too as this candle is closed.
                 self.realtimeCandle.index = self.barindex + 1
 
                 # Update stream's fetch timestamp if this is the smallest timeframe
@@ -581,6 +579,10 @@ class stream_c:
             timeframe.initDataframe( candles )
             
             candles = []
+
+        # we skipped the last row at initializing each timeframe
+        # dataframe to parse as an update now becasse the last candle is not closed
+        self.parseCandleUpdateMulti( ohlcvDF.iloc[-1:] )
 
         ohlcvDF = []
 
