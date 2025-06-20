@@ -259,18 +259,26 @@ class timeframe_c:
 
             # PROCESSING HISTORICAL DATA (either jumpstart or backtesting)
             if self.backtesting:
-                # Increment barindex and timestamp for each historical row
-                self.barindex += 1 
-                active.barindex = self.barindex
-                self.timestamp = int(newrow_timestamp)
-
-                # Update realtimeCandle for the current historical bar being processed
+                # Update realtimeCandle values to always have the most recent ones
                 self.realtimeCandle.timestamp = newrow_timestamp
                 self.realtimeCandle.open = newrow_open
                 self.realtimeCandle.high = newrow_high
                 self.realtimeCandle.low = newrow_low
                 self.realtimeCandle.close = newrow_close
                 self.realtimeCandle.volume = newrow_volume
+
+                # the last row in the dataframe will be incomplete so we
+                # need not to close it, but let the realtime management
+                # close it from the realtime updates.
+                if( self.barindex + 1 == len(self.df) - 1 ):
+                    continue
+
+                # Increment barindex and timestamp for each historical row (aka:close the candle)
+                self.barindex += 1 
+                active.barindex = self.barindex
+                self.timestamp = int(newrow_timestamp)
+
+                # advance realtimeCandle index too as this candle is closed.
                 self.realtimeCandle.index = self.barindex + 1
 
                 # Update stream's fetch timestamp if this is the smallest timeframe
@@ -292,16 +300,8 @@ class timeframe_c:
             # NOT BACKTESTING: This is realtime
             last_timestamp = int(self.df['timestamp'].iat[self.barindex]) 
             if( newrow_timestamp < last_timestamp ):
-                # print( f"SKIPPING {self.timeframeStr}: {int( newrow.timestamp)}")
+                if verbose : print( f"SKIPPING {self.timeframeStr}: {int( newrow.timestamp)}")
                 continue
-
-            if( newrow_timestamp == last_timestamp ): # special case. We got an unfinished candle from the server
-                if verbose : print( f"VERIFY CANDLE {self.timeframeStr}: {int( newrow_timestamp)}")
-                continue
-
-            if( self.realtimeCandle.timestamp == last_timestamp ): # FIX incorrect realtimeCandle
-                self.realtimeCandle.timestamp = last_timestamp + self.timeframeMsec
-                if verbose : print( f"FIXING {self.timeframeStr} REALTIME CANDLE TIMESTAMP")
 
             # has it reached a new candle yet?
             if newrow_timestamp < self.realtimeCandle.timestamp + self.timeframeMsec:
