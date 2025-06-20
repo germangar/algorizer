@@ -18,4 +18,4 @@ Install the required modules with the usual requirements.txt
 pip install -r requirements.txt
 
 
-- I would love it if the project could also be used for stocks, but I'm not familiar with that type of brokers. So if anyone is willing to collaborate in adding a fetcher and realtime updates of candles for stoks it will be very welcom.
+- I would love it if the project could also be used for stocks, but I'm not familiar with that type of brokers. So if anyone is willing to collaborate in adding a fetcher and realtime updates of candles for stoks it will be very welcome.
