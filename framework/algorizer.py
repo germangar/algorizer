@@ -36,9 +36,6 @@ class plot_c:
         self.hist_margin_top = hist_margin_top
         self.hist_margin_bottom = hist_margin_bottom
         self.screen_name = screen_name
-        self.iat_index = -1
-
-        # --- NEW: Temporary storage for plot values during initial processing ---
         self._temp_values = [] 
 
         timeframe = active.timeframe # FIXME - ensure active.timeframe is set before plot_c init
@@ -63,23 +60,17 @@ class plot_c:
                 # Initialize it with NaNs. The values will be filled later.
                 if self.name not in timeframe.df.columns:
                     timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
-                self.iat_index = timeframe.df.columns.get_loc(self.name)
 
 
         elif isinstance( source, (pd.Series, generatedSeries_c) ):
             self.name = source.name
             # For Series or generatedSeries, the data is already managed by Pandas
-            # or the generatedSeries_c object, so no need for _temp_values or iat_index here.
-            # The `update` method below will return early for these types.
+            # or the generatedSeries_c object, so no need for _temp_values.
 
         if not self.name or self.name not in timeframe.df.columns:
             # This check ensures that either a new column was successfully prepared for a value source,
             # or an existing Series/generatedSeries was successfully referenced.
             raise ValueError( f"plot_c:Couldn't assign a name to the plot [{name}]" )
-
-        # Ensure iat_index is set if it's a value-based plot that created a column
-        if self.iat_index == -1 and (source is None or isinstance(source, (float, int))):
-             self.iat_index = timeframe.df.columns.get_loc(self.name)
 
 
     def update( self, source, timeframe ):
@@ -104,7 +95,6 @@ class plot_c:
             else:
                 # For real-time updates, directly assign to the DataFrame using .iat.
                 # This is efficient enough for single row updates.
-                assert( self.iat_index != -1 ) # iat_index must be set if it's a value-based plot
                 timeframe.df[self.name].iat[timeframe.barindex] = source
             return
 
@@ -124,9 +114,7 @@ class plot_c:
         if self.name not in timeframe_df.columns:
             timeframe_df[self.name] = pd.Series(np.nan, index=timeframe_df.index, dtype=np.float64)
 
-        # Assign the collected values. This is the key optimization.
-        # Use .loc with a slice to assign the list of values to the corresponding rows.
-        # Ensure the length of _temp_values does not exceed the DataFrame's length.
+        # Assign the collected values.
         num_values = len(self._temp_values)
         
         # --- FIX: Explicitly convert to numpy array with float64 dtype ---
@@ -140,7 +128,6 @@ class plot_c:
             
         timeframe_df.loc[timeframe_df.index[:num_values], self.name] = values_to_assign
 
-        # Clear the temporary storage after applying the updates
         self._temp_values = []
 
 
@@ -712,7 +699,7 @@ class stream_c:
     def createWindow(self, timeframeStr):
         """Create and show a window for the given timeframe"""
         # TODO: add validation of the timeframe
-        start_window_server()
+        start_window_server( timeframeStr )
 
 
 
@@ -778,7 +765,7 @@ async def cli_task(stream: 'stream_c'): # Added type hint for clarity
         if command == 'chart':
             print('opening chart')
             timeframeName =  stream.timeframeFetch
-            if( tools.validateTimeframeName( args ) ):
+            if( args and tools.validateTimeframeName( args ) ):
                 timeframeName = args
             stream.createWindow(timeframeName)
 
