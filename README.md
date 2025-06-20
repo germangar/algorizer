@@ -6,7 +6,7 @@ The project is in early stages so you'll most likely find nuissances, specially 
 
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and or pinescript.
 
-I will provide basic documentation later on, but as of now there is a 'example_misc.py' file which I commented extensively which should provide a starting point.
+I will provide basic documentation later on, but as of now there is a ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) file which I commented extensively which should provide a starting point.
 
 After reading it copy and rename template.py into a new file and start writting there.
 
