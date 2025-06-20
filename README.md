@@ -1,10 +1,20 @@
-For que required modules:
+This is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't pretend to mimic the language, although the structure should be familiar enough to you. It tries to avoid 'the pandas ways' and be sequential.
+
+As of now it connects to crypto exchanges and fetch the candles required for backtesting, and it can also run in realtime and send alerts to the usual webhooks (Like [my own](https://github.com/germangar/whook)).
+
+The project is in early stages so you'll most likely find nuissances, specially at writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces.
+
+I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and or pinescript.
+
+I will provide basic documentation later on, but as of now there is a ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) file which I commented extensively which should provide a starting point.
+
+After reading it copy and rename template.py into a new file and start writting there.
+
+(lines and tables are not yet implemented. They're coming soon. As of now only plots, histograms and markers are available).
+
+
+Install the required modules with the usual requirements.txt
 
 pip install -r requirements.txt
 
-Take a look inside example_misc.py for getting an idea on how to work the scripts (I added a lot of explanatory comments) and run it to see how it works.
 
-You can use template.py as base to create your own.
-
-
-I'll add a proper readme with instructions and more example scripts in the future. I'm opening the repository but not adding any tags nor explanations yet.
