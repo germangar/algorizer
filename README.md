@@ -12,10 +12,14 @@ After reading it copy and rename template.py into a new file and start writting 
 
 (lines and tables are not yet implemented. They're coming soon. As of now only plots, histograms and markers are available).
 
+![algorizer screenshot](https://github.com/user-attachments/assets/e8a99250-9224-44f2-8c70-b738de66cddd)
+
 
 Install the required modules with the usual requirements.txt
 
+
 pip install -r requirements.txt
 
-
 - I would love it if the project could also be used for stocks, but I'm not familiar with that type of brokers. So if anyone is willing to collaborate in adding a fetcher and realtime updates of candles for stoks it will be very welcome.
+
+
