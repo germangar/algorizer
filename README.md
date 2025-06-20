@@ -2,7 +2,7 @@ This is a framework for creating/backtesting and running trading algorythms. It 
 
 As of now it connects to crypto exchanges and fetches the candles required for backtesting, and it can also run in realtime and send alerts to the usual webhooks (Like [my own](https://github.com/germangar/whook)).
 
-The project is in early stages so you'll most likely find nuissances, specially at writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces.
+The project is in early stages so you'll most likely find nuissances, specially at writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces. However, fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime should be reliable at this point.
 
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and or pinescript.
 
