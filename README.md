@@ -1,4 +1,4 @@
-This is a framework for creating trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript. It doesn't pretend to mimic the language, although the structure should be familiar enough to you. It tries to avoid 'the pandas ways' and be sequential.
+This is a framework for creating trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't pretend to mimic the language, although the structure should be familiar enough to you. It tries to avoid 'the pandas ways' and be sequential.
 
 As of now it connects to crypto exchanges and fetch the candles required for backtesting, and it can also run in realtime and send alerts to the usual webhooks (Like [my own](https://github.com/germangar/whook)).
 
