@@ -97,12 +97,25 @@ class window_c:
         self.numpanels = 0
         self.lastCandle:candle_c = None
         self.timerOnPriceLabel = False
+        self.priceScaleMinimumWidth = 90
 
         # calculate the panels sizes
         self.panels = config['panels']
         # add the main panel
         if self.panels.get('main') == None:
-            self.panels['main'] = { "type": c.PANEL_HORIZONTAL, "position": "above", "width": 1.0, "height": 1.0 }
+            # self.panels['main'] = { "type": c.PANEL_HORIZONTAL, "position": "above", "width": 1.0, "height": 1.0 }
+            self.panels['main'] = {
+                "position": "above",
+                "width": 1.0,
+                "height": 1.0,
+                "fontsize": 12,
+                "show_candles": True,
+                "show_timescale": True,
+                "show_labels": True,
+                "show_priceline": True,
+                "show_plotnames": True,
+                "show_volume": False
+            }
 
         # first figure out how much space are going to 
         # take the other panels which are not the main panel
@@ -130,7 +143,6 @@ class window_c:
             raise ValueError( f"Panels exceed the maximum heigh. Check the accumulated panel heights don't exceed 1.0" )
         
         self.panels['main']['height'] = 1.0 - (fullheightbottom + fullheighttop)
-        self.panels["main"]["show_volume"] = False
 
         # to do: figure out how to do the same with widths
 
@@ -147,12 +159,15 @@ class window_c:
             window_width = int(screen_width * 0.65)
             window_height = int(screen_height * 0.65)
         self.panels["main"]["chart"] = chart = Chart( window_width, window_height, inner_height=self.panels["main"]["height"], inner_width=self.panels["main"]["width"] )
-        chart.layout( font_size=12 )
+        chart.layout( font_size=self.panels['main']['fontsize'] )
         if self.numpanels > 0 : 
             chart.time_scale( visible=False, time_visible=False )
 
-        legend = f"{self.config['symbol']}"
-        chart.legend( visible=True, ohlc=False, percent=False, font_size=17, text=legend )
+
+        chart.price_scale(minimum_width=self.priceScaleMinimumWidth) # FIXME: try to autoscale it
+
+        self.legend = f"{self.config['symbol']}"
+        chart.legend( visible=False, ohlc=False, percent=False, font_size=self.panels['main']['fontsize']+2, text=self.legend )
 
         volume_alpha = 0.8 if self.panels["main"]["show_volume"] else 0.0
         chart.volume_config(
@@ -181,12 +196,13 @@ class window_c:
             panel["chart"] = subchart = chart.create_subchart( panel["position"], width = panel["width"], height = panel["height"], sync=chart.id )
             subchart.layout( font_size=panel["fontsize"] )
             allow_line_names = panel["show_plotnames"]
-            subchart.legend( visible=True, ohlc=False, percent=False, lines = allow_line_names, font_size=14, text=n ) # lines info crash the script when enabled
+            subchart.legend( visible=False, ohlc=False, percent=False, lines = allow_line_names, font_size=14, text=n ) # lines info crash the script when enabled
             subchart.crosshair( horz_visible=False )
             subchart.time_scale( visible=panel["show_timescale"], time_visible=panel["show_timescale"] )
             subchart.price_line( label_visible=panel["show_labels"], line_visible=panel["show_priceline"] )
             # subchart.precision( self.bottompanel_precision )
             # subchart.price_scale(minimum_width=price_column_width)
+            subchart.price_scale(minimum_width=self.priceScaleMinimumWidth) # FIXME: try to autoscale it
             subchart.set(time_df)
             if not panel["show_candles"]:
                 subchart.hide_data()
@@ -452,25 +468,56 @@ class window_c:
     
     def initTopbar(self, chart:Chart):
         try:
-            chart.topbar.textbox("header", f'{ self.config["symbol"] } - { self.descriptor["timeframe"] } ', align= 'left')
-            chart.topbar.button('timer1', 'Timer on price ▢', func=self.on_button_press, align= 'right')
-            chart.topbar.textbox("timer", "--:--", align= 'right')
+            chart.topbar.textbox("header", f'{ self.config["symbol"] } - { self.descriptor["timeframe"] }', align= 'left')
+            chart.topbar.button('legendswtich', '∇', func=self.button_legend_press, align= 'left')
             chart.topbar.menu( "hal", ("hol", "hil", "hal"), "hil") 
-            chart.topbar.switcher( 'thisthat', ("this", "that"), "that" )
+            #chart.topbar.switcher( 'thisthat', ("this", "that"), "that" )
+            # ^—–▽▼▭∆∇∨∧⋀⋁⋎⋏⩔⩡Λ
+
+
+            chart.topbar.button('timerswtich', 'Timer on price ▢', func=self.button_timerlabel_press, align= 'right')
+            chart.topbar.textbox("timer", "--:--", align= 'right')
+            
         except Exception as e:
             print( f'{e}')
     
-    async def on_button_press(self, chart):
+    async def button_timerlabel_press(self, chart):
         try:
             # 'Timer on price ▢■▭▬▮▯▩▧▦▣■□▢▥□▣'
             timeron = 'Timer on price ▣'
             timeroff = 'Timer on price ▢'
-            new_button_value = timeron if chart.topbar['timer1'].value == timeroff else timeron
-            if chart.topbar['timer1'].value == timeron:
-                chart.topbar['timer1'].set(timeroff)
-            elif chart.topbar['timer1'].value == timeroff:
-                chart.topbar['timer1'].set(timeron)
-            self.timerOnPriceLabel = not self.timerOnPriceLabel
+            if chart.topbar['timerswtich'].value == timeron:
+                chart.topbar['timerswtich'].set(timeroff)
+                self.timerOnPriceLabel = False
+            elif chart.topbar['timerswtich'].value == timeroff:
+                chart.topbar['timerswtich'].set(timeron)
+                self.timerOnPriceLabel = True
+            
+        except Exception as e:
+            print( f'Exception {e}')
+
+    async def button_legend_press(self, chart:Chart):
+        try:
+            # # ^—–▽▼▭∆∇∨∧⋀⋁⋎⋏⩔⩡Λ
+            legendon = 'Λ'
+            legendoff = '∇'
+            if chart.topbar['legendswtich'].value == legendon:
+                chart.topbar['legendswtich'].set(legendoff)
+                # chart.legend( visible=False, ohlc=False, percent=False, lines=True, font_size=self.panels['main']['fontsize']+2, text=self.legend )
+                for n in self.panels.keys():
+                    panel = self.panels[n]
+                    fontsize = panel['fontsize'] if n != 'main' else panel['fontsize']+2
+                    panel['chart'].legend( visible=False, ohlc=False, percent=False, lines=True, font_size=fontsize, text=n )
+
+
+            elif chart.topbar['legendswtich'].value == legendoff:
+                chart.topbar['legendswtich'].set(legendon)
+                # chart.legend( visible=True, ohlc=False, percent=False, lines=True, font_size=self.panels['main']['fontsize']+2, text=self.legend )
+                for n in self.panels.keys():
+                    panel = self.panels[n]
+                    fontsize = panel['fontsize'] if n != 'main' else panel['fontsize']+2
+                    panel['chart'].legend( visible=True, ohlc=False, percent=False, lines=True, font_size=fontsize, text=n )
+            
         except Exception as e:
             print( f'Exception {e}')
 
