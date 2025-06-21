@@ -1,11 +1,7 @@
 import pandas as pd
-
-from framework import c
-from framework.algorizer import stream_c, timeframe_c, plot, histogram, requestValue, createMarker
-import framework.calcseries as calc
-from framework import generatedSeries_c
-from framework.candle import candle_c
-from framework import trade
+from framework import calc, trade
+from framework import stream_c, timeframe_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
+from framework import plot, histogram, requestValue, createMarker
 
 
 

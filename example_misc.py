@@ -1,10 +1,7 @@
 import pandas as pd
-from framework import c
-from framework.algorizer import stream_c, timeframe_c, plot, histogram, requestValue, createMarker
-import framework.calcseries as calc
-from framework import generatedSeries_c
-from framework.candle import candle_c
-from framework import trade
+from framework import calc, trade
+from framework import stream_c, timeframe_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
+from framework import plot, histogram, requestValue, createMarker
 
 
 # The 'event' function is called by the engine when something happens 
@@ -43,7 +40,8 @@ def event( stream:stream_c, event:str, param, numparams ):
         else:
             order = 'buy' if order_type == c.LONG else 'sell'
             message = f"{account} {stream.symbol} {order} {quantity_dollars:.4f}$ {leverage}x"
-        req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
+        if url:
+            req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
 
         
 
