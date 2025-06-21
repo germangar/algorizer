@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import pandas_ta as pt
 import asyncio
 import ccxt.pro as ccxt
 import time
