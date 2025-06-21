@@ -185,34 +185,29 @@ class timeframe_c:
 
         active.timeframe = self
 
-        # Create a copy of the dataframe skipping the last row as the candle is not closed
-        self.df = ohlcvDF.iloc[:-1].copy()
- 
-        # --- Phase 1: Jumpstart (single last row for generatedSeries initialization) ---
+        # --- Phase 1: Create a copy of the dataframe skipping the last row as the candle is not closed ---
         start_time = time.time()
+        self.df = ohlcvDF.iloc[:-1].copy()
 
-        print( f"Computing script logic {self.timeframeStr}" )
-
-        # if there is no callback function we don't have anything to compute
-        if self.callback is None or tools.emptyFunction( self.callback ):
-            print( "No callback function defined or is empty. Skipping. Total time: {:.2f} seconds".format(time.time() - start_time))
-            return
-        
-    
         # --- Phase 2: backtesting (row-by-row backtest simulation) ---
-        self.barindex = -1
-        self.timestamp = self.df['timestamp'].iat[self.barindex]
-        self.realtimeCandle.timestamp = self.timestamp
-        self.realtimeCandle.open = self.df.iloc[0]['open']
-        self.realtimeCandle.high = self.df.iloc[0]['high']
-        self.realtimeCandle.low = self.df.iloc[0]['low']
-        self.realtimeCandle.close = self.df.iloc[0]['close']
-        self.realtimeCandle.volume = self.df.iloc[0]['volume']
+        if self.callback and not tools.emptyFunction( self.callback ):
+            print( f"Computing script logic {self.timeframeStr}." )
 
-        self.backtesting = True
-        self.jumpstart = True
-        self.parseCandleUpdate(self.df)
-        self.backtesting = False
+            self.barindex = -1
+            self.timestamp = self.df['timestamp'].iat[self.barindex]
+            self.realtimeCandle.timestamp = self.timestamp
+            self.realtimeCandle.open = self.df.iloc[0]['open']
+            self.realtimeCandle.high = self.df.iloc[0]['high']
+            self.realtimeCandle.low = self.df.iloc[0]['low']
+            self.realtimeCandle.close = self.df.iloc[0]['close']
+            self.realtimeCandle.volume = self.df.iloc[0]['volume']
+
+            self.backtesting = True
+            self.jumpstart = True
+            self.parseCandleUpdate(self.df)
+            self.backtesting = False
+        else:
+            print( f"No callback function defined or is empty. Skipping script logic {self.timeframeStr}." )
 
         # set the realtime candle to the row we skipped because it isn't yet closed
         row = ohlcvDF.iloc[-1]
@@ -229,9 +224,10 @@ class timeframe_c:
         # --- Phase 3: Apply batch updates for plots ---
         # This MUST happen after the backtesting loop is finished,
         # as all plot values for historical data would have been collected in _temp_values by now.
-        for plot_obj in self.registeredPlots.values():
-            plot_obj._apply_batch_updates(self.df)
-        print(f"Batch updates applied to plots {self.timeframeStr}.")
+        if len(self.registeredPlots) :
+            for plot_obj in self.registeredPlots.values():
+                plot_obj._apply_batch_updates(self.df)
+            print(f"Batch updates applied to plots {self.timeframeStr}.")
         ###############################################################################
 
         print( "Total time: {:.2f} seconds".format(time.time() - start_time))
@@ -284,7 +280,7 @@ class timeframe_c:
 
             # NOT BACKTESTING: This is realtime
             last_timestamp = int(self.df['timestamp'].iat[self.barindex]) 
-            if( newrow_timestamp < last_timestamp ):
+            if( newrow_timestamp <= last_timestamp ):
                 if verbose : print( f"SKIPPING {self.timeframeStr}: {int( newrow.timestamp)}")
                 continue
 
