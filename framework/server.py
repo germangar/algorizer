@@ -381,7 +381,7 @@ def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10
     raise RuntimeError(f"Could not find available ports after {max_attempts} attempts")
 
 
-def start_window_server():
+def start_window_server(timeframeName = None):
     """Initialize and start the window server"""
     global server_cmd_port
     
