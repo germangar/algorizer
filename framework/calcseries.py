@@ -2166,7 +2166,7 @@ def Stochastic(source: np.ndarray|generatedSeries_c|str, k_period: int = 14, d_p
     return k_line_series, d_line_series
 
 
-def BollingerBands( source:np.ndarray|generatedSeries_c, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+def BollingerBands( source:np.ndarray|generatedSeries_c, period:int, mult:float = 2.0, timeframe=None )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the Bollinger Bands (basis, upper, lower) for the given source series and period.
 
