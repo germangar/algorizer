@@ -826,6 +826,8 @@ def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np
 
 
 
+
+
 # _rsi14. Elapsed time: 0.02 seconds
 def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
     if talib_available:
@@ -1049,22 +1051,112 @@ def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.n
             cg[i] = np.sum(window * weights) / denominator
     return cg
 
-def _generatedseries_calculate_macd_line(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+#
+def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, dataset: np.ndarray, param= None) -> np.ndarray:
     """
-    Calculate MACD Line using numpy, optimized for performance.
+    Calculates the Stochastic %K line. It adapts to operate on either the full
+    historical data (during initialization) or on a recent slice (during updates).
 
     Args:
-        series (np.ndarray): Precomputed difference (fast EMA - slow EMA).
-        period (int): Unused (set to 1 in factory).
-        dataset (np.ndarray): 2D array (unused, for compatibility).
-        param: Optional parameter (unused, for compatibility).
+        source_close (np.ndarray): The close price series. This can be the full series
+                                   during initialization or a recent slice during update.
+                                   Its length determines the scope of calculation.
+        k_period (int): The lookback period for the %K calculation (e.g., 14 bars).
+        dataset (np.ndarray): The full 2D dataset array (e.g., timeframe.dataset).
+                              Used to access the high and low columns for the
+                              corresponding slice of data being processed.
+        param (Any): Unused for standard %K, but kept for signature consistency.
 
     Returns:
-        np.ndarray: MACD Line values, same as input series.
+        np.ndarray: The calculated %K line as a 1D NumPy array.
+                    Its length will match the length of `source_close`.
+                    Returns NaNs if `k_period` cannot be met.
     """
-    if len(series) == 0:
-        return np.array([], dtype=np.float64)
-    return np.asarray(series, dtype=np.float64)
+    if talib_available:
+        high = dataset[:, c.DF_HIGH]
+        low = dataset[:, c.DF_LOW]
+        close = dataset[:, c.DF_CLOSE] # HACK: it overrides the 'close' in the source
+        k, d = talib.STOCH( high, low, close, fastk_period=period, slowk_period=1 )
+        return k
+
+    source_close = np.asarray(source_close, dtype=np.float64)
+    current_input_len = len(source_close) # This will be full_len during initialize, and k_period_slice_len during update
+
+    # Validate period relative to the length of the input data being processed
+    if period < 1 or current_input_len < period:
+        # If the input data is shorter than the period, we cannot calculate a valid window.
+        # This handles early bars or very short slices during incremental updates.
+        return np.full_like(source_close, np.nan)
+
+    # --- Determine the relevant slice of high/low values from the full dataset ---
+    full_dataset_len = len(dataset)
+    
+    # Calculate the starting index in the full `dataset` that corresponds to
+    # the beginning of the `source_close` array currently being processed.
+    # We assume `source_close` is either the complete column or the latest `current_input_len` elements.
+    start_index_in_dataset = full_dataset_len - current_input_len
+    
+    # Defensive check: if `current_input_len` somehow exceeds `full_dataset_len`
+    # (shouldn't happen in typical use with `period_slice`), reset `start_index`
+    if start_index_in_dataset < 0:
+        start_index_in_dataset = 0 
+
+    # Extract the corresponding slices for high and low from the full `dataset`.
+    # These slices (`high_values_slice`, `low_values_slice`) will now have
+    # the exact same length as `source_close` (`current_input_len`).
+    high_values_slice = dataset[start_index_in_dataset : start_index_in_dataset + current_input_len, c.DF_HIGH]
+    low_values_slice = dataset[start_index_in_dataset : start_index_in_dataset + current_input_len, c.DF_LOW]
+
+    # --- Calculations now operate on consistently sized (and potentially shorter) arrays ---
+
+    # Calculate Highest High (HH) and Lowest Low (LL) over the `k_period`
+    # `_rolling_window_apply_optimized` will produce an array of length `current_input_len`
+    hh_values = _rolling_window_apply_optimized(high_values_slice, period, lambda x: np.max(x, axis=1))
+    ll_values = _rolling_window_apply_optimized(low_values_slice, period, lambda x: np.min(x, axis=1))
+
+    # Initialize the %K array with NaNs, matching the `source_close` length
+    k_line = np.full_like(source_close, np.nan)
+
+    # Calculate %K: ((Close - LL) / (HH - LL)) * 100
+    # Calculate the range (difference between HH and LL)
+    diff_hl = hh_values - ll_values
+
+    # Find valid indices where the calculation can be performed:
+    # 1. `diff_hl` is not zero (to avoid division by zero).
+    # 2. `diff_hl` is not NaN.
+    # 3. `source_close` is not NaN.
+    # 4. `ll_values` is not NaN.
+    # All operands now have the same length (`current_input_len`), resolving the `ValueError`.
+    valid_indices = np.where(
+        (diff_hl != 0) & 
+        (~np.isnan(diff_hl)) & 
+        (~np.isnan(source_close)) & 
+        (~np.isnan(ll_values))
+    )
+
+    if valid_indices[0].size > 0:
+        k_line[valid_indices] = (
+            (source_close[valid_indices] - ll_values[valid_indices]) / diff_hl[valid_indices]
+        ) * 100
+
+    # Handle cases where the high-low range (diff_hl) is zero.
+    # Typically, if the range is zero and the close is at the low, %K is 0.
+    # If range is zero and close is at the high, %K is 100 (which it must be if close == low).
+    zero_range_indices = np.where(
+        (diff_hl == 0) & 
+        (~np.isnan(source_close)) & 
+        (~np.isnan(ll_values)) # Check if ll_values is valid here too
+    )
+    if zero_range_indices[0].size > 0:
+        # If the range is zero, the close, high, and low are all the same value.
+        # Conventionally, %K is often set to 0.0 or 100.0, or even NaN.
+        # Setting to 0.0 if close is equal to LL (which it must be if diff_hl is 0)
+        k_line[zero_range_indices] = 0.0 
+        # Alternatively, you might set it to 100.0 if you consider it at the top of a zero-range.
+        # Some implementations prefer NaN in this specific case. For most common trading, 0 or 100 is seen.
+        # np.where(source_close[zero_range_indices] == ll_values[zero_range_indices], 0.0, 100.0) # If close could be different, but diff_hl=0 makes this unlikely
+
+    return k_line
 
 
 
@@ -2037,13 +2129,44 @@ def CG( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->gen
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', _ensure_numpy_array(source), period, _generatedseries_calculate_cg )
 
-
+def STOCHk(source: np.ndarray|generatedSeries_c, period:int, timeframe=None)-> tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( "stochk", _ensure_numpy_array(source), period, _generatedseries_calculate_stoch_k )
 
 # # #
 # # # OTHER NOT GENERATED SERIES
 # # #
 
-def BollingerBands( source:np.ndarray, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+
+def Stochastic(source: np.ndarray|generatedSeries_c|str, k_period: int = 14, d_period: int = 3, timeframe=None)-> tuple[generatedSeries_c, generatedSeries_c]:
+    """
+    Calculates the Stochastic Oscillator (%K and %D lines).
+
+    Args:
+        close_series_input: The close price series. Can be a string (column name),
+                             a generatedSeries_c object, or a direct NumPy array.
+        k_period (int): The period for the %K calculation (e.g., 14).
+        d_period (int): The period for the %D calculation (SMA of %K, e.g., 3).
+        timeframe: The timeframe context (defaults to active.timeframe).
+
+    Returns:
+        Tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the %K line
+        and the %D line as generatedSeries_c objects.
+    """
+    timeframe = timeframe or active.timeframe
+
+    # Resolve the close series input into a NumPy array and its identifier
+    source, close_idx = timeframe.arrayFromMultiobject(source)
+
+    # Create the %K line generatedSeries_c
+    k_line_series = STOCHk(source, k_period)
+
+    # Create the %D line generatedSeries_c (SMA of %K)
+    d_line_series = SMA( k_line_series, d_period )
+    return k_line_series, d_line_series
+
+
+def BollingerBands( source:np.ndarray|generatedSeries_c, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the Bollinger Bands (basis, upper, lower) for the given source series and period.
 
@@ -2054,6 +2177,8 @@ def BollingerBands( source:np.ndarray, period:int, mult:float = 2.0 )->tuple[gen
     Returns:
         Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
     """
+    timeframe = timeframe or active.timeframe
+    source = _ensure_numpy_array(source)
     BBbasis = SMA(source, period)
     stdev = STDEV(source, period)
     BBupper = BBbasis + (stdev * mult)
@@ -2063,7 +2188,7 @@ def BollingerBands( source:np.ndarray, period:int, mult:float = 2.0 )->tuple[gen
     return BBbasis, BBupper, BBlower
 
 
-def MACD( source:np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9, timeframe=None) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+def MACD( source:np.ndarray|generatedSeries_c, fast: int = 12, slow: int = 26, signal: int = 9, timeframe=None) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the MACD line, Signal line, and Histogram for given source and periods.
     Args:
@@ -2075,8 +2200,8 @@ def MACD( source:np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9, ti
     Returns:
         Tuple of (MACD line, Signal line, Histogram) as generatedSeries_c objects.
     """
-    if timeframe is None:
-        timeframe = active.timeframe
+    timeframe = timeframe or active.timeframe
+    source = _ensure_numpy_array(source)
     # Calculate the fast and slow EMAs
     fast_ema = EMA(source, fast, timeframe)
     slow_ema = EMA(source, slow, timeframe)
