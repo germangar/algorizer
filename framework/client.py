@@ -625,14 +625,14 @@ async def listen_for_updates(context):
     socket.connect(f"tcp://127.0.0.1:{pub_port}")  # Modified line
     socket.setsockopt_string(zmq.SUBSCRIBE, "")
     
-    if debug:print("started...")
+    print("listening...")
     
     try:
         while True:
             try:
                 if debug : print("Waiting for message...")
                 message = await socket.recv_string()
-                if debug : print("Received message")
+                if debug: print("Received updates message")
                 try:
                     data = json.loads(message)
                     if data['type'] == 'row':

@@ -43,7 +43,7 @@ def tick( realtimeCandle:candle_c ):
     pass
 
 
-def runCloseCandle( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
+def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
     calc.SMA(close, 200).plot()
     calc.RSI(close, 14).plot('rsi')
 

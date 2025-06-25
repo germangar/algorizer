@@ -1,8 +1,10 @@
-import pandas as pd
 import numpy as np
+# import numpy.typing as npt
+from typing import Optional
 import asyncio
 import ccxt.pro as ccxt
 import time
+from datetime import datetime
 
 from .constants import c
 from . import tasks
@@ -35,98 +37,72 @@ class plot_c:
         self.hist_margin_top = hist_margin_top
         self.hist_margin_bottom = hist_margin_bottom
         self.screen_name = screen_name
-        self._temp_values = [] 
+        self._temp_values = []
 
-        timeframe = active.timeframe # FIXME - ensure active.timeframe is set before plot_c init
+        timeframe = active.timeframe  # FIXME - ensure active.timeframe is set before plot_c init
 
-        # These types will create a new column in the dataframe where to store values.
-        # During __init__, if the source is a direct value (float/int), we prepare the column name
-        # but defer filling it until batch processing or real-time updates.
-        if source is None or isinstance( source, (float, int) ):
+        if source is None or isinstance(source, (float, int)):
             if name:
-                if name in timeframe.df.columns: 
-                    raise ValueError( f"plot_c:name [{name}] is already in use" )
-                # Names starting with an underscore are reserved for generated series
-                # and must already exist in the dataframe
-                if name.startswith('_') :
-                    raise ValueError( f"plot_c:names starting with an underscore are reserved for generatedSeries_c objects" )
+                if name in timeframe.columns:
+                    raise ValueError(f"plot_c:name [{name}] is already in use")
+                if name.startswith('_'):
+                    raise ValueError(f"plot_c:names starting with an underscore are reserved for generatedSeries_c objects")
                 self.name = name
                 if not self.screen_name:
                     self.screen_name = self.name
-                
-                # We need to ensure the column exists when plot_c is initialized, 
-                # especially since `parseCandleUpdate` expects it to be there for `iat_index`.
-                # Initialize it with NaNs. The values will be filled later.
-                if self.name not in timeframe.df.columns:
-                    timeframe.df[self.name] = pd.Series(np.nan, index=timeframe.df.index, dtype=np.float64)
 
+                # Add column to columns list
+                timeframe.columns.append(self.name)
+                # Add column to dataset (all np.nan)
+                rows, cols = timeframe.dataset.shape
+                new_col = np.full((rows, 1), np.nan, dtype=np.float64)
+                timeframe.dataset = np.hstack([timeframe.dataset, new_col])
 
-        elif isinstance( source, (pd.Series, generatedSeries_c) ):
+        elif isinstance(source, generatedSeries_c):
             self.name = source.name
-            # For Series or generatedSeries, the data is already managed by Pandas
-            # or the generatedSeries_c object, so no need for _temp_values.
+            # Column should already exist
 
-        if not self.name or self.name not in timeframe.df.columns:
-            # This check ensures that either a new column was successfully prepared for a value source,
-            # or an existing Series/generatedSeries was successfully referenced.
-            raise ValueError( f"plot_c:Couldn't assign a name to the plot [{name}]" )
+        if not self.name or self.name not in timeframe.columns:
+            raise ValueError(f"plot_c:Couldn't assign a name to the plot [{name}]")
 
-
-    def update( self, source, timeframe ):
+    def update(self, source, timeframe):
         """
-        Updates the plot's data. 
-        - If `timeframe.jumpstart` is True, it does nothing (as plots shouldn't collect during this phase).
-        - If `timeframe.backtesting` is True (historical backtesting), it appends values to a temporary list for bulk processing later.
-        - Otherwise (real-time updates), it directly updates the DataFrame using .iat.
+        Updates the plot's data in the NumPy dataset.
         """
-        # If the source is already a Pandas Series or a generatedSeries_c,
-        # its data is managed elsewhere (already in the DataFrame or by calcseries).
-        # We don't need to do anything here for these types.
-        if isinstance(source, (pd.Series, generatedSeries_c)):
-            return 
-        
-        # If the source is a direct value (float, int, or None), we handle it.
-        if isinstance(source, (int, float, type(None))) :
-            # During the historical backtesting run (`backtesting=True`),
-            # we append the value to a temporary list.
+        if isinstance(source, (generatedSeries_c, np.ndarray)):
+            return
+
+        col_idx = timeframe.columns.index(self.name)
+
+        if isinstance(source, (int, float, type(None))):
             if timeframe.backtesting:
                 self._temp_values.append(source)
             else:
-                # For real-time updates, directly assign to the DataFrame using .iat.
-                # This is efficient enough for single row updates.
-                timeframe.df[self.name].iat[timeframe.barindex] = source
+                # Real-time: directly assign to the dataset
+                timeframe.dataset[timeframe.barindex, col_idx] = np.nan if source is None else float(source)
             return
 
-        # If we reach here, the source type is unexpected.
-        raise ValueError( f"Unvalid plot type {self.name}: {type(source)}" )
+        raise ValueError(f"Unvalid plot type {self.name}: {type(source)}")
 
-    def _apply_batch_updates(self, timeframe_df):
+    def _apply_batch_updates(self, timeframe):
         """
-        Applies all collected temporary values to the DataFrame column in a single,
-        efficient vectorized operation. Called after the initial historical data processing.
+        Applies all collected temporary values to the dataset column in a single vectorized operation.
         """
         if not self._temp_values:
-            return # Nothing to apply
+            return
 
-        # Ensure the column exists before attempting to assign.
-        # This redundant check is for robustness, as it should already be created in __init__.
-        if self.name not in timeframe_df.columns:
-            timeframe_df[self.name] = pd.Series(np.nan, index=timeframe_df.index, dtype=np.float64)
-
-        # Assign the collected values.
+        col_idx = timeframe.columns.index(self.name)
         num_values = len(self._temp_values)
-        
-        # --- FIX: Explicitly convert to numpy array with float64 dtype ---
+        rows = timeframe.dataset.shape[0]
         values_to_assign = np.array(self._temp_values, dtype=np.float64)
 
-        if num_values > len(timeframe_df):
-            print(f"Warning: Plot '{self.name}' has more collected values ({num_values}) than DataFrame rows ({len(timeframe_df)}). Truncating values_to_assign.")
-            # Truncate the values_to_assign if it's longer than the DataFrame slice
-            values_to_assign = values_to_assign[:len(timeframe_df)]
-            num_values = len(timeframe_df)
-            
-        timeframe_df.loc[timeframe_df.index[:num_values], self.name] = values_to_assign
+        if num_values > rows:
+            print(f"Warning: Plot '{self.name}' has more collected values ({num_values}) than dataset rows ({rows}). Truncating values_to_assign.")
+            values_to_assign = values_to_assign[:rows]
+            num_values = rows
 
+        # Assign by slice
+        timeframe.dataset[:num_values, col_idx] = values_to_assign
         self._temp_values = []
 
 
@@ -135,7 +111,7 @@ class marker_c:
     def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
         # MARKER_POSITION = Literal['above', 'below', 'inside']
         # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
-        self.id = pd.Timestamp.now().value
+        self.id = datetime.now().timestamp() * 1e6
         self.timestamp = timestamp
         self.text = text
         self.position = position
@@ -169,7 +145,8 @@ class timeframe_c:
         self.backtesting = False
         self.jumpstart = False
 
-        self.df:pd.DataFrame = []
+        self.dataset:Optional[np.NDArray[np.float64]] = None
+        self.columns:list[str] = []
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
 
@@ -177,8 +154,7 @@ class timeframe_c:
         self.realtimeCandle.timeframemsec = self.timeframeMsec
 
  
-
-    def initDataframe( self, ohlcvDF ):
+    def initDataframe( self, ohlcvNP, columns:list[str] ):
         print( "=================" )
         print( f"Creating dataframe {self.timeframeStr}" )
 
@@ -186,59 +162,60 @@ class timeframe_c:
 
         # --- Phase 1: Create a copy of the dataframe skipping the last row as the candle is not closed ---
         start_time = time.time()
-        self.df = ohlcvDF.iloc[:-1].copy()
+        self.dataset = ohlcvNP[:-1, :].copy()
+        self.columns = columns
 
         # --- Phase 2: backtesting (row-by-row backtest simulation) ---
         if self.callback and not tools.emptyFunction( self.callback ):
             print( f"Computing script logic {self.timeframeStr}." )
 
             self.barindex = -1
-            self.timestamp = self.df['timestamp'].iat[self.barindex]
+            self.timestamp = int(self.dataset[0, c.DF_TIMESTAMP]) - self.timeframeMsec
             self.realtimeCandle.timestamp = self.timestamp
-            self.realtimeCandle.open = self.df.iloc[0]['open']
-            self.realtimeCandle.high = self.df.iloc[0]['high']
-            self.realtimeCandle.low = self.df.iloc[0]['low']
-            self.realtimeCandle.close = self.df.iloc[0]['close']
-            self.realtimeCandle.volume = self.df.iloc[0]['volume']
+            self.realtimeCandle.open = self.dataset[0, c.DF_OPEN]
+            self.realtimeCandle.high = self.dataset[0, c.DF_HIGH]
+            self.realtimeCandle.low = self.dataset[0, c.DF_LOW]
+            self.realtimeCandle.close = self.dataset[0, c.DF_CLOSE]
+            self.realtimeCandle.volume = self.dataset[0, c.DF_VOLUME]
 
             self.backtesting = True
             self.jumpstart = True
-            self.parseCandleUpdate(self.df)
+            self.parseCandleUpdate(self.dataset)
             self.backtesting = False
         else:
             print( f"No callback function defined or is empty. Skipping script logic {self.timeframeStr}." )
 
         # set the realtime candle to the row we skipped because it isn't yet closed
-        row = ohlcvDF.iloc[-1]
-        self.realtimeCandle.timestamp = row['timestamp']
-        self.realtimeCandle.open = row['open']
-        self.realtimeCandle.high = row['high']
-        self.realtimeCandle.low = row['low']
-        self.realtimeCandle.close = row['close']
-        self.realtimeCandle.volume = row['volume']
+        row = ohlcvNP[-1]
+        self.realtimeCandle.timestamp = row[c.DF_TIMESTAMP]
+        self.realtimeCandle.open = row[c.DF_OPEN]
+        self.realtimeCandle.high = row[c.DF_HIGH]
+        self.realtimeCandle.low = row[c.DF_LOW]
+        self.realtimeCandle.close = row[c.DF_CLOSE]
+        self.realtimeCandle.volume = row[c.DF_VOLUME]
         self.stream.timestampFetch = self.realtimeCandle.timestamp
 
-        print( len(self.df), "candles processed." )
+        print( len(self.dataset), "candles processed." )
 
         # --- Phase 3: Apply batch updates for plots ---
         # This MUST happen after the backtesting loop is finished,
         # as all plot values for historical data would have been collected in _temp_values by now.
         if len(self.registeredPlots) :
             for plot_obj in self.registeredPlots.values():
-                plot_obj._apply_batch_updates(self.df)
+                plot_obj._apply_batch_updates(self)
             print(f"Batch updates applied to plots {self.timeframeStr}.")
         ###############################################################################
 
         print( "Total time: {:.2f} seconds".format(time.time() - start_time))
 
-        
 
-    def parseCandleUpdate( self, rows ):
+    def parseCandleUpdate( self, rows ): # rows is a 2D numpy array now
 
         active.timeframe = self
 
-        for newrow in rows.itertuples( index=False, name=None ):
-            newrow_timestamp = newrow[0]
+        for newrow in rows:
+            # print( newrow )
+            newrow_timestamp = int( newrow[0] )
             newrow_open = newrow[1]
             newrow_high = newrow[2]
             newrow_low = newrow[3]
@@ -250,7 +227,7 @@ class timeframe_c:
                 # Increment barindex and timestamp for each historical row
                 self.barindex += 1 
                 active.barindex = self.barindex
-                self.timestamp = int(newrow_timestamp)
+                self.timestamp = newrow_timestamp
 
                 # Update realtimeCandle for the current historical bar being processed
                 self.realtimeCandle.timestamp = newrow_timestamp
@@ -267,7 +244,7 @@ class timeframe_c:
 
                 # Execute the user-defined callback for each historical candle.
                 if( self.callback != None ):
-                    self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
+                    self.callback( self, self.dataset[:, c.DF_OPEN], self.dataset[:, c.DF_HIGH], self.dataset[:, c.DF_LOW], self.dataset[:, c.DF_CLOSE], self.dataset[:, c.DF_VOLUME], self.dataset[:, c.DF_TOP], self.dataset[:, c.DF_BOTTOM] )
 
                 # Print progress only during the main historical processing loop
                 if self.barindex % 5000 == 0 and not self.jumpstart: 
@@ -278,7 +255,7 @@ class timeframe_c:
             
 
             # NOT BACKTESTING: This is realtime
-            last_timestamp = int(self.df['timestamp'].iat[self.barindex]) 
+            last_timestamp = int( self.dataset[self.barindex, c.DF_TIMESTAMP] )
             if( newrow_timestamp <= last_timestamp ):
                 if verbose : print( f"SKIPPING {self.timeframeStr}: {int( newrow.timestamp)}")
                 continue
@@ -286,7 +263,7 @@ class timeframe_c:
             # has it reached a new candle yet?
             if newrow_timestamp < self.realtimeCandle.timestamp + self.timeframeMsec:
                 # no. This is still a real time candle update
-                if( self.timeframeStr == self.stream.timeframeFetch ):
+                if self.timeframeStr == self.stream.timeframeFetch:
                     self.realtimeCandle.timestamp = newrow_timestamp
                     self.realtimeCandle.open = newrow_open
                     self.realtimeCandle.high = newrow_high
@@ -296,44 +273,49 @@ class timeframe_c:
                 else:
                     # combine the smaller candles into a bigger one
                     fecthTF = self.stream.timeframes[self.stream.timeframeFetch]
-                    fetch_rows = fecthTF.df[fecthTF.df['timestamp'] >= self.realtimeCandle.timestamp]
-                    if( fetch_rows.empty ):
+                    mask = fecthTF.dataset[:, c.DF_TIMESTAMP] >= self.realtimeCandle.timestamp
+                    fetch_rows = fecthTF.dataset[mask]
+                    if fetch_rows.shape[0] == 0:
                         self.realtimeCandle.open = newrow_open
                         self.realtimeCandle.high = newrow_high
                         self.realtimeCandle.low = newrow_low
                         self.realtimeCandle.close = newrow_close
                         self.realtimeCandle.volume = newrow_volume
                     else:
-                        self.realtimeCandle.open = fetch_rows['open'].iloc[0]
-                        self.realtimeCandle.high = max(fetch_rows['high'].max(), newrow_high)
-                        self.realtimeCandle.low = min(fetch_rows['low'].min(), newrow_low)
+                        self.realtimeCandle.open = fetch_rows[0, c.DF_OPEN]
+                        self.realtimeCandle.high = max(fetch_rows[:, c.DF_HIGH].max(), newrow_high)
+                        self.realtimeCandle.low = min(fetch_rows[:, c.DF_LOW].min(), newrow_low)
                         self.realtimeCandle.close = newrow_close
-                        self.realtimeCandle.volume = newrow_volume + fetch_rows['volume'].sum() # add the volume of the smallest candles
+                        self.realtimeCandle.volume = newrow_volume + fetch_rows[:, c.DF_VOLUME].sum()
                 
                 self.realtimeCandle.bottom = min( self.realtimeCandle.open, self.realtimeCandle.close )
                 self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
                 self.realtimeCandle.updateRemainingTime()
 
-                if( self.timeframeStr == self.stream.timeframeFetch and self.stream.tick_callback != None ):
-                    self.stream.tick_callback( self.realtimeCandle )
+                if( self.timeframeStr == self.stream.timeframeFetch ): # a tick is the same to all timeframes, so do it only for one
+                    if self.stream.tick_callback != None:
+                        self.stream.tick_callback( self.realtimeCandle )
 
-                if not self.stream.initializing:
-                    push_tick_update( self )
+                    if not self.stream.initializing:
+                        push_tick_update( self )
 
                 continue
 
             # NEW CANDLE - REAL-TIME
-            # Append a new row to the DataFrame for the closed candle data
-            # Use .loc with a new index (barindex + 1) to add the new row
+            # Append a new row to the Dataset for the closed candle data
             new_idx = self.barindex + 1
-            self.df.loc[new_idx, 'timestamp'] = self.realtimeCandle.timestamp
-            self.df.loc[new_idx, 'open'] = self.realtimeCandle.open
-            self.df.loc[new_idx, 'high'] = self.realtimeCandle.high
-            self.df.loc[new_idx, 'low'] = self.realtimeCandle.low
-            self.df.loc[new_idx, 'close'] = self.realtimeCandle.close
-            self.df.loc[new_idx, 'volume'] = self.realtimeCandle.volume
-            self.df.loc[new_idx, 'top'] = max( self.realtimeCandle.open, self.realtimeCandle.close )
-            self.df.loc[new_idx, 'bottom'] = min( self.realtimeCandle.open, self.realtimeCandle.close )
+
+            # Create a new row with values from self.realtimeCandle
+            new_row = np.full(self.dataset.shape[1], np.nan)
+            new_row[c.DF_TIMESTAMP] = self.realtimeCandle.timestamp
+            new_row[c.DF_OPEN]      = self.realtimeCandle.open
+            new_row[c.DF_HIGH]      = self.realtimeCandle.high
+            new_row[c.DF_LOW]       = self.realtimeCandle.low
+            new_row[c.DF_CLOSE]     = self.realtimeCandle.close
+            new_row[c.DF_VOLUME]    = self.realtimeCandle.volume
+            new_row[c.DF_TOP]    = self.realtimeCandle.top
+            new_row[c.DF_BOTTOM]    = self.realtimeCandle.bottom
+            self.dataset = np.vstack([self.dataset, new_row]) # Append the new row to the dataset
 
             # copy newrow into realtimeCandle for the NEXT incoming tick
             self.realtimeCandle.timestamp = newrow_timestamp
@@ -349,24 +331,36 @@ class timeframe_c:
 
             self.barindex = new_idx
             active.barindex = self.barindex
-            self.timestamp = int(self.df['timestamp'].iat[self.barindex])
+            self.timestamp = int( self.dataset[ self.barindex, c.DF_TIMESTAMP ] )
             if self.timeframeStr == self.stream.timeframeFetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
 
-            print( f"NEW CANDLE {self.timeframeStr} : {newrow}" )
+            print( f"NEW CANDLE {self.timeframeStr} : {newrow.tolist()}" )
 
             if( self.timeframeStr == self.stream.timeframeFetch and self.stream.tick_callback != None ):
-                    self.stream.tick_callback( self.realtimeCandle )
+                self.stream.tick_callback( self.realtimeCandle )
 
             if( self.callback != None ):
-                self.callback( self, self.df['open'], self.df['high'], self.df['low'], self.df['close'], self.df['volume'] )
+                self.callback( self, self.dataset[:, c.DF_OPEN], self.dataset[:, c.DF_HIGH], self.dataset[:, c.DF_LOW], self.dataset[:, c.DF_CLOSE], self.dataset[:, c.DF_VOLUME], self.dataset[:, c.DF_TOP], self.dataset[:, c.DF_BOTTOM] )
 
             if not self.stream.initializing:
                 push_row_update( self )
 
 
 
-    def calcGeneratedSeries( self, type:str, source:pd.Series, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
+
+
+
+
+
+        
+
+
+
+    def calcGeneratedSeries( self, type:str, source: np.ndarray|generatedSeries_c, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
+        if isinstance( source, generatedSeries_c ):
+            source = source.series()
+
         name = tools.generatedSeriesNameFormat( type, source, period )
 
         gse = self.generatedSeries.get( name )
@@ -440,20 +434,41 @@ class timeframe_c:
             di[p.name] = plot
         return di
 
+    def arrayFromMultiobject( self, source: str|generatedSeries_c|np.ndarray )->tuple[np.ndarray, int|None]:
+        # Resolve source to a NumPy array and get its index/name
+        if isinstance(source, str):
+            # Find index for string column name
+            index = self.columns.index(source)
+            array = self.dataset[:, index]
+        elif isinstance(source, generatedSeries_c):
+            array = source.series()
+            index = source._columnIndex()
+        elif isinstance(source, np.ndarray):
+            array = source
+            index = tools.get_column_index_from_array(self.dataset, array)
+        else:
+            raise ValueError(f"Unsupported type for operand array: {type(source)}")
+        return (array, index)
+
     def indexForTimestamp( self, timestamp:int )->int:
         # Estimate the index by dividing the offset by the time difference between rows
-        baseTimestamp = int(self.df['timestamp'].iat[0])
-        index = (timestamp - baseTimestamp) // self.timeframeMsec
+        baseTimestamp = self.dataset[0, c.DF_TIMESTAMP]
+        index = int((timestamp - baseTimestamp) // self.timeframeMsec)
         return max(-1, index - 1) # Return the previous index or -1 if not found
+    
+    def timestampAtIndex( self, index:int )->int:
+        return int( self.dataset[index, c.DF_TIMESTAMP] )
 
+    def _columnIndex( self, column_name ):
+        return self.columns.index(column_name)
 
     def valueAtTimestamp( self, column_name, timestamp:int ):
         index = self.indexForTimestamp(timestamp)
         if index == -1:
             return None
-        if column_name not in self.df.columns:
+        if column_name not in self.columns:
             raise ValueError(f"Column '{column_name}' not found in DataFrame.")
-        return self.df[column_name].iat[index]
+        return self.dataset[index, self._columnIndex(column_name)]
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
@@ -466,7 +481,8 @@ class timeframe_c:
         candle = candle_c()
         candle.index = index
         candle.timeframemsec = self.timeframeMsec
-        row = self.df.iloc[index].values  # Get as a NumPy array
+        
+        row = self.dataset[index, :]
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.top, candle.bottom = ( int(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], row[7] )
         return candle
 
@@ -531,8 +547,9 @@ class stream_c:
             ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
         if( len(ohlcvs) == 0 ):
             raise SystemExit( f'No candles available in {exchangeID}. Aborting')
-        ohlcvDF = pd.DataFrame( ohlcvs, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] )
-        ohlcvs = []
+ 
+        ohlcvNP = np.array( ohlcvs, dtype=np.float64 )
+        del ohlcvs
 
 
         #################################################
@@ -541,32 +558,39 @@ class stream_c:
 
         for i, t in enumerate(timeframeList):
             if t == self.timeframeFetch:
-                candles = ohlcvDF
+                candles = ohlcvNP
             else:
-                candles = tools.resample_ohlcv( ohlcvDF, t )
+                candles = tools.resample_ohlcv_np( ohlcvNP, t )
+                print( f"Resampled {t} : {len(candles)} rows" )
 
             # create top and bottom columns
-            candles['top'] = candles[['open', 'close']].max(axis=1)
-            candles['bottom'] = candles[['open', 'close']].min(axis=1)
+            # candles['top'] = candles[['open', 'close']].max(axis=1)
+            # candles['bottom'] = candles[['open', 'close']].min(axis=1)
+
+            # Add the new 'top' and 'bottom' columns to the candles NumPy array
+            top_values = np.maximum(candles[:, c.DF_OPEN], candles[:, c.DF_CLOSE]).reshape(-1, 1)
+            bottom_values = np.minimum(candles[:, c.DF_OPEN], candles[:, c.DF_CLOSE]).reshape(-1, 1)
+            candles = np.hstack((candles, top_values, bottom_values))
 
             timeframe = timeframe_c( self, t )
 
             if i < len(callbacks):
                 timeframe.callback = callbacks[i]
-            else:
-                func_name = f'runCloseCandle_{t}'
-                timeframe.callback = globals().get(func_name)
 
             self.timeframes[t] = timeframe
-            timeframe.initDataframe( candles )
+            timeframe.initDataframe( candles, ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'top', 'bottom'] )
             
             candles = []
 
+
         # we skipped the last row at initializing each timeframe
         # dataframe to parse as an update now becasse the last candle is not closed
-        self.parseCandleUpdateMulti( ohlcvDF.iloc[-1:] )
+        # self.parseCandleUpdateMulti( ohlcvDF.iloc[-1:] )
+        # row_2d = ohlcv_np[row_index:row_index+1, :]
+        self.parseCandleUpdateMulti( ohlcvNP[-1:, :] )
 
-        ohlcvDF = []
+        del ohlcvNP
+
 
         #################################################
 
@@ -615,7 +639,8 @@ class stream_c:
 
             #pprint( response )
             if( len(response) ):
-                self.parseCandleUpdateMulti( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
+                self.parseCandleUpdateMulti( np.array( response, dtype=np.float64 ) )
+                # self.parseCandleUpdateMulti( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
             
             await asyncio.sleep(0.01)
 
@@ -728,11 +753,6 @@ def getMintick()->float:
 
 def getPrecision()->float:
     return active.timeframe.stream.precision
-
-def getDataframe()->pd.DataFrame:
-    # this is temporary for testing. ToDo: Add selection of the requested dataframe
-    stream:stream_c = active.timeframe.stream
-    return stream.timeframes[stream.timeframeFetch]
 
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''

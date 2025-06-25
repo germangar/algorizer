@@ -62,7 +62,7 @@ def tick( realtimeCandle:candle_c ):
 
 
 rsiSlow = None
-def runCloseCandle_slow( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
+def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
     global rsiSlow
 
     # calc is where the generatedSeries operations reside. 
@@ -75,7 +75,7 @@ def runCloseCandle_slow( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     rsiSlow.plot('rsi')
 
 
-def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, low:pd.Series, close:pd.Series, volume:pd.Series ):
+def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
 
     # bollinger bands returns 3 generatedSeries
     BBbasis, BBupper, BBlower = calc.BollingerBands( close, 350 )
@@ -112,7 +112,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
     # the top and bottom prices of the candles bodies. Wicks excluded.
     # You can use high and low instead, or whatever you prefer.
     # 'Amplitude' is the main value you want to tweak for each symbol/timeframe
-    pivots = calc.pivots( timeframe.df['top'], timeframe.df['bottom'], 12 )
+    pivots = calc.pivots( top, bottom, 12 )
     if pivots.isNewPivot:
         thisPivot = pivots.getLast() # only confirmed pivots. You can check the WIP pivot values in pivots.temp_pivot
         if thisPivot.type == c.PIVOT_HIGH:
@@ -120,11 +120,14 @@ def runCloseCandle_fast( timeframe:timeframe_c, open:pd.Series, high:pd.Series, 
         else:
             createMarker('△', 'below', color = "#BDBDBD", timestamp=thisPivot.timestamp)
 
+
+
     # MACD in one go
     macd_line, signal_line, histo = calc.MACD(close)
     histo.histogram( 'macd', "#4A545D" )
     macd_line.plot( 'macd', color = "#AB1212", width=2 ) # The macd panel was created by us. See below
     signal_line.plot( 'macd', color = "#1BC573" )
+    # print( signal_line.current() )
 
     # trading logic 
     buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 30

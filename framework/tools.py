@@ -1,4 +1,11 @@
+import numpy as np
 
+def get_column_index_from_array( dataset:np.ndarray, candidate_col:np.ndarray ):
+    # Try to find the index of the candidate_col in the dataset columns
+    for idx in range(dataset.shape[1]):
+        if np.shares_memory(dataset[:, idx], candidate_col) or np.all(dataset[:, idx] == candidate_col):
+            return idx
+    return None
 
 def stringToValue( arg )->float:
     try:
@@ -13,7 +20,7 @@ def stringToValue( arg )->float:
 # used to standarize the name given to a generated series (calcseries.py)
 # I probably should defined type pd.series for 'source' but I don't feel like importing pandas here
 def generatedSeriesNameFormat( type, source, period:int ):
-    return f'_{type}{period}{source.name}'
+    return f'_{type}_{period}'#{source.name}'
 
 def hx2rgba(hex_color):
     """Converts a hex color code (with or without alpha) to an RGBA string for CSS."""
@@ -136,40 +143,75 @@ def timeframeString( timeframe )->str:
     return name
 
 
-def resample_ohlcv(df, target_timeframe):
+def resample_ohlcv_np(dataset: np.ndarray, target_timeframe) -> np.ndarray:
     """
-    Resample OHLCV dataframe to a higher timeframe.
-    Accepts target_timeframe as number of minutes (e.g., 15, 60, 1440).
-    Keeps timestamp in milliseconds, no datetime column is returned.
+    Resample OHLCV dataset to a higher timeframe using numpy.
+
+    Args:
+        dataset (np.ndarray): 2D array with columns [timestamp, open, high, low, close, volume].
+        target_timeframe: String (e.g., '15m', '1h') or int (minutes, e.g., 15, 60).
+
+    Returns:
+        np.ndarray: Resampled OHLCV array with same column structure.
     """
+    if dataset.shape[0] == 0 or dataset.shape[1] < 6:
+        return np.empty((0, 6), dtype=np.float64)
 
-    import pandas as pd
-
-    def map_minutes_to_pandas_freq(minutes: int) -> str:
-        if minutes % 1440 == 0:
-            return f"{minutes // 1440}D"
-        elif minutes % 60 == 0:
-            return f"{minutes // 60}H"
-        else:
-            return f"{minutes}min"
-
-    # If target_timeframe is a string like '15', convert to int
+    # Convert target_timeframe to milliseconds
     if isinstance(target_timeframe, str):
-        target_timeframe = int(timeframeInt(target_timeframe))
+        target_timeframe_ms = timeframeMsec(target_timeframe)
+    else:
+        target_timeframe_ms = target_timeframe * 60 * 1000
 
-    pandas_freq = map_minutes_to_pandas_freq(target_timeframe)
+    # Extract timestamps
+    timestamps = dataset[:, 0]
 
-    df = df.copy()
-    df.index = pd.to_datetime(df['timestamp'], unit='ms')
+    # Compute bucket indices (floor division by timeframe)
+    bucket_indices = (timestamps // target_timeframe_ms).astype(np.int64)
 
-    resampled = df.resample(pandas_freq, label='left', closed='left').agg({
-        'open': 'first',
-        'high': 'max',
-        'low': 'min',
-        'close': 'last',
-        'volume': 'sum'
-    }).dropna()
+    # Find unique buckets and their counts
+    unique_buckets, bucket_counts = np.unique(bucket_indices, return_counts=True)
+    n_buckets = len(unique_buckets)
 
-    resampled['timestamp'] = (resampled.index.astype('int64') // 10**6)
-    return resampled.reset_index(drop=True)[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+    # Initialize output array
+    resampled = np.empty((n_buckets, 6), dtype=np.float64)
+
+    # Process each bucket
+    for i, bucket in enumerate(unique_buckets):
+        # Get rows in this bucket
+        mask = bucket_indices == bucket
+        bucket_data = dataset[mask]
+
+        # Set timestamp (left edge of bucket)
+        resampled[i, 0] = bucket * target_timeframe_ms
+
+        # Aggregations
+        bucket_open = bucket_data[:, 1]  # open
+        bucket_high = bucket_data[:, 2]  # high
+        bucket_low = bucket_data[:, 3]   # low
+        bucket_close = bucket_data[:, 4] # close
+        bucket_volume = bucket_data[:, 5] # volume
+
+        # open: first non-NaN
+        valid_open = bucket_open[~np.isnan(bucket_open)]
+        resampled[i, 1] = valid_open[0] if len(valid_open) > 0 else np.nan
+
+        # high: max non-NaN
+        resampled[i, 2] = np.nanmax(bucket_high) if np.any(~np.isnan(bucket_high)) else np.nan
+
+        # low: min non-NaN
+        resampled[i, 3] = np.nanmin(bucket_low) if np.any(~np.isnan(bucket_low)) else np.nan
+
+        # close: last non-NaN
+        valid_close = bucket_close[~np.isnan(bucket_close)]
+        resampled[i, 4] = valid_close[-1] if len(valid_close) > 0 else np.nan
+
+        # volume: sum non-NaN
+        resampled[i, 5] = np.nansum(bucket_volume) if np.any(~np.isnan(bucket_volume)) else np.nan
+
+    # Filter out rows with any NaN values
+    valid_rows = ~np.any(np.isnan(resampled), axis=1)
+    resampled = resampled[valid_rows]
+
+    return resampled
 

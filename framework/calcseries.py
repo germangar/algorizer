@@ -1,22 +1,21 @@
-import pandas as pd
-# try:
-#     import talib
-#     talib_available = True
-# except ImportError:
-#     talib_available = False
-#     print("talib import failed")
-import pandas_ta as pt
+
+from typing import Union
+talib_available = False
+talib = None
+try:
+    import talib
+    talib_available = True
+except ImportError:
+    talib_available = False
+    print("Talib not available")
+
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 import time
 
 from .constants import c
 from . import active
 from . import tools
-
-# if pt.Imports["talib"]:
-#     print("pandas_ta is using talib")
-# else:
-#     print("pandas_ta is not using talib")
     
 
 # Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude
@@ -30,556 +29,266 @@ __all__ = [name for name in globals() if not (name.startswith('_') or name in _e
 # # GENERATED SERIES : These are series of values that are calculated always using the same formula
 # #
 
-def _generatedseries_calculate_highest(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    values = series.to_numpy()
-    length = len(values)
-    result = np.full(length, np.nan)
-    
-    if length >= period:
-        # Create strided array view for rolling windows
-        strides = np.lib.stride_tricks.sliding_window_view(values, period)
-        
-        # Calculate max for each window
-        result[period-1:] = np.max(strides, axis=1)
 
-    return pd.Series(result, index=series.index)
 
-def _generatedseries_calculate_lowest(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    values = series.to_numpy()
-    length = len(values)
-    result = np.full(length, np.nan)
-    
-    if length >= period:
-        # Create strided array view for rolling windows
-        strides = np.lib.stride_tricks.sliding_window_view(values, period)
-        
-        # Calculate min for each window
-        result[period-1:] = np.min(strides, axis=1)
-
-    return pd.Series(result, index=series.index)
-
-def _generatedseries_calculate_highestbars(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    values = series.to_numpy()
-    length = len(values)
-    result = np.full(length, np.nan)
-    
-    # Only process when we have enough data
-    if length >= period:
-        # Create strided array view for rolling windows
-        strides = np.lib.stride_tricks.sliding_window_view(values, period)
-        
-        # Calculate argmax for each window
-        indices = np.argmax(strides, axis=1)
-        
-        # Convert to offset from current position
-        result[period-1:] = (period - 1) - indices
-
-    return pd.Series(result, index=series.index)
-
-def _generatedseries_calculate_lowestbars(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    values = series.to_numpy()
-    length = len(values)
-    result = np.full(length, np.nan)
-    
-    if length >= period:
-        # Create strided array view for rolling windows
-        strides = np.lib.stride_tricks.sliding_window_view(values, period)
-        
-        # Calculate argmin for each window
-        indices = np.argmin(strides, axis=1)
-        
-        # Convert to offset from current position
-        result[period-1:] = (period - 1) - indices
-
-    return pd.Series(result, index=series.index)
-
-def _generatedseries_calculate_binary_operator(dummy_source: pd.Series, period: int, df: pd.DataFrame, param: tuple) -> pd.Series:
+# --- Optimized Helper for rolling window operations ---
+def _rolling_window_apply_optimized(arr: np.ndarray, window: int, func) -> np.ndarray:
     """
-    Apply a custom binary operation between two columns in the dataframe.
-
-    Args:
-        dummy_source (pd.Series): Ignored, only used for naming compatibility.
-        period (int): Minimum required length for initialization (usually 1).
-        df (pd.DataFrame): The dataframe containing the operands.
-        param (tuple): (colA, colB, op_func), where:
-            - colA (str): Name of first column.
-            - colB (str): Name of second column.
-            - op_func (Callable): A lambda or function taking two Series and returning a Series.
-
-    Returns:
-        pd.Series: Resulting series from applying op_func to colA and colB.
+    Applies a function over a rolling window of a 1D NumPy array using sliding_window_view.
+    Pads the beginning with NaNs to match the input array's length.
     """
-    if not isinstance(param, tuple) or len(param) != 3:
-        raise ValueError("binary_operator series requires param=(colA, colB)")
+    if not isinstance(arr, np.ndarray):
+        arr = np.asarray(arr, dtype=np.float64)
     
-    colA, colB, op_func = param
+    n = len(arr)
+    if window < 1 or window > n:
+        return np.full_like(arr, np.nan)
 
-    if colA not in df.columns or colB not in df.columns:
-        raise ValueError(f"binary_operator series: Columns '{colA}' or '{colB}' not found in DataFrame")
-
-    seriesA = df[colA]
-    seriesB = df[colB]
-    result = op_func(seriesA, seriesB)
+    windows = sliding_window_view(arr, window_shape=window)
+    applied_values = func(windows) 
+    
+    result = np.concatenate((np.full(window - 1, np.nan), applied_values))
+    
     return result
 
-def _generatedseries_calculate_subtract_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    if not isinstance(param, tuple) or len(param) != 2:
-        raise ValueError("subtract_series requires param=(colA, colB)")
-    
-    colA, colB = param
-    if colA not in df.columns or colB not in df.columns:
-        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
 
-    return df[colA] - df[colB]
 
-def _generatedseries_calculate_add_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    if not isinstance(param, tuple) or len(param) != 2:
-        raise ValueError("subtract_series requires param=(colA, colB)")
-    
-    colA, colB = param
-    if colA not in df.columns or colB not in df.columns:
-        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
+NumericScalar = Union[float, int]
+OperandType = Union[np.ndarray, NumericScalar]
 
-    return df[colA] + df[colB]
+def _generatedseries_calculate_add_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source + param
 
-def _generatedseries_calculate_multiply_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    if not isinstance(param, tuple) or len(param) != 2:
-        raise ValueError("subtract_series requires param=(colA, colB)")
-    
-    colA, colB = param
-    if colA not in df.columns or colB not in df.columns:
-        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
+def _generatedseries_calculate_subtract_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source - param
 
-    return df[colA] * df[colB]
+def _generatedseries_calculate_multiply_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source * param
 
-def _generatedseries_calculate_divide_series(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    if not isinstance(param, tuple) or len(param) != 2:
-        raise ValueError("subtract_series requires param=(colA, colB)")
-    
-    colA, colB = param
-    if colA not in df.columns or colB not in df.columns:
-        raise KeyError(f"Columns {colA} or {colB} not found in DataFrame")
+def _generatedseries_calculate_divide_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source / param
 
-    return df[colA] / df[colB]
+def _generatedseries_calculate_power_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return np.power(source, param)
 
-def _generatedseries_calculate_series_const_lambda(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    if not isinstance(param, tuple) or len(param) != 2:
-        raise ValueError("SeriesConstOp param must be a tuple: (constant, op_func)")
-    constant, op_func = param
-    if not callable(op_func):
-        raise ValueError("The second item in param must be a callable (e.g., lambda function)")
-    
-    # Apply the operation safely with try/except in case of numeric errors
-    try:
-        result = op_func(series, constant)
-    except Exception as e:
-        raise RuntimeError(f"Error applying operation to Series: {e}")
+def _generatedseries_calculate_min_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return np.minimum(source, param)
 
-    # Replace inf with NaN to prevent polluting the result
-    return pd.Series(result).replace([np.inf, -np.inf], np.nan)
+def _generatedseries_calculate_max_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return np.maximum(source, param)
 
-# REVERSED!
-def _generatedseries_calculate_const_series_lambda(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    if not isinstance(param, tuple) or len(param) != 2:
-        raise ValueError("ConstSeriesOp param must be a tuple: (constant, op_func)")
+def _generatedseries_calculate_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source == param
 
-    constant, op_func = param
-    if not callable(op_func):
-        raise ValueError("The second item in param must be a callable (e.g., lambda function)")
+def _generatedseries_calculate_notequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source != param
 
-    try:
-        result = op_func(constant, series)
-    except Exception as e:
-        raise RuntimeError(f"Error applying const-series operation: {e}")
+def _generatedseries_calculate_greater_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source > param
 
-    return pd.Series(result).replace([np.inf, -np.inf], np.nan)
+def _generatedseries_calculate_greaterorequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source >= param
 
-def _generatedseries_calculate_logical_operator(dummy_source: pd.Series, period: int, df: pd.DataFrame, param: tuple) -> pd.Series:
+def _generatedseries_calculate_less_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source < param
+
+def _generatedseries_calculate_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+    return source <= param
+
+def _generatedseries_calculate_logical_not(source: np.ndarray, period: int, dataset: np.ndarray, param= None) -> np.ndarray:
+    return ~source
+
+
+##### scalars by series
+
+
+def _generatedseries_calculate_scalar_add_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param + source # Note: param is the scalar, source is the series
+
+def _generatedseries_calculate_scalar_subtract_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param - source
+
+def _generatedseries_calculate_scalar_multiply_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param * source
+
+def _generatedseries_calculate_scalar_divide_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param / source
+
+def _generatedseries_calculate_scalar_power_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return np.power(param, source) # Note the order: scalar (param) first, then series (source)
+
+def _generatedseries_calculate_scalar_min_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return np.minimum(param, source)
+
+def _generatedseries_calculate_scalar_max_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return np.maximum(param, source)
+
+def _generatedseries_calculate_scalar_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param == source
+
+def _generatedseries_calculate_scalar_notequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param != source
+
+def _generatedseries_calculate_scalar_greater_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param > source
+
+def _generatedseries_calculate_scalar_greaterorequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param >= source
+
+def _generatedseries_calculate_scalar_less_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param < source
+
+def _generatedseries_calculate_scalar_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+    return param <= source
+
+
+
+
+################################ ANALYSIS TOOLS #####################################
+
+
+# _highest250. Elapsed time: 0.00 seconds
+def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
     """
-    Apply a logical operation between two boolean Series.
-    param: (colA, colB, op_func), where op_func is like `lambda a, b: a & b`
+    Calculates the highest value over a specified period using NumPy.
     """
-    if not isinstance(param, tuple) or len(param) != 3:
-        raise ValueError("logical_operator series requires param=(colA, colB, op_func)")
-    
-    colA, colB, op_func = param
+    if talib_available:
+        return talib.MAX(source, period)
+    source = np.asarray(source, dtype=np.float64)
+    return _rolling_window_apply_optimized(source, period, lambda x: np.max(x, axis=1))
 
-    if colA not in df.columns or colB not in df.columns:
-        raise KeyError(f"Columns '{colA}' or '{colB}' not found in DataFrame")
-
-    seriesA = df[colA].astype(bool)
-    seriesB = df[colB].astype(bool)
-    return op_func(seriesA, seriesB)
-
-def _generatedseries_calculate_logical_not(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    return ~series.astype(bool)
-
-
-
-
-def _generatedseries_calculate_sma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.sma( series, period )
-
-def _generatedseries_calculate_ema(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.ema( series, period )
-
-def _generatedseries_calculate_dema(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    # Calculate first EMA
-    ema1 = pd.Series(
-        series.ewm(span=period, adjust=False).mean(),
-        index=series.index
-    )
-    
-    # Calculate EMA of EMA
-    ema2 = pd.Series(
-        ema1.ewm(span=period, adjust=False).mean(),
-        index=series.index
-    )
-    
-    # Calculate DEMA
-    dema = 2 * ema1 - ema2
-    return dema
-
-def _generatedseries_calculate_linreg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.linreg( series, period )
-
-def _generatedseries_calculate_rma(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return series.ewm(alpha=1 / length, min_periods=length, adjust=False).mean()
-
-def _generatedseries_calculate_stdev(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.stdev( series, period )
-
-def _generatedseries_calculate_bias(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.bias( series, period )
-
-def _generatedseries_calculate_cfo(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.cfo( series, period )
-
-def _generatedseries_calculate_fwma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.fwma( series, period )
-
-def _generatedseries_calculate_dev(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.mad( series, period )
-
-    '''# Calculate the average deviation over a given rolling window in a pandas Series.
-    # Initialize a list to hold the deviation values
-    deviations = [pd.NA] * (period - 1)  # Start with NA values for the initial periods
-    # Iterate over each rolling window
-    for i in range(period - 1, len(series)):
-        rolwindow = series[i - period + 1:i + 1]
-        mean = rolwindow.mean()
-        deviation = (rolwindow - mean).abs().sum() / period
-        deviations.append(deviation)
-    return pd.Series(deviations, index=series.index).dropna()'''
-
-def _generatedseries_calculate_williams_r(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.willr( df['high'], df['low'], df['close'], length=period )
-
-    '''# Ensure the DataFrame has the required columns
-    # if not all(col in df.columns for col in ['high', 'low', 'close']):
-    #     raise ValueError("The global DataFrame must contain 'high', 'low', and 'close' columns")
-
-    if len(df) < period:
-        return pd.Series([pd.NA] * len(df), index=df.index)  # Not enough data to calculate Williams %R
-
-    # Initialize a list to hold the Williams %R values
-    williams_r_values = [pd.NA] * (period - 1)  # NA for the initial period
-
-    # Calculate Williams %R for each rolling window
-    for i in range(period - 1, len(df)):
-        highest_high = df['high'].iloc[i - period + 1:i + 1].max()
-        lowest_low = df['low'].iloc[i - period + 1:i + 1].min()
-        current_close = df['close'].iloc[i]
-
-        if highest_high == lowest_low:  # Prevent division by zero
-            williams_r_values.append(pd.NA)
-        else:
-            williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100
-            williams_r_values.append(williams_r)
-
-    return pd.Series(williams_r_values, index=df.index)'''
-
-def _generatedseries_calculate_rsi(series, period, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.rsi(series, period)
-
-    # I don't know why, but these rsi and pandas-ta's rsi produce different results.
-    '''
-    # Convert to numpy array for faster operations
-    values = series.to_numpy()
-    deltas = np.diff(values, prepend=np.nan)
-    length = len(values)
-    result = np.full(length, np.nan)
-    
-    if length >= period:
-        # Separate gains and losses
-        gains = np.where(deltas > 0, deltas, 0)
-        losses = -np.where(deltas < 0, deltas, 0)
-        
-        # Create strided views for rolling windows
-        gains_windows = np.lib.stride_tricks.sliding_window_view(gains, period)
-        losses_windows = np.lib.stride_tricks.sliding_window_view(losses, period)
-        
-        # Calculate means for each window
-        avg_gains = np.mean(gains_windows, axis=1)
-        avg_losses = np.mean(losses_windows, axis=1)
-        
-        # Calculate RS and RSI
-        # Add small epsilon to avoid division by zero
-        rs = avg_gains / (avg_losses + 1e-10)  
-        rsi = 100 - (100 / (1 + rs))
-        
-        # Assign results
-        result[period-1:] = rsi
-
-    return pd.Series(result, index=series.index)'''
-
-    '''deltas = series.diff()
-    gain = deltas.where(deltas > 0, 0).rolling(window=period).mean()
-    loss = -deltas.where(deltas < 0, 0).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi'''
-
-
-def _generatedseries_calculate_tr(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-
-    if len(series) < period:
-        return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-    return pt.true_range( df['high'], df['low'], df['close'], length=period )
-    
-    '''    
-    high = df['high']
-    low = df['low']
-    close = df['close']
-
-    high_low = high - low
-    high_close_prev = (high - close.shift()).abs()
-    low_close_prev = (low - close.shift()).abs()
-
-    tr = high_low.combine(high_close_prev, max).combine(low_close_prev, max)
-    return tr'''
-
-def _generatedseries_calculate_atr(series, period, df:pd.DataFrame, param=None) -> pd.Series:
-    if len(series) < period:
-        return pd.Series( [pd.NA] * len(series), index=series.index )  # Not enough data to calculate the slope
-    return pt.atr( df['high'], df['low'], df['close'], length=period )
-    
-
-def _generatedseries_calculate_rising(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
-    if len(series) < length:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
-
-    # Calculate the difference between consecutive elements
-    diff_series = series.diff().dropna()
-    
-    # Create a boolean series indicating whether each rolling window is rising
-    is_rising = diff_series.rolling(window=length-1).apply(lambda x: (x > 0).all(), raw=True).astype(bool)
-    is_rising = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_rising])
-
-    return is_rising
-
-def _generatedseries_calculate_falling(series: pd.Series, length: int, df:pd.DataFrame, param=None) -> pd.Series:
-    if len(series) < length:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to perform the check
-    
-    # Calculate the difference between consecutive elements
-    diff_series = series.diff().dropna()
-
-    # Create a boolean series indicating whether each rolling window is falling
-    is_falling = diff_series.rolling(window=length-1).apply(lambda x: (x < 0).all(), raw=True).astype(bool)
-    is_falling = pd.concat([pd.Series([pd.NA] * (length-1), index=series.index[:length-1]), is_falling])
-    return is_falling
-
-def _generatedseries_calculate_wma(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-
-    if len(series) < period:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-    return pt.wma( series, period )
-    
-    '''weights = pd.Series(range(1, period + 1))
-    wma = series.rolling(period).apply(lambda prices: (prices * weights).sum() / weights.sum(), raw=True)
-    return wma'''
-
-def _generatedseries_calculate_slope(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    if len(series) < period:
-        return pd.Series([pd.NA] * len(series), index=series.index)  # Not enough data to calculate the slope
-
-    return pt.slope( series, period )
-
-    '''# this one doesn't fail on single candle updates but it's slower than recalculating it all using pandas_ta
-    def slope_calc(y):
-        x = range(len(y))
-        n = len(y)
-        x_mean = sum(x) / n
-        y_mean = sum(y) / n
-
-        num = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y))
-        den = sum((x_i - x_mean) ** 2 for x_i in x)
-
-        if den == 0:
-            return 0  # Prevent division by zero
-
-        slope = num / den
-        return slope
-    # Apply the slope calculation to each rolling window
-    slope_series = series.rolling(window=period).apply(slope_calc, raw=False)
-    return slope_series'''
-
-def _generatedseries_calculate_vhma(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    highest = series.rolling(window=period).max()
-    lowest = series.rolling(window=period).min()
-    R = highest - lowest
-    change = series.diff().abs()
-    vhf = R / change.rolling(window=period).sum()
-    vhf = vhf.fillna(0)  # Replace NaN with 0 to avoid issues in calculation
-
-    vhma = np.zeros(len(series))
-    vhma[:] = np.nan # Initialize with NaN
-
-    for i in range(1, len(series)):
-        if np.isnan(vhma[i-1]):
-            vhma[i] = series.iloc[i]
-        else:
-            vhma[i] = vhma[i-1] + (vhf.iloc[i]**2) * (series.iloc[i] - vhma[i-1])
-    
-    vhma = pd.Series(vhma, index=series.index)
-    return vhma
-    
-def _generatedseries_calculate_cci(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.cci( df['high'], df['low'], df['close'], period )
-
-def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame, param=None) -> pd.Series:
-    BBmult = param
-    # Correctly reference the SMA and STDEV columns from the provided DataFrame `df`
-    sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
-    stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
-
-    # Ensure these names exist in the df passed to this function
-    if sma_name not in df.columns or stdev_name not in df.columns:
-        raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBUpper: {sma_name}, {stdev_name}")
-    
-    return df[sma_name] + (BBmult * df[stdev_name])
-
-def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame, param=None) -> pd.Series:
-    BBmult = param
-    sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
-    stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
-
-    if sma_name not in df.columns or stdev_name not in df.columns:
-        raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBLower: {sma_name}, {stdev_name}")
-
-    return df[sma_name] - (BBmult * df[stdev_name])
-
-def _generatedseries_calculate_inverse_fisher_rsi(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    rsi = series 
-
-    v1 = 0.1 * (rsi - 50)
-
-    # Use rolling window on the full (growing) series for WMA
-    weights = np.arange(1, period + 1)
-    wma = v1.rolling(window=period).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
-
-    v2_clipped = wma.clip(lower=-10, upper=10)
-    exp_val = np.exp(2 * v2_clipped)
-    iftrsi = (exp_val - 1) / (exp_val + 1)
-    return iftrsi
-
-def _generatedseries_calculate_fisher(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    high = df["high"]
-    low = df["low"]
-    fisher_df = pt.fisher(high, low, length=period, signal=1)  # Minimal signal to isolate Fisher line
-    return fisher_df.iloc[:, 0]  # Main Fisher line
-
-def _generatedseries_calculate_fisher_signal(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    high = df["high"]
-    low = df["low"]
-    fisher_df = pt.fisher(high, low, length=period, signal=param if param else 9)
-    return fisher_df.iloc[:, 1]  # Signal line
-
-def _generatedseries_calculate_ao(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
     """
-    Calculate Awesome Oscillator: SMA(median_price, 5) - SMA(median_price, 34)
-    `period` is ignored; `param` can optionally override the two SMA lengths as a tuple: (fast, slow)
+    Calculates the lowest value over a specified period using NumPy.
     """
-    if 'high' not in df.columns or 'low' not in df.columns:
-        raise ValueError("DataFrame must contain 'high' and 'low' columns for AO calculation.")
+    if talib_available:
+        return talib.MIN(source, period)
+    source = np.asarray(source, dtype=np.float64)
+    return _rolling_window_apply_optimized(source, period, lambda x: np.min(x, axis=1))
+
+# _highestbars250. Elapsed time: 0.01 seconds
+def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    # if talib_available:
+    #     return talib.MAXINDEX(source, period)
+    source = np.asarray(source, dtype=np.float64)
+
+    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmax(x, axis=1))
+
+# _lowestbars250. Elapsed time: 0.01 seconds
+def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    # if talib_available:
+    #     return talib.MININDEX(source, period)
+    source = np.asarray(source, dtype=np.float64)
+
+    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmin(x, axis=1))
+
+# _falling250. Elapsed time: 0.01 seconds
+def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    source = np.asarray(source, dtype=np.float64)
+    n = len(source)
+
+    if period < 1 or period > n:
+        return np.full_like(source, np.nan, dtype=bool)
+
+    diffs = np.concatenate(([np.nan], np.diff(source)))
     
-    fast, slow = (5, 34)
-    if isinstance(param, tuple) and len(param) == 2:
-        fast, slow = param
+    window_for_diffs = period - 1
 
-    median_price = (df['high'] + df['low']) / 2
-    sma_fast = median_price.rolling(window=fast).mean()
-    sma_slow = median_price.rolling(window=slow).mean()
+    if window_for_diffs < 1: # If period is 1, a single value is trivially "falling" if not NaN
+        result = ~np.isnan(source) # If period is 1, it's falling if it's not NaN
+        return result.astype(bool)
 
-    ao = sma_fast - sma_slow
-    return ao
+    if len(diffs[1:]) < window_for_diffs:
+        return np.full_like(source, np.nan, dtype=bool)
 
-def _generatedseries_calculate_br(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    brar_df = pt.brar(high=df['high'], low=df['low'], close=df['close'], length=period)
-    return brar_df['BR']
+    windows_of_diffs = sliding_window_view(diffs[1:], window_shape=window_for_diffs)
 
-def _generatedseries_calculate_ar(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
-    brar_df = pt.brar(high=df['high'], low=df['low'], close=df['close'], length=period)
-    return brar_df['AR']
+    # Check if all elements in each window are strictly negative
+    all_negative = np.all(windows_of_diffs < 0, axis=1)
 
-def _generatedseries_calculate_cg(series: pd.Series, period: int, df:pd.DataFrame, param=None) -> pd.Series:
-    return pt.cg( series, period )
+    result_array = np.full(n, np.nan)
+    result_array[period - 1:] = all_negative
 
+    return result_array.astype(bool)
 
-def _generatedseries_calculate_barssince(series: pd.Series, period: int, df: pd.DataFrame, param=None) -> pd.Series:
+# _rising250. Elapsed time: 0.01 seconds
+def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    Calculates a boolean series indicating if the source has been strictly rising
+    over the given period.
+    """
+    source = np.asarray(source, dtype=np.float64)
+    n = len(source)
+
+    if period < 1 or period > n:
+        return np.full_like(source, np.nan, dtype=bool) # Use bool dtype for boolean results
+
+    diffs = np.concatenate(([np.nan], np.diff(source)))
+
+    window_for_diffs = period - 1
+    
+    if window_for_diffs < 1: # If period is 1, a single value is trivially "rising" if not NaN
+        result = ~np.isnan(source) # If period is 1, it's rising if it's not NaN
+        return result.astype(bool)
+
+    # Create sliding window view on `diffs` starting from the second element
+    if len(diffs[1:]) < window_for_diffs:
+        return np.full_like(source, np.nan, dtype=bool)
+
+    windows_of_diffs = sliding_window_view(diffs[1:], window_shape=window_for_diffs)
+    all_positive = np.all(windows_of_diffs > 0, axis=1)
+
+    result_array = np.full(n, np.nan)
+    result_array[period - 1:] = all_positive
+
+    # Convert to boolean, NaNs will remain as NaN, althought they will be converted to float64 in the dataset
+    return result_array.astype(bool)
+
+#
+def _generatedseries_calculate_barssince(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
     # Get array of indices where condition is True
     true_indices = np.where(series)[0]
-    
     if len(true_indices) == 0:
-        return pd.Series(np.nan, index=series.index)
-    
-    # Create array of all indices
+        return np.full_like(series, np.nan, dtype=np.float64)
+
     all_indices = np.arange(len(series))
-    
-    # Find the closest previous True index for each position
     insertions = np.searchsorted(true_indices, all_indices, side='right') - 1
-    
-    # Create result array
-    result = np.full(len(series), np.nan)
-    
-    # Calculate distances where we have a previous True index
+    result = np.full(len(series), np.nan, dtype=np.float64)
     valid_mask = insertions >= 0
     result[valid_mask] = all_indices[valid_mask] - true_indices[insertions[valid_mask]]
-    
-    # Filter by period if specified
+
     if period is not None:
         result[result > period] = np.nan
-    
-    return pd.Series(result, index=series.index)
 
+    return result
 
-def _generatedseries_calculate_indexwhentrue( series: pd.Series, period: int, df: pd.DataFrame, param=None ) -> pd.Series:
+#
+def _generatedseries_calculate_indexwhentrue(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
     length = len(series)
-    out = np.full(length, np.nan)
+    out = np.full(length, np.nan, dtype=np.float64)
     last_true = -1
     for i, val in enumerate(series):
         if val:
             last_true = i
         if last_true != -1:
             out[i] = last_true
-    return pd.Series(out, index=series.index)
+    return out
 
-
-def _generatedseries_calculate_indexwhenfalse( series: pd.Series, period: int, df: pd.DataFrame, param=None ) -> pd.Series:
+#
+def _generatedseries_calculate_indexwhenfalse(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
     length = len(series)
-    out = np.full(length, np.nan)
+    out = np.full(length, np.nan, dtype=np.float64)
     last_false = -1
     for i, val in enumerate(series):
         if not val:
             last_false = i
         if last_false != -1:
             out[i] = last_false
-    return pd.Series(out, index=series.index)
+    return out
 
-
-def _generatedseries_calculate_barswhiletrue( series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None ) -> pd.Series:
-    arr = series.values.astype(bool)
+#
+def _generatedseries_calculate_barswhiletrue(series: np.ndarray, period: int = None, dataset: np.ndarray = None, param=None) -> np.ndarray:
+    arr = series.astype(bool)
     counts = np.zeros_like(arr, dtype=int)
     c = 0
     for i, val in enumerate(arr):
@@ -587,90 +296,875 @@ def _generatedseries_calculate_barswhiletrue( series: pd.Series, period: int = N
         if period:
             c = min(c, period)
         counts[i] = c
-    return pd.Series(counts, index=series.index)
+    return counts.astype(np.float64)  # for consistency with other outputs
 
-
-def _generatedseries_calculate_barswhilefalse(series: pd.Series, period: int = None, df: pd.DataFrame = None, param=None) -> pd.Series:
+#
+def _generatedseries_calculate_barswhilefalse(series: np.ndarray, period: int = None, dataset: np.ndarray = None, param=None) -> np.ndarray:
     length = len(series)
     max_lookback = period if (period is not None and period <= length) else length
-    out = []
+    out = np.zeros(length, dtype=int)
     count = 0
-
     for i in range(length):
-        val = series.iat[i]
+        val = series[i]
         if not val:
             count += 1
         else:
             count = 0
-
         if period:
             count = min(count, period)
+        out[i] = count
+    return out.astype(np.float64)
 
-        out.append(count)
 
-    return pd.Series(out, index=series.index)
+
+########################### INDICATORS #################################
+
+#
+def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.SMA(source, period)
+    
+    source = np.asarray(source, dtype=np.float64)
+    if period < 1 or period > source.shape[0]:
+        return np.full_like(source, np.nan)
+
+    sma = np.full_like(source, np.nan)
+    cumsum = np.cumsum(np.insert(source, 0, 0))
+    sma[period-1:] = (cumsum[period:] - cumsum[:-period]) / period
+    return sma
+
+# _ema_250. Elapsed time: 0.03 seconds (a little slow, but it's the only reliable one. Talib is also unreliable)
+def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.EMA(series, period)
+    length = len(series)
+    if length == 0 or period < 1:
+        return np.array([], dtype=np.float64)
+
+    # Initialize output array
+    result = np.full(length, np.nan, dtype=np.float64)
+
+    # Find first non-NaN value
+    valid_idx = np.where(~np.isnan(series))[0]
+    if len(valid_idx) == 0:
+        return result
+    start_idx = valid_idx[0]
+
+    # Set initial EMA to first non-NaN value
+    result[start_idx] = series[start_idx]
+
+    # Smoothing factor
+    alpha = 2 / (period + 1)
+    beta = 1 - alpha
+
+    # Compute EMA iteratively
+    for i in range(start_idx + 1, length):
+        if not np.isnan(series[i]):
+            result[i] = alpha * series[i] + beta * result[i - 1]
+        else:
+            result[i] = np.nan
+
+    return result
+
+#
+def _generatedseries_calculate_dema(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Calculate first EMA
+    ema1 = _generatedseries_calculate_ema(series, period, dataset)
+
+    # Calculate EMA of EMA
+    ema2 = _generatedseries_calculate_ema(ema1, period, dataset)
+
+    # Calculate DEMA: 2 * EMA1 - EMA2
+    dema = 2 * ema1 - ema2
+    return dema
+
+# _rma250. Elapsed time: 0.01 seconds
+def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Initialize output array
+    rma = np.full(length, np.nan)
+
+    # Compute initial SMA using sliding_window_view
+    windows = sliding_window_view(series, window_shape=period)
+    rma[period - 1] = np.mean(windows[0], axis=-1)
+
+    # Compute RMA iteratively
+    alpha = 1.0 / period
+    one_minus_alpha = 1.0 - alpha
+    for i in range(period, length):
+        rma[i] = alpha * series[i] + one_minus_alpha * rma[i - 1]
+
+    return rma
+
+# _wma250. Elapsed time: 0.02 seconds (talib 00.00 seconds)
+def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.WMA(series, period)
+    
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Precompute weights and their sum
+    weights = np.arange(1, period + 1, dtype=np.float64)
+    weight_sum = period * (period + 1) / 2  # Sum of weights: 1 + 2 + ... + period
+
+    # Create rolling windows
+    windows = sliding_window_view(series, window_shape=period)
+
+    # Compute WMA for all windows
+    weighted_sums = np.sum(windows * weights, axis=1)  # Element-wise multiplication and sum
+    wma = weighted_sums / weight_sum
+
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = wma
+
+    return result
+
+# _linreg250. Elapsed time: 0.02 seconds (talib 0.01 seconds)
+def _generatedseries_calculate_linreg(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.LINEARREG(series, period)
+
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Initialize output array
+    linreg = np.full(length, np.nan)
+
+    # Create sliding windows
+    windows = sliding_window_view(series, window_shape=period)
+
+    # Time indices for regression
+    t = np.arange(period, dtype=np.float64)
+    t_sum = np.sum(t)
+    t_sq_sum = np.sum(t * t)
+    n = period
+
+    # Compute sums for regression
+    y_sum = np.sum(windows, axis=1)
+    ty_sum = np.sum(windows * t, axis=1)
+
+    # Compute slope (b) and intercept (a) vectorized
+    denominator = n * t_sq_sum - t_sum ** 2
+    b = (n * ty_sum - t_sum * y_sum) / denominator
+    a = (y_sum - b * t_sum) / n
+
+    # Forecasted price at t = period - 1
+    linreg[period - 1:] = a + b * (period - 1)
+
+    return linreg
+
+# _bias250. Elapsed time: 0.00 seconds
+def _generatedseries_calculate_bias(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    source = np.asarray(source, dtype=np.float64)
+    n = len(source)
+
+    if period < 1 or period > n:
+        return np.full_like(source, np.nan)
+
+    # Calculate the Simple Moving Average (SMA) of the source price
+    sma_values = _generatedseries_calculate_sma(source, period, dataset)
+
+    # Initialize bias array with NaNs
+    bias = np.full_like(source, np.nan)
+
+    # Identify valid indices where SMA is not NaN and not zero to avoid division by zero
+    valid_indices = np.where((~np.isnan(sma_values)) & (sma_values != 0))
+
+    # Apply the BIAS formula # bias = ((source - sma_values) / sma_values) * 100
+    if len(valid_indices[0]) > 0:
+        bias[valid_indices] = ((source[valid_indices] - sma_values[valid_indices]) / sma_values[valid_indices]) * 100
+
+    return bias
+
+# _cci250. Elapsed time: 0.04 seconds (talib 0.01 seconds)
+def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+    
+    if talib_available:
+        return talib.CCI(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE], period)
+
+    # Compute Typical Price
+    tp = (dataset[:, c.DF_HIGH] + dataset[:, c.DF_LOW] + dataset[:, c.DF_CLOSE]) / 3.0
+
+    # Create sliding windows
+    tp_windows = sliding_window_view(tp, window_shape=period)
+
+    # Compute SMA
+    sma = np.mean(tp_windows, axis=1)
+
+    # Compute MAD
+    mad = np.mean(np.abs(tp_windows - sma[:, np.newaxis]), axis=1)
+
+    # Compute CCI
+    cci = np.full(length, np.nan)
+    denominator = 0.015 * mad
+    cci[period - 1:] = np.where(denominator > 1e-10, (tp[period - 1:] - sma) / denominator, np.nan)
+
+    return cci
+
+# 0.02
+def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Initialize output array
+    cfo = np.full(length, np.nan)
+
+    # Create sliding windows
+    windows = sliding_window_view(series, window_shape=period)  # Shape: (length - period + 1, period)
+
+    # Time indices for regression
+    t = np.arange(period, dtype=np.float64)
+    t_sum = np.sum(t)
+    t_sq_sum = np.sum(t * t)
+    n = period
+
+    # Compute sums for regression
+    y_sum = np.sum(windows, axis=1)  # Sum of y_i for each window
+    ty_sum = np.sum(windows * t, axis=1)  # Sum of t_i * y_i for each window
+
+    # Compute slope (b) and intercept (a) vectorized
+    denominator = n * t_sq_sum - t_sum ** 2
+    b = (n * ty_sum - t_sum * y_sum) / denominator  # Slope
+    a = (y_sum - b * t_sum) / n  # Intercept
+
+    # Forecasted price at t = period - 1
+    forecasts = a + b * (period - 1)
+
+    # Current close prices for valid indices
+    closes = series[period - 1:]
+
+    # Compute CFO: ((close - forecast) * 100) / close
+    valid_closes = np.abs(closes) > 1e-10
+    cfo[period - 1:] = np.where(valid_closes, ((closes - forecasts) * 100) / closes, np.nan)
+
+    return cfo
+
+# _cmo250. Elapsed time: 0.01 seconds
+def _generatedseries_calculate_cmo(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.CMO( source, period )
+
+    source = np.asarray(source, dtype=np.float64)
+    n = len(source)
+
+    if period < 1 or period > n:
+        return np.full_like(source, np.nan)
+
+    # Calculate price changes (diff). Prepend a NaN.
+    changes = np.concatenate(([np.nan], np.diff(source)))
+
+    # Separate positive and negative changes
+    sum_up_values = np.where(changes > 0, changes, 0.0)
+    sum_down_values = np.where(changes < 0, np.abs(changes), 0.0)
+    # CORRECTED LINES: Wrap np.sum(x, axis=1) in a lambda function
+    rolling_sum_up = _rolling_window_apply_optimized(np.nan_to_num(sum_up_values, nan=0.0), period, lambda x: np.sum(x, axis=1))
+    rolling_sum_down = _rolling_window_apply_optimized(np.nan_to_num(sum_down_values, nan=0.0), period, lambda x: np.sum(x, axis=1))
+    sum_total = rolling_sum_up + rolling_sum_down
+
+    # Calculate CMO
+    cmo = np.full_like(source, np.nan)
+    non_zero_total_idx = np.where(sum_total != 0)
+
+    # Apply CMO formula: 100 * ((Sum_Up - Sum_Down) / (Sum_Up + Sum_Down))
+    cmo[non_zero_total_idx] = 100 * ((rolling_sum_up[non_zero_total_idx] - rolling_sum_down[non_zero_total_idx]) / sum_total[non_zero_total_idx])
+    zero_total_idx = np.where(sum_total == 0)
+    cmo[zero_total_idx] = np.where(~np.isnan(sum_total[zero_total_idx]), 0.0, np.nan)
+
+    return cmo
+
+#
+def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Generate Fibonacci weights
+    fib = np.zeros(period, dtype=np.float64)
+    fib[0] = 1
+    if period > 1:
+        fib[1] = 1
+        for i in range(2, period):
+            fib[i] = fib[i-1] + fib[i-2]
+    weights = fib[::-1]  # Reverse: [F_n, F_{n-1}, ..., F_1]
+    weight_sum = np.sum(weights)
+
+    # Create rolling windows
+    windows = sliding_window_view(series, window_shape=period)
+
+    # Compute FWMA: Σ(x_j * w_j) / Σ(w_j)
+    weighted_sums = np.sum(windows * weights, axis=1)
+    fwma = weighted_sums / weight_sum
+
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = fwma
+
+    return result
+
+# _stdev250. Elapsed time: 0.02 seconds (talib 0.00 seconds)
+def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.STDDEV(series, period)
+
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Create rolling windows
+    windows = sliding_window_view(series, window_shape=period)
+
+    # Compute sample standard deviation (ddof=1) for each window
+    stdev = np.std(windows, axis=1, ddof=1)
+
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = stdev
+
+    return result
+
+# _dev250. Elapsed time: 0.03 seconds
+def _generatedseries_calculate_dev(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Create rolling windows
+    windows = sliding_window_view(series, window_shape=period)
+
+    # Compute mean for each window
+    means = np.mean(windows, axis=1)
+
+    # Compute mean absolute deviation: Σ(|x - mean|) / period
+    abs_deviations = np.abs(windows - means[:, np.newaxis])
+    dev = np.sum(abs_deviations, axis=1) / period
+
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = dev
+
+    return result
+
+# _wpr250. Elapsed time: 0.01 seconds (talib 0.0 secods)
+def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.WILLR(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], series, period)
+    
+    length = dataset.shape[0]
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Extract high, low, close from dataset
+    high = dataset[:, c.DF_HIGH]
+    low = dataset[:, c.DF_LOW]
+    close = series
+
+    # Compute rolling highest high and lowest low
+    high_windows = sliding_window_view(high, window_shape=period)
+    low_windows = sliding_window_view(low, window_shape=period)
+    highest_high = np.max(high_windows, axis=1)
+    lowest_low = np.min(low_windows, axis=1)
+
+    # Compute Williams %R
+    numerator = highest_high - close[period - 1:]  # Align close with window ends
+    denominator = highest_high - lowest_low
+    williams_r = np.where(denominator != 0, (numerator / denominator) * -100, np.nan)
+
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = williams_r
+
+    return result
+
+# _tr250. Elapsed time: 0.00 seconds 
+def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.TRANGE(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE])
+    
+    length = dataset.shape[0]
+    if length < 1:
+        return np.array([])
+
+    # Extract high, low, close from dataset
+    high = dataset[:, c.DF_HIGH]
+    low = dataset[:, c.DF_LOW]
+    close = dataset[:, c.DF_CLOSE]
+
+    # Compute high - low
+    high_low = high - low
+
+    # Compute |high - close_prev| and |low - close_prev|
+    close_prev = np.roll(close, 1)  # Shift close by 1
+    close_prev[0] = close[0]  # Set first value to avoid undefined close[-1]
+    high_close_prev = np.abs(high - close_prev)
+    low_close_prev = np.abs(low - close_prev)
+
+    # Compute TR as max(high_low, high_close_prev, low_close_prev)
+    tr = np.maximum.reduce([high_low, high_close_prev, low_close_prev])
+
+    return tr
+
+# _atr250. Elapsed time: 0.01 seconds
+def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.ATR(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE], period)
+    
+    # Compute RMA of True Range
+    tr = _generatedseries_calculate_tr(series, period, dataset, param)
+    atr = _generatedseries_calculate_rma(tr, period, dataset, param)
+
+    return atr
+
+# _slope250. Elapsed time: 0.03 seconds (talib 0.01 seconds)
+def _generatedseries_calculate_slope(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.LINEARREG_SLOPE(series, period)
+
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Precompute x and constants
+    x = np.arange(period, dtype=np.float64)
+    x_mean = (period - 1) / 2  # Mean of 0, 1, ..., period-1
+    x_centered = x - x_mean
+    denominator = np.sum(x_centered ** 2)  # Σ((x_i - x_mean)^2), constant for all windows
+
+    # Create rolling windows
+    windows = sliding_window_view(series, window_shape=period)
+
+    # Compute slopes for all windows
+    y = windows  # Shape: (length - period + 1, period)
+    y_mean = np.mean(y, axis=1)[:, np.newaxis]  # Shape: (length - period + 1, 1)
+    y_centered = y - y_mean  # Shape: (length - period + 1, period)
+    numerator = np.sum(y_centered * x_centered, axis=1)  # Shape: (length - period + 1,)
+    
+    # Compute slopes, handle division by zero
+    slopes = np.where(denominator != 0, numerator / denominator, 0.0)
+
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = slopes
+
+    return result
+
+# _vhma250. Elapsed time: 0.04 seconds - Needs reset
+def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Step 1: Compute rolling maximum and minimum
+    windows = sliding_window_view(series, window_shape=period)
+    highest = np.max(windows, axis=1)
+    lowest = np.min(windows, axis=1)
+
+    # Pad with NaNs at the beginning to match original length
+    highest_padded = np.concatenate([np.full(period - 1, np.nan), highest])
+    lowest_padded = np.concatenate([np.full(period - 1, np.nan), lowest])
+
+    # Step 2: Calculate R
+    R = highest_padded - lowest_padded
+
+    # Step 3: Compute absolute change
+    change = np.abs(np.diff(series, prepend=series[0]))  # Prepend first value to maintain length
+
+    # Step 4: Compute rolling sum of change and vhf
+    change_windows = sliding_window_view(change, window_shape=period)
+    rolling_sum_change = np.sum(change_windows, axis=1)
+    rolling_sum_change_padded = np.concatenate([np.full(period - 1, np.nan), rolling_sum_change])
+    
+    vhf = R / rolling_sum_change_padded
+    vhf = np.nan_to_num(vhf, nan=0.0, posinf=0.0, neginf=0.0)  # Replace NaN and inf with 0
+
+    # Step 5: Compute vhma iteratively
+    vhma = np.full(length, np.nan)
+    for i in range(1, length):
+        if np.isnan(vhma[i - 1]):
+            vhma[i] = series[i]
+        else:
+            vhma[i] = vhma[i - 1] + (vhf[i] ** 2) * (series[i] - vhma[i - 1])
+
+    return vhma
+
+
+# def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame, param=None) -> pd.Series:
+#     BBmult = param
+#     # Correctly reference the SMA and STDEV columns from the provided DataFrame `df`
+#     sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
+#     stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
+
+#     # Ensure these names exist in the df passed to this function
+#     if sma_name not in df.columns or stdev_name not in df.columns:
+#         raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBUpper: {sma_name}, {stdev_name}")
+    
+#     return df[sma_name] + (BBmult * df[stdev_name])
+
+# def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame, param=None) -> pd.Series:
+#     BBmult = param
+#     sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
+#     stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
+
+#     if sma_name not in df.columns or stdev_name not in df.columns:
+#         raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBLower: {sma_name}, {stdev_name}")
+
+#     return df[sma_name] - (BBmult * df[stdev_name])
+
+
+
+# _rsi14. Elapsed time: 0.02 seconds
+def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    if talib_available:
+        return talib.RSI(series, period)
+
+    length = len(series)
+    if length < period + 1:
+        return np.full(length, np.nan)
+
+    # Step 1: Compute price changes
+    delta = np.diff(series, prepend=series[0])  # Prepend first value to maintain length
+
+    # Step 2: Separate gains and losses
+    gains = np.where(delta > 0, delta, 0)
+    losses = np.where(delta < 0, -delta, 0)
+
+    # Step 3: Initialize SMMA with simple moving average for first period
+    gains_windows = sliding_window_view(gains, window_shape=period)
+    losses_windows = sliding_window_view(losses, window_shape=period)
+    
+    avg_gain_initial = np.mean(gains_windows[0], axis=-1)
+    avg_loss_initial = np.mean(losses_windows[0], axis=-1)
+
+    # Initialize arrays for SMMA
+    avg_gains = np.full(length, np.nan)
+    avg_losses = np.full(length, np.nan)
+    
+    # Set first valid SMMA value
+    avg_gains[period] = avg_gain_initial
+    avg_losses[period] = avg_loss_initial
+
+    # Step 4: Compute SMMA iteratively
+    alpha = 1.0 / period
+    for i in range(period + 1, length):
+        avg_gains[i] = alpha * gains[i] + (1 - alpha) * avg_gains[i - 1]
+        avg_losses[i] = alpha * losses[i] + (1 - alpha) * avg_losses[i - 1]
+
+    # Step 5: Compute RS and RSI
+    rs = np.where(avg_losses > 0, avg_gains / avg_losses, np.inf)  # Handle division by zero
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Ensure NaNs for first period - 1 values
+    rsi[:period] = np.nan
+    rsi = np.nan_to_num(rsi, nan=np.nan, posinf=np.nan, neginf=np.nan)  # Clean up infs
+
+    return rsi
+
+#
+def _generatedseries_calculate_inverse_fisher_rsi(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    # series is already the RSI as np.ndarray
+    rsi = series.astype(np.float64)
+    v1 = 0.1 * (rsi - 50)
+
+    # Weighted Moving Average (WMA)
+    def wma(arr, window):
+        weights = np.arange(1, window + 1)
+        ret = np.full_like(arr, np.nan, dtype=np.float64)
+        for i in range(window - 1, len(arr)):
+            windowed = arr[i - window + 1:i + 1]
+            if np.any(np.isnan(windowed)):
+                continue
+            ret[i] = np.dot(windowed, weights) / weights.sum()
+        return ret
+
+    wma_v1 = wma(v1, period)
+    v2_clipped = np.clip(wma_v1, -10, 10)
+    exp_val = np.exp(2 * v2_clipped)
+    iftrsi = (exp_val - 1) / (exp_val + 1)
+    return iftrsi
+
+#
+def _generatedseries_calculate_fisher(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    Fisher Transform (main line)
+    """
+    high = dataset[:, c.DF_HIGH]
+    low = dataset[:, c.DF_LOW]
+
+    # Use median price for normalization
+    med = (high + low) / 2
+    length = len(med)
+    value = np.full(length, np.nan, dtype=np.float64)
+    fish = np.full(length, np.nan, dtype=np.float64)
+
+    for i in range(period-1, length):
+        window = med[i - period + 1:i + 1]
+        min_ = np.min(window)
+        max_ = np.max(window)
+        if max_ == min_:
+            norm = 0
+        else:
+            norm = 2 * ((med[i] - min_) / (max_ - min_) - 0.5)
+            norm = np.clip(norm, -0.999, 0.999)
+        value[i] = norm
+
+    # Fisher Transform
+    for i in range(period-1, length):
+        prev = fish[i-1] if i > 0 else 0
+        fish[i] = 0.5 * np.log((1 + value[i]) / (1 - value[i])) + 0.5 * prev
+
+    return fish
+
+#
+def _generatedseries_calculate_fisher_signal(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    Fisher Transform signal line: usually an EMA of Fisher line, default length 9 if not provided
+    """
+    signal_period = param if param else 9
+    fish = _generatedseries_calculate_fisher(series, period, dataset)
+    length = len(fish)
+    sig = np.full(length, np.nan, dtype=np.float64)
+    alpha = 2 / (signal_period + 1)
+    for i in range(period-1, length):
+        if i == period-1:
+            sig[i] = fish[i]
+        else:
+            sig[i] = alpha * fish[i] + (1 - alpha) * sig[i-1]
+    return sig
+
+#
+def _generatedseries_calculate_ao(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    Awesome Oscillator: SMA(median_price, fast) - SMA(median_price, slow)
+    `param` can optionally override the two SMA lengths as a tuple: (fast, slow)
+    """
+    fast, slow = (5, 34)
+    if isinstance(param, tuple) and len(param) == 2:
+        fast, slow = param
+
+    # Use column indices for high and low
+    high = dataset[:, c.DF_HIGH]
+    low = dataset[:, c.DF_LOW]
+    median_price = (high + low) / 2
+
+    def sma(arr, window):
+        ret = np.full_like(arr, np.nan, dtype=np.float64)
+        if window > len(arr):
+            return ret
+        cumsum = np.cumsum(np.insert(arr, 0, 0))
+        ret[window-1:] = (cumsum[window:] - cumsum[:-window]) / window
+        return ret
+
+    sma_fast = sma(median_price, fast)
+    sma_slow = sma(median_price, slow)
+    ao = sma_fast - sma_slow
+    return ao
+
+#
+def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    BR (Buying Pressure Ratio) -- NumPy implementation
+    BR = SUM(MAX(high - prev_close, 0), N) / SUM(MAX(prev_close - low, 0), N) * 100
+    """
+    high = dataset[:, c.DF_HIGH]
+    low = dataset[:, c.DF_LOW]
+    close = dataset[:, c.DF_CLOSE]
+
+    prev_close = np.roll(close, 1)
+    prev_close[0] = np.nan  # No previous close for the first row
+
+    br_num = np.maximum(high - prev_close, 0)
+    br_den = np.maximum(prev_close - low, 0)
+
+    def rolling_sum(arr, window):
+        ret = np.full_like(arr, np.nan, dtype=np.float64)
+        if window > len(arr):
+            return ret
+        cumsum = np.cumsum(np.insert(arr, 0, 0))
+        ret[window-1:] = cumsum[window:] - cumsum[:-window]
+        return ret
+
+    sum_num = rolling_sum(br_num, period)
+    sum_den = rolling_sum(br_den, period)
+    br = (sum_num / sum_den) * 100
+    return br
+
+#
+def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    AR (Active Ratio) -- NumPy implementation
+    AR = SUM(high - open, N) / SUM(open - low, N) * 100
+    """
+    high = dataset[:, c.DF_HIGH]
+    low = dataset[:, c.DF_LOW]
+    open_ = dataset[:, c.DF_OPEN]
+
+    ar_num = high - open_
+    ar_den = open_ - low
+
+    def rolling_sum(arr, window):
+        ret = np.full_like(arr, np.nan, dtype=np.float64)
+        if window > len(arr):
+            return ret
+        cumsum = np.cumsum(np.insert(arr, 0, 0))
+        ret[window-1:] = cumsum[window:] - cumsum[:-window]
+        return ret
+
+    sum_num = rolling_sum(ar_num, period)
+    sum_den = rolling_sum(ar_den, period)
+    ar = (sum_num / sum_den) * 100
+    return ar
+
+#
+def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    Center of Gravity (CG) oscillator (NumPy version).
+    Formula: CG = sum(i * price[i]) / sum(price[i]), over the lookback window.
+    """
+    arr = series.astype(np.float64)
+    length = len(arr)
+    cg = np.full(length, np.nan, dtype=np.float64)
+    for i in range(period - 1, length):
+        window = arr[i - period + 1:i + 1]
+        if np.all(np.isnan(window)):
+            continue
+        weights = np.arange(1, period + 1)[::-1]  # period .. 1
+        denominator = np.sum(window)
+        if denominator == 0:
+            cg[i] = np.nan
+        else:
+            cg[i] = np.sum(window * weights) / denominator
+    return cg
+
+def _generatedseries_calculate_macd_line(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+    """
+    Calculate MACD Line using numpy, optimized for performance.
+
+    Args:
+        series (np.ndarray): Precomputed difference (fast EMA - slow EMA).
+        period (int): Unused (set to 1 in factory).
+        dataset (np.ndarray): 2D array (unused, for compatibility).
+        param: Optional parameter (unused, for compatibility).
+
+    Returns:
+        np.ndarray: MACD Line values, same as input series.
+    """
+    if len(series) == 0:
+        return np.array([], dtype=np.float64)
+    return np.asarray(series, dtype=np.float64)
+
 
 
 
 class generatedSeries_c:
-    def __init__( self, type:str, source:pd.Series, period:int, func = None, param=None, always_reset:bool = False, timeframe = None ):
-        self.name = tools.generatedSeriesNameFormat( type, source, period )
-        self.sourceName = source.name
-        self.period = period
+    def __init__(self, type: str, source: np.ndarray, period: int, func=None, param=None, always_reset: bool = False, timeframe=None):
+        """
+        Faithful conversion for numpy-based storage.
+        source: 1D numpy array (column slice of timeframe.dataset)
+        """
+        # Find the column index and name for the passed source array
+        if timeframe is None:
+            raise SystemError(f"Generated Series has no assigned timeframe [unknown]")
+
+        source_col_idx = tools.get_column_index_from_array(timeframe.dataset, source)
+        if source_col_idx is None:
+            raise ValueError("Column not found in dataset")
+        source_col_name = timeframe.columns[source_col_idx]
+
+        self.name = tools.generatedSeriesNameFormat(type, source_col_name, period)
+        self.sourceName = source_col_name
+        self.sourceIndex = source_col_idx
+        self.column_index = -1
+        self.period = period if period is not None else len(source)
         self.param = param
         self.func = func
         self.timeframe = timeframe
         self.lastUpdatedTimestamp = 0
         self.alwaysReset = always_reset
-        self.__current_cache = np.nan # will update on demmand when calling iloc. Don't use from here.
+        self.__current_cache = np.nan # will update on demand when calling iloc. Don't use from here.
         self.__cached_barindex = -1
 
-        if( self.timeframe == None ):
-            raise SystemError( f"Generated Series has no assigned timeframe [{self.name}]")
+        if self.func is None:
+            raise SystemError(f"Generated Series without a func [{self.name}]")
 
-        if( self.func == None ):
-            raise SystemError( f"Generated Series without a func [{self.name}]")
-        
-        if( self.period is None ):
-            self.period = len(source)
+        if self.period < 1:
+            raise SystemError(f"Generated Series with invalid period [{period}]")
 
-        if( self.period < 1 ):
-            raise SystemError( f"Generated Series  with invalid period [{period}]")
-        
 
-    def initialize( self, source:pd.Series ):
-        if( len(source) >= self.period and ( not self.name in self.timeframe.df.columns or self.alwaysReset ) ):
-            if( self.timeframe.backtesting and not self.timeframe.jumpstart ):
-                raise SystemError( f"[{self.name}] tried to initialize as backtesting" )
+    def initialize(self, source: np.ndarray):
+        if len(source) >= self.period and (self.name not in self.timeframe.columns or self.alwaysReset):
+            timeframe = self.timeframe
+            if timeframe.backtesting and not timeframe.jumpstart:
+                raise SystemError(f"[{self.name}] tried to initialize as backtesting")
             
-            barindex = len(source)-1 # if self.timeframe.jumpstart else self.timeframe.barindex
+            barindex = len(source) - 1
             start_time = time.time()
-            self.timeframe.df[self.name] = self.func(source, self.period, self.timeframe.df, self.param).dropna()
-            self.lastUpdatedTimestamp = self.timeframe.df['timestamp'].iat[barindex]
-            if( self.timeframe.stream.initializing ):
-                print( f"Initialized {self.name}." + " Elapsed time: {:.2f} seconds".format(time.time() - start_time))
 
 
-    def update( self, source:pd.Series ):
-        if( self.timeframe.backtesting ):
+            # Add the new column if necessary
+            n_rows = timeframe.dataset.shape[0]
+            if self.name not in timeframe.columns:
+                new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
+                timeframe.dataset = np.hstack([timeframe.dataset, new_col])
+                self.column_index = timeframe.dataset.shape[1] - 1
+                timeframe.columns.append(self.name)
+
+            # Call the func, which must now accept a 1D numpy array as the source and the 2D array as "dataset"
+            # Expect func to return a 1D numpy array of values, aligned with the full dataset length
+            values = self.func(source, self.period, timeframe.dataset, self.param)
+            if isinstance(values, (list, tuple)):
+                values = np.array(values, dtype=np.float64)
+            # Only assign values where not nan (mimicking dropna)
+            mask = ~np.isnan(values)
+            timeframe.dataset[mask, self.column_index] = values[mask]
+
+            # Find the timestamp column index
+            self.lastUpdatedTimestamp = int(timeframe.dataset[barindex, c.DF_TIMESTAMP])
+
+            if timeframe.stream.initializing:
+                print(f"Initialized {self.name}. Elapsed time: {time.time() - start_time:.2f} seconds")
+
+    def update(self, source: np.ndarray):
+        if self.timeframe.backtesting:
             return
         
-        timeframe = self.timeframe
+        tf = self.timeframe
 
-        # if non existant try to create new. A few need to be made new every time
-        if( self.alwaysReset or self.lastUpdatedTimestamp == 0 ):
-            self.initialize( source )
+        # if non existent or needs reset, initialize
+        if self.alwaysReset or self.lastUpdatedTimestamp == 0:
+            self.initialize(source)
             return
 
         # has this row already been updated?
-        if self.lastUpdatedTimestamp >= timeframe.timestamp:
+        if self.lastUpdatedTimestamp >= tf.timestamp:
             return
 
-        # slice the required block of candles to calculate the current value of the generated series
-        newval = self.func(source[-self.period:], self.period, timeframe.df, self.param).loc[timeframe.barindex]
-        timeframe.df[self.name].iat[timeframe.barindex] = newval
-        self.lastUpdatedTimestamp = timeframe.timestamp
+        # slice the required block for current calculation
+        barindex = tf.barindex
+        period_slice = source[-self.period:]
+        # func should return a 1D array or scalar; we want the most recent value
+        newval = self.func(period_slice, self.period, tf.dataset, self.param)
+        if isinstance(newval, (np.ndarray, list, tuple)):
+            newval = newval[-1]
+        tf.dataset[barindex, self.column_index] = newval
+        self.lastUpdatedTimestamp = tf.timestamp
 
+    def _columnIndex( self ):
+        assert( self.column_index >= 0 )
+        return self.column_index
 
     def iloc( self, index = -1 ):
         barindex = self.timeframe.barindex
@@ -682,12 +1176,12 @@ class generatedSeries_c:
         # Handle lazy-loading cache for the current bar (index -1)
         if index == -1:
             # Check if the cache is valid for the current active.barindex
-            if self.__cached_barindex == barindex and not pd.isna(self.__current_cache):
+            if self.__cached_barindex == barindex and not np.isnan(self.__current_cache):
                 return self.__current_cache
             else:
                 # If cache is invalid or not yet populated, fetch from DataFrame
-                if barindex >= 0 and barindex < len(self.timeframe.df):
-                    value = self.timeframe.df[self.name].iat[barindex]
+                if barindex >= 0 and barindex < len(self.timeframe.dataset):
+                    value = self.timeframe.dataset[barindex, self._columnIndex()]
                     self.__current_cache = value
                     self.__cached_barindex = barindex
                     return value
@@ -700,10 +1194,10 @@ class generatedSeries_c:
             index = barindex + 1 + index
         
         # Ensure the index is within valid bounds after translation/clamping
-        if index < 0 or index >= len(self.timeframe.df):
+        if index < 0 or index >= len(self.timeframe.dataset):
             return np.nan # Return NaN for out-of-bounds access
             
-        return self.timeframe.df[self.name].iat[index]
+        return self.timeframe.dataset[index, self._columnIndex()]
     iat = iloc # alias for the same method
     value = iloc # alias for the same method
     
@@ -713,135 +1207,119 @@ class generatedSeries_c:
         return self.iloc(-1)
     
 
-    def series( self ):
-        return self.timeframe.df[self.name]
+    def series(self):
+        return self.timeframe.dataset[:, self._columnIndex()]
     
 
     def __add__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return addSeries(self.name, other.name)
-        if isinstance(other, (float, int)):
-            return addSeriesConst(self, other)
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return addSeries(self, other)
         raise ValueError("WTF def __add__(self, other)")
 
     def __radd__(self, other):
         if isinstance(other, (float, int)):
-            return addToConst(other, self)
+            return addScalar(other, self)
         return self.__add__(other)
 
     def __sub__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return subtractSeries(self.name, other.name)
-        if isinstance(other, (float, int)):
-            return subtractSeriesConst(self, other)
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return subtractSeries(self, other)
         raise ValueError("WTF def __sub__(self, other)")
 
     def __rsub__(self, other):
         if isinstance(other, (float, int)):
-            return subtractFromConst(other, self)
+            return subtractScalar(other, self)
         raise ValueError("rsub only defined for const - series")
 
     def __mul__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return multiplySeries(self.name, other.name)
-        if isinstance(other, (float, int)):
-            return mulSeriesConst(self, other)
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return multiplySeries(self, other)
         raise ValueError("WTF def __mul__(self, other)")
 
     def __rmul__(self, other):
         if isinstance(other, (float, int)):
-            return multFromConst(other, self)
+            return multiplyScalar(other, self)
         return self.__mul__(other)
 
     def __truediv__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return divideSeries(self.name, other.name)
-        if isinstance(other, (float, int)):
-            return divSeriesConst(self, other)
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return divideSeries(self, other)
         raise ValueError("WTF def __truediv__(self, other)")
 
     def __rtruediv__(self, other):
         if isinstance(other, (float, int)):
-            return divFromConst(other, self)
+            return divideScalar(other, self)
         raise ValueError("rtruediv only defined for const / series")
     
     def __neg__(self):
-        return mulSeriesConst(self, -1)
+        return multiplySeries(self, -1)
 
     def __lt__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return compareSeries(self.name, other.name, lambda a, b: a < b, "<")
-        if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: a < b, "<")
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return lessSeries(self, other)
         raise ValueError("Unsupported operand type for <")
     
     def __rlt__(self, other):
         if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: b < a, "r<")
+            return lessScalar(self, other)
         raise ValueError("Unsupported reversed operand for <")
 
     def __le__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return compareSeries(self.name, other.name, lambda a, b: a <= b, "<=")
-        if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: a <= b, "<=")
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return lessOrEqualSeries(self, other)
         raise ValueError("Unsupported operand type for <=")
     
     def __rle__(self, other):
         if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: b <= a, "r<=")
+            return lessOrEqualScalar(self, other)
         raise ValueError("Unsupported reversed operand for <=")
 
     def __gt__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return compareSeries(self.name, other.name, lambda a, b: a > b, ">")
-        if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: a > b, ">")
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return greaterSeries(self, other)
         raise ValueError("Unsupported operand type for >")
     
     def __rgt__(self, other):
         if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: b > a, "r>")
+            return greaterScalar(self, other)
         raise ValueError("Unsupported reversed operand for >")
 
     def __ge__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return compareSeries(self.name, other.name, lambda a, b: a >= b, ">=")
-        if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: a >= b, ">=")
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return greaterOrEqualSeries(self, other)
         raise ValueError("Unsupported operand type for >=")
     
     def __rge__(self, other):
         if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: b >= a, "r>=")
+            return greaterOrEqualScalar(self, other)
         raise ValueError("Unsupported reversed operand for >=")
 
     def __eq__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return compareSeries(self.name, other.name, lambda a, b: a == b, "==")
-        if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: a == b, "==")
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return equalSeries(self, other)
         return NotImplemented
     
     def __req__(self, other):
         if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: b == a, "r==")
+            return equalScalar(self, other)
         return NotImplemented
 
     def __ne__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
-            return compareSeries(self.name, other.name, lambda a, b: a != b, "!=")
-        if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: a != b, "!=")
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            return notequalSeries(self, other)
         return NotImplemented
 
     def __rne__(self, other):
         if isinstance(other, (float, int)):
-            return SeriesConstOp(self, other, lambda a, b: b != a, "r!=")
+            return notEqualScalar(self, other)
         return NotImplemented
     
+    def __invert__(self):
+        return notSeries(self)
+    
+    '''
     def __and__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             return andSeries(self, other)
         if isinstance(other, (bool, int, float)):
             return andSeriesConst(self, bool(other))
@@ -853,7 +1331,7 @@ class generatedSeries_c:
         raise ValueError("Unsupported operand for &")
 
     def __or__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
+        if isinstance(other, (generatedSeries_c, np.ndarray)):
             return orSeries(self, other)
         if isinstance(other, (bool, int, float)):
             return orSeriesConst(self, bool(other))
@@ -865,7 +1343,7 @@ class generatedSeries_c:
         raise ValueError("Unsupported operand for |")
 
     def __xor__(self, other):
-        if isinstance(other, (generatedSeries_c, pd.Series)):
+        if isinstance(other, (generatedSeries_c, np.ndarray)):
             return xorSeries(self, other)
         if isinstance(other, (bool, int, float)):
             return xorSeriesConst(self, bool(other))
@@ -875,9 +1353,8 @@ class generatedSeries_c:
         if isinstance(other, (bool, int, float)):
             return xorConstSeries(bool(other), self)
         raise ValueError("Unsupported operand for ^")
-
-    def __invert__(self):
-        return notSeries(self)
+    '''
+    
 
 
 
@@ -907,24 +1384,23 @@ class generatedSeries_c:
             return self
     
     def crossingUp( self, other ):
-        df = self.timeframe.df
         current_self_val = self.iloc(-1)
         previous_self_val = self.iloc(-2)
 
-        if pd.isna(current_self_val) or pd.isna(previous_self_val):
+        if np.isnan(current_self_val) or np.isnan(previous_self_val):
             return False
 
         if isinstance( other, generatedSeries_c ):
             current_other_val = other.iloc(-1)
             previous_other_val = other.iloc(-2)
-            if pd.isna(current_other_val) or pd.isna(previous_other_val):
+            if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, pd.Series ):
+        elif isinstance( other, np.ndarray ):
             # Use iloc directly from the pd.Series
-            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
+            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
-            return ( previous_self_val <= other.iloc[active.barindex-1] and current_self_val >= other.iloc[active.barindex] and current_self_val != previous_self_val )
+            return ( previous_self_val <= other[active.barindex-1] and current_self_val >= other[active.barindex] and current_self_val != previous_self_val )
         else: # assuming float or int
             try:
                 float_other = float(other)
@@ -934,22 +1410,21 @@ class generatedSeries_c:
             return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
     
     def crossingDown( self, other ):
-        df = self.timeframe.df
         current_self_val = self.iloc(-1)
         previous_self_val = self.iloc(-2)
-        if pd.isna(current_self_val) or pd.isna(previous_self_val):
+        if np.isnan(current_self_val) or np.isnan(previous_self_val):
             return False
 
         if isinstance( other, generatedSeries_c ):
             current_other_val = other.iloc(-1)
             previous_other_val = other.iloc(-2)
-            if pd.isna(current_other_val) or pd.isna(previous_other_val):
+            if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, pd.Series ):
-            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
+        elif isinstance( other, np.ndarray ):
+            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
-            return ( previous_self_val >= other.iloc[active.barindex-1] and current_self_val <= other.iloc[active.barindex] and current_self_val != previous_self_val )
+            return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and current_self_val != previous_self_val )
         else: 
             try:
                 float_other = float(other)
@@ -961,321 +1436,495 @@ class generatedSeries_c:
     def crossing( self, other ):
         return self.crossingUp(other) or self.crossingDown(other)
     
-    
-    
 
 
-def highest(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('highest', source, period, _generatedseries_calculate_highest)
-
-def lowest(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('lowest', source, period, _generatedseries_calculate_lowest)
-
-def highestbars(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('highestbars', source, period, _generatedseries_calculate_highestbars)
-
-def lowestbars(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('lowestbars', source, period, _generatedseries_calculate_lowestbars)
-
-def falling( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'falling', source, period, _generatedseries_calculate_falling )
-
-def rising( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'rising', source, period, _generatedseries_calculate_rising )
-
-def binaryOperationSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, op_func, timeframe=None) -> generatedSeries_c:
+def _ensure_numpy_array(data: str | generatedSeries_c | np.ndarray) -> np.ndarray:
     """
-    op_func: a lambda or function taking (Series a, Series b) and returning a Series. Example: 'lambda a, b: a + b'
+    Helper function to ensure the input is a NumPy array.
+    This replaces the initial type checking and conversion logic.
     """
-    if isinstance(colA,(pd.Series, generatedSeries_c)):
-        colA = colA.name
-    if isinstance(colB,(pd.Series, generatedSeries_c)):
-        colB = colB.name
+    if isinstance(data, np.ndarray):
+        return data
+    elif isinstance(data, generatedSeries_c):
+        return data.series()
+    else:
+        raise TypeError(f"Unsupported input type: {type(data)}. Expected np.ndarray, pd.Series, or generatedSeries_c.")
+
+
+
+def addSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"add_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"add_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_add_series, arrayB)
+
+def subtractSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"sub_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"sub_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_subtract_series, arrayB)
+
+def multiplySeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"mul_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"mul_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_multiply_series, arrayB)
+
+def divideSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"div_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"div_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_divide_series, arrayB)
+
+def powerSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"pow_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"pow_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_power_series, arrayB)
+
+def minSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"min_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"min_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_min_series, arrayB)
+
+def maxSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"max_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"max_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_max_series, arrayB)
+
+def equalSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"eq_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"eq_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_equal_series, arrayB)
+
+def notequalSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"neq_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"neq_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_notequal_series, arrayB)
+
+def greaterSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"gr_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"gr_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_greater_series, arrayB)
+
+def greaterOrEqualSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"gre_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"gre_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_greaterorequal_series, arrayB)
+
+def lessSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"lt_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"lt_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_less_series, arrayB)
+
+def lessOrEqualSeries(colA: str | generatedSeries_c | np.ndarray, colB: str | generatedSeries_c | np.ndarray | NumericScalar, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
+    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
+
+    if isinstance( colB, NumericScalar ):
+        name = f"le_{idxA}_{colB}"
+        arrayB = colB # not really an array
+    else:
+        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
+        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
+        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+
+        name = f"le_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
+        
+    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_lessequal_series, arrayB)
+
+def notSeries(source: str | generatedSeries_c | np.ndarray, timeframe=None) ->generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+
+    array, idx_raw = timeframe.arrayFromMultiobject(source)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"not_{idx}"
+    return timeframe.calcGeneratedSeries( name, array, 1, _generatedseries_calculate_logical_not, None )
+
+#
+########## SCALARS By SERIES
+#
+
+
+def addScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """
+    Factory function for scalar + series.
+    """
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"add_{scalar}_{idx}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries( name, array, 1, _generatedseries_calculate_scalar_add_series, scalar )
+
+def subtractScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """
+    Factory function for scalar - series.
+    """
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"sub_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_subtract_series, scalar)
+
+def multiplyScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """
+    Factory function for scalar * series.
+    """
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"mult_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_multiply_series, scalar)
+
+def divideScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """
+    Factory function for scalar / series.
+    """
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"div_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_divide_series, scalar)
+
+def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """
+    Factory function for scalar ** series.
+    """
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"pow_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_power_series, scalar)
+
+def minScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """
+    Factory function for min(scalar, series).
+    """
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"min_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_min_series, scalar)
+
+def maxScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """
+    Factory function for max(scalar, series).
+    """
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"max_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_max_series, scalar)
+
+def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """Factory for scalar == series."""
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"eq_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_equal_series, scalar)
+
+def notEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """Factory for scalar != series."""
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"ne_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_notequal_series, scalar)
+
+def greaterScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """Factory for scalar > series."""
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"gt_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_greater_series, scalar)
+
+def greaterOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """Factory for scalar >= series."""
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"ge_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_greaterorequal_series, scalar)
+
+def lessScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """Factory for scalar < series."""
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"lt_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_less_series, scalar)
+
+def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | np.ndarray, timeframe=None) -> generatedSeries_c:
+    """Factory for scalar <= series."""
+    timeframe = timeframe or active.timeframe
+    array, idx_raw = timeframe.arrayFromMultiobject(series)
+    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
+    name = f"le_{scalar}_{idx}"
+    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_lessequal_series, scalar)
+
+
+
+###################### ANALITIC TOOLS #################################
+
+def highest(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries('highest', _ensure_numpy_array(source), period, _generatedseries_calculate_highest)
+
+def lowest(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries('lowest', _ensure_numpy_array(source), period, _generatedseries_calculate_lowest)
+
+def highestbars(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries('highestbars', _ensure_numpy_array(source), period, _generatedseries_calculate_highestbars)
+
+def lowestbars(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries('lowestbars', _ensure_numpy_array(source), period, _generatedseries_calculate_lowestbars)
+
+def falling( source: np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( 'falling', _ensure_numpy_array(source), period, _generatedseries_calculate_falling )
+
+def rising( source: np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( 'rising', _ensure_numpy_array(source), period, _generatedseries_calculate_rising )
+
+def barsSinceSeries(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
     import inspect
-    timeframe = timeframe or active.timeframe
     # Get caller info by going up 2 levels in the stack
     caller_frame = inspect.currentframe().f_back
     frame_info = inspect.getframeinfo(caller_frame)
-    caller_id = f"{frame_info.function[:3]}{str(frame_info.lineno)[-3:]}"
-    indexA = timeframe.df.columns.get_loc(colA)
-    indexB = timeframe.df.columns.get_loc(colB)
-    dummy_name = f"{caller_id}{indexA}{indexB}"
-    dummy_source = pd.Series([np.nan], name=dummy_name) # must have len of at least 1
-    return timeframe.calcGeneratedSeries( 'biop', dummy_source, 1, _generatedseries_calculate_binary_operator, param=(colA, colB, op_func) )
-
-def subtractSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
-    # return binaryOperationSeries(colA, colB, lambda a, b: a - b) # for testing binaryOperationSeries
-    if isinstance(colA,(pd.Series, generatedSeries_c)):
-        colA = colA.name
-    if isinstance(colB,(pd.Series, generatedSeries_c)):
-        colB = colB.name
-    timeframe = timeframe or active.timeframe
-    indexA = timeframe.df.columns.get_loc(colA)
-    indexB = timeframe.df.columns.get_loc(colB)
-    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
-    return timeframe.calcGeneratedSeries( 'sub', dummy_source, 1, _generatedseries_calculate_subtract_series, param=(colA, colB))
-
-def addSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
-    if isinstance(colA,(pd.Series, generatedSeries_c)):
-        colA = colA.name
-    if isinstance(colB,(pd.Series, generatedSeries_c)):
-        colB = colB.name
-    timeframe = timeframe or active.timeframe
-    indexA = timeframe.df.columns.get_loc(colA)
-    indexB = timeframe.df.columns.get_loc(colB)
-    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
-    return timeframe.calcGeneratedSeries( 'add', dummy_source, 1, _generatedseries_calculate_add_series, param=(colA, colB))
-
-def multiplySeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
-    if isinstance(colA,(pd.Series, generatedSeries_c)):
-        colA = colA.name
-    if isinstance(colB,(pd.Series, generatedSeries_c)):
-        colB = colB.name
-    timeframe = timeframe or active.timeframe
-    indexA = timeframe.df.columns.get_loc(colA)
-    indexB = timeframe.df.columns.get_loc(colB)
-    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
-    return timeframe.calcGeneratedSeries( 'mult', dummy_source, 1, _generatedseries_calculate_multiply_series, param=(colA, colB))
-
-def divideSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
-    if isinstance(colA,(pd.Series, generatedSeries_c)):
-        colA = colA.name
-    if isinstance(colB,(pd.Series, generatedSeries_c)):
-        colB = colB.name
-    timeframe = timeframe or active.timeframe
-    indexA = timeframe.df.columns.get_loc(colA)
-    indexB = timeframe.df.columns.get_loc(colB)
-    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}") # must have len of at least 1
-    return timeframe.calcGeneratedSeries( 'divi', dummy_source, 1, _generatedseries_calculate_divide_series, param=(colA, colB))
-
-def SeriesConstOp(col: str|pd.Series|generatedSeries_c, constant: float, op_func, op_label: str = "", timeframe=None) -> generatedSeries_c:
-    """
-    Apply a custom binary operation between a column and a constant.
-    
-    Args:
-        col (str): Name of the column (Series) in the DataFrame.
-        constant (float): The constant value.
-        op_func (Callable): The binary operation function, e.g., lambda s, c: s + c.
-        op_label (str): Optional label to differentiate multiple uses of same op_func.
-        timeframe: The timeframe context (defaults to active.timeframe).
-
-    Returns:
-        generatedSeries_c
-    """
-    if isinstance(col,(pd.Series, generatedSeries_c)):
-        col = col.name
-    timeframe = timeframe or active.timeframe
-    source = timeframe.df[col]
-    name_suffix = f"{col}{op_label or 'op'}_{str(constant).replace('.', '_')}"
-    return timeframe.calcGeneratedSeries(f"scop{name_suffix}", source, 1, _generatedseries_calculate_series_const_lambda, (constant, op_func))
-
-def addSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
-    return SeriesConstOp(col, constant, lambda s, c: s + c, "add", timeframe)
-
-def subtractSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
-    return SeriesConstOp(col, constant, lambda s, c: s - c, "sub", timeframe)
-
-def mulSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
-    return SeriesConstOp(col, constant, lambda s, c: s * c, "mul", timeframe)
-
-def divSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
-    return SeriesConstOp(col, constant, lambda s, c: s / c if c != 0 else np.nan, "div", timeframe)
-
-def powSeriesConst(col:str|pd.Series|generatedSeries_c, constant:(float|int), timeframe=None)->generatedSeries_c:
-    return SeriesConstOp(col, constant, lambda s, c: np.power(s, c), "pow", timeframe)
-
-def compareSeries(colA: str, colB: str, op_func, op_label: str = "", timeframe=None):
-    timeframe = timeframe or active.timeframe
-    df = timeframe.df
-
-    if colA not in df.columns or colB not in df.columns:
-        raise ValueError(f"compareSeries: Columns '{colA}' or '{colB}' not found")
-
-    indexA = df.columns.get_loc(colA)
-    indexB = df.columns.get_loc(colB)
-    name = f"{indexA}-{indexB}"
-
-    return timeframe.calcGeneratedSeries(
-        f"cmp{name}_{op_label}",
-        df[colA],
-        1,
-        _generatedseries_calculate_binary_operator,
-        (colA, colB, op_func)
-    )
-
-# REVERSED!
-def ConstSeriesOp(
-    col: str | pd.Series | generatedSeries_c,
-    constant: float,
-    op_func,
-    op_label: str = "",
-    timeframe=None
-) -> generatedSeries_c:
-    """
-    Apply a binary operation between a constant and a series, where constant is left operand.
-
-    Args:
-        col: Column name, Series, or generatedSeries_c.
-        constant: The constant left operand.
-        op_func: Callable like lambda c, s: ...
-        op_label: Label to distinguish operations.
-        timeframe: Optional TimeFrame context (defaults to active.timeframe).
-
-    Returns:
-        generatedSeries_c
-    """
-    if isinstance(col, (pd.Series, generatedSeries_c)):
-        col = col.name
+    caller_id = f"{frame_info.function[:5]}{frame_info.lineno}"
 
     timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries('barsSince'+caller_id, _ensure_numpy_array(source), period, _generatedseries_calculate_barssince)
 
-    if col not in timeframe.df.columns:
-        raise ValueError(f"ConstSeriesOp: Column '{col}' not found in DataFrame.")
-
-    source = timeframe.df[col]
-    clean_constant = str(constant).replace(".", "_")
-    name_suffix = f"{op_label}_{clean_constant}_{col}"
-
-    return timeframe.calcGeneratedSeries(
-        f"csop_{name_suffix}",
-        source,
-        1,
-        _generatedseries_calculate_const_series_lambda,
-        (constant, op_func)
-    )
-
-def subtractFromConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
-    return ConstSeriesOp(col, constant, lambda c, s: c - s, "subFrom", timeframe)
-
-def divFromConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
-    return ConstSeriesOp(col, constant, lambda c, s: c / s.replace(0, np.nan), "divFrom", timeframe)
-
-def constPowSeries(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
-    return ConstSeriesOp(col, constant, lambda c, s: np.power(c, s), "powFrom", timeframe)
-
-def constMinusLog(col:str|pd.Series|generatedSeries_c, constant=np.e, timeframe=None)->generatedSeries_c:
-    return ConstSeriesOp(col, constant, lambda c, s: np.log(c / s.replace(0, np.nan)), "logFrom", timeframe)
-
-def addToConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
-    return ConstSeriesOp(col, constant, lambda c, s: c + s, "addFrom", timeframe)
-
-def multFromConst(constant:(float|int), col:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c:
-    return ConstSeriesOp(col, constant, lambda c, s: c * s, "mulFrom", timeframe)
-
-def logicalOperationSeries(colA: str|pd.Series|generatedSeries_c, colB: str|pd.Series|generatedSeries_c, op_func, op_label="", timeframe=None) -> generatedSeries_c:
-    if isinstance(colA, (pd.Series, generatedSeries_c)):
-        colA = colA.name
-    if isinstance(colB, (pd.Series, generatedSeries_c)):
-        colB = colB.name
-
+def indexWhenTrueSeries(source: np.ndarray|generatedSeries_c, period: int = None, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    indexA = timeframe.df.columns.get_loc(colA)
-    indexB = timeframe.df.columns.get_loc(colB)
-    dummy_source = pd.Series([np.nan], name=f"{indexA}&{indexB}")
+    return timeframe.calcGeneratedSeries('indexwhentrue_series', _ensure_numpy_array(source), period, _generatedseries_calculate_indexwhentrue)
 
-    return timeframe.calcGeneratedSeries(
-        f"log_{op_label}_{indexA}_{indexB}",
-        dummy_source,
-        1,
-        _generatedseries_calculate_logical_operator,
-        param=(colA, colB, op_func)
-    )
-
-def andSeries(colA:str|pd.Series|generatedSeries_c, colB:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c: return logicalOperationSeries(colA, colB, lambda a, b: a & b, "and", timeframe)
-def orSeries(colA:str|pd.Series|generatedSeries_c, colB:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c: return logicalOperationSeries(colA, colB, lambda a, b: a | b, "or", timeframe)
-def xorSeries(colA:str|pd.Series|generatedSeries_c, colB:str|pd.Series|generatedSeries_c, timeframe=None)->generatedSeries_c: return logicalOperationSeries(colA, colB, lambda a, b: a ^ b, "xor", timeframe)
-
-def notSeries(col: str|pd.Series|generatedSeries_c, timeframe=None) -> generatedSeries_c:
-    if isinstance(col, (pd.Series, generatedSeries_c)):
-        col = col.name
-
+def indexWhenFalseSeries(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    if col not in timeframe.df.columns:
-        raise ValueError(f"notSeries: Column '{col}' not found")
+    return timeframe.calcGeneratedSeries('indexwhenfalse_series', _ensure_numpy_array(source), period, _generatedseries_calculate_indexwhenfalse)
 
-    source = timeframe.df[col]
-    return timeframe.calcGeneratedSeries(
-        f"not_{col}",
-        source,
-        1,
-        _generatedseries_calculate_logical_not,
-        None
-    )
-
-def andSeriesConst(col, constant, timeframe=None): return SeriesConstOp(col, constant, lambda s, c: s & c, "and", timeframe)
-
-def orSeriesConst(col, constant, timeframe=None): return SeriesConstOp(col, constant, lambda s, c: s | c, "or", timeframe)
-
-def xorSeriesConst(col, constant, timeframe=None): return SeriesConstOp(col, constant, lambda s, c: s ^ c, "xor", timeframe)
-
-def andConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c & s, "andFrom", timeframe)
-
-def orConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c | s, "orFrom", timeframe)
-
-def xorConstSeries(constant, col, timeframe=None): return ConstSeriesOp(col, constant, lambda c, s: c ^ s, "xorFrom", timeframe)
-
-
-
-
-
-def compareSeriesConst(col: str | pd.Series | generatedSeries_c, constant: float, op_func, op_label: str = "", timeframe=None):
-    if isinstance(col, (pd.Series, generatedSeries_c)):
-        col = col.name
+def barsWhileTrueSeries(source: np.ndarray|generatedSeries_c, period: int = None, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    df = timeframe.df
+    return timeframe.calcGeneratedSeries('barsWhileTrue', _ensure_numpy_array(source), period, _generatedseries_calculate_barswhiletrue)
 
-    if col not in df.columns:
-        raise ValueError(f"compareSeriesConst: Column '{col}' not found")
-
-    name_suffix = f"{col}{op_label}_{str(constant).replace('.', '_')}"
-
-    return timeframe.calcGeneratedSeries(
-        f"cmpc{name_suffix}",
-        df[col],
-        1,
-        _generatedseries_calculate_series_const_lambda,
-        (constant, op_func)
-    )
-
-
-
-
-
-
-def SMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def barsWhileFalseSeries(source: np.ndarray|generatedSeries_c, period: int = None, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'sma', source, period, _generatedseries_calculate_sma )
+    return timeframe.calcGeneratedSeries('barsWhileFalse', _ensure_numpy_array(source), period, _generatedseries_calculate_barswhilefalse)
 
-def EMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+
+
+
+########################## INDICATORS #################################
+
+def SMA( source: np.ndarray|generatedSeries_c, period: int, timeframe=None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( "ema", source, period, _generatedseries_calculate_ema )
+    return timeframe.calcGeneratedSeries('sma', _ensure_numpy_array(source), period, _generatedseries_calculate_sma)
 
-def DEMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+
+def EMA( source: np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( "dema", source, period, _generatedseries_calculate_dema )
+    return timeframe.calcGeneratedSeries( "ema", _ensure_numpy_array(source), period, _generatedseries_calculate_ema, always_reset=True )
 
-def WMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def DEMA( source: np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( "wma", source, period, _generatedseries_calculate_wma )
+    return timeframe.calcGeneratedSeries( "dema", _ensure_numpy_array(source), period, _generatedseries_calculate_dema, always_reset=True )
 
-def HMA( source: pd.Series, period: int, timeframe=None )->generatedSeries_c:
+
+def RMA( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( 'rma', _ensure_numpy_array(source), period, _generatedseries_calculate_rma, always_reset=True )
+
+def WMA( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( "wma", _ensure_numpy_array(source), period, _generatedseries_calculate_wma )
+
+def HMA( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     """Hull Moving Average implementation using multiple calculation steps
     HMA = WMA(2*WMA(n/2) - WMA(n), sqrt(n))
     """
     timeframe = timeframe or active.timeframe
+
+    source = _ensure_numpy_array(source)
     
     # First calculate WMA with half period
     half_length = int(period / 2) 
-    wma_half = timeframe.calcGeneratedSeries( "wmahalf", source, half_length, _generatedseries_calculate_wma )
+    wma_half = timeframe.calcGeneratedSeries( "wma", source, half_length, _generatedseries_calculate_wma )
     
     # Calculate WMA with full period
-    wma_full = timeframe.calcGeneratedSeries( "wmafull", source, period,  _generatedseries_calculate_wma )
+    wma_full = timeframe.calcGeneratedSeries( "wma", source, period,  _generatedseries_calculate_wma )
     
     # Calculate 2 * WMA(half) - WMA(full)
     raw_hma = 2 * wma_half - wma_full
@@ -1284,141 +1933,117 @@ def HMA( source: pd.Series, period: int, timeframe=None )->generatedSeries_c:
     sqrt_period = int(np.sqrt(period))
     return timeframe.calcGeneratedSeries( "hma", raw_hma.series(), sqrt_period, _generatedseries_calculate_wma )
 
-# def JMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-#     timeframe = timeframe or active.timeframe
-#     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
+# # def JMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+# #     timeframe = timeframe or active.timeframe
+# #     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
 
-# def KAMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-#     timeframe = timeframe or active.timeframe
-#     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
+# # def KAMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+# #     timeframe = timeframe or active.timeframe
+# #     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
 
-def LINREG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+
+def STDEV( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( "linreg", source, period, _generatedseries_calculate_linreg )
+    return timeframe.calcGeneratedSeries( 'stdev', _ensure_numpy_array(source), period, _generatedseries_calculate_stdev )
 
-def RSI( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def DEV( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi, always_reset=True )
+    return timeframe.calcGeneratedSeries( 'dev', _ensure_numpy_array(source), period, _generatedseries_calculate_dev )
 
-def DEV( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def WILLR( period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'dev', source, period, _generatedseries_calculate_dev )
-
-def STDEV( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev', source, period, _generatedseries_calculate_stdev )
-
-def RMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'rma', source, period, _generatedseries_calculate_rma, always_reset=True )
-
-def WPR( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+    source = timeframe.dataset[:, c.DF_CLOSE]
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
 def TR( period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'tr', pd.Series([pd.NA] * period, name = 'tr'), period, _generatedseries_calculate_tr )
-
-def ATR2( period:int, timeframe = None )->generatedSeries_c: # The other one using pt is much faster
-    timeframe = timeframe or active.timeframe
-    tr = timeframe.calcGeneratedSeries( 'tr', timeframe.df['close'], period, _generatedseries_calculate_tr )
-    return timeframe.calcGeneratedSeries( 'atr', tr.series(), period, _generatedseries_calculate_rma )
+    source = timeframe.dataset[:, c.DF_CLOSE] # pass through the checks
+    return timeframe.calcGeneratedSeries( 'tr', source, period, _generatedseries_calculate_tr )
 
 def ATR( period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'atr', timeframe.df['close'], period, _generatedseries_calculate_atr )
+    source = timeframe.dataset[:, c.DF_CLOSE]
+    return timeframe.calcGeneratedSeries( 'atr', source, period, _generatedseries_calculate_atr )
 
-def SLOPE( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def SLOPE( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'slope', source, period, _generatedseries_calculate_slope, always_reset=True )
+    return timeframe.calcGeneratedSeries( 'slope', _ensure_numpy_array(source), period, _generatedseries_calculate_slope )
 
-def VHMA(source: pd.Series, period: int, timeframe=None)->generatedSeries_c:
+def VHMA(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('vhma', source, period, _generatedseries_calculate_vhma, always_reset = True)
+    return timeframe.calcGeneratedSeries('vhma', _ensure_numpy_array(source), period, _generatedseries_calculate_vhma, always_reset= True)
 
-def BIAS( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def BIAS( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'bias', source, period, _generatedseries_calculate_bias )
+    return timeframe.calcGeneratedSeries( 'bias', _ensure_numpy_array(source), period, _generatedseries_calculate_bias )
 
-def CCI( period:int, timeframe = None )->generatedSeries_c:
+def LINREG( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'cci', timeframe.df['close'], period, _generatedseries_calculate_cci )
+    return timeframe.calcGeneratedSeries( "linreg", _ensure_numpy_array(source), period, _generatedseries_calculate_linreg )
 
-def CFO( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def CCI(period: int = 20, timeframe=None) -> generatedSeries_c:
+    if not isinstance(period, int ):
+        raise ValueError( "CCI requires only a period argument" )
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'cfo', source, period, _generatedseries_calculate_cfo )
+    return timeframe.calcGeneratedSeries('cci', timeframe.dataset[:, c.DF_CLOSE], period, _generatedseries_calculate_cci, always_reset= True)
 
-def FWMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def CFO( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'fwma', source, period, _generatedseries_calculate_fwma )
+    return timeframe.calcGeneratedSeries( 'cfo', _ensure_numpy_array(source), period, _generatedseries_calculate_cfo )
 
-def BBu( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
+def CMO(source: np.ndarray|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
+    return timeframe.calcGeneratedSeries('cmo', _ensure_numpy_array(source), period, _generatedseries_calculate_cmo, always_reset= True)
 
-def BBl( source:pd.Series, period:int, mult:float, timeframe = None )->generatedSeries_c:
+def FWMA( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
+    return timeframe.calcGeneratedSeries( 'fwma', _ensure_numpy_array(source), period, _generatedseries_calculate_fwma )
 
-def IFTrsi( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def RSI( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi )
+    return timeframe.calcGeneratedSeries( 'rsi', _ensure_numpy_array(source), period, _generatedseries_calculate_rsi, always_reset=True )
+
+def IFTrsi( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    rsi = timeframe.calcGeneratedSeries( 'rsi', _ensure_numpy_array(source), period, _generatedseries_calculate_rsi )
     return timeframe.calcGeneratedSeries( 'iftrsi', rsi.series(), period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
-    fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.df['close'], period, _generatedseries_calculate_fisher )
-    sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.df['close'], period, _generatedseries_calculate_fisher_signal, signal )
+    fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.dataset[:, c.DF_CLOSE], period, _generatedseries_calculate_fisher )
+    sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.dataset[:, c.DF_CLOSE], period, _generatedseries_calculate_fisher_signal, signal )
     return fish, sig
-    
-def AO( period: int = 0, fast: int = 5, slow: int = 34, timeframe = None ) -> generatedSeries_c:
+
+def AO( fast: int = 5, slow: int = 34, timeframe = None ) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
     param = (fast, slow)
-    return timeframe.calcGeneratedSeries('ao', timeframe.df['close'], period, _generatedseries_calculate_ao, param)
+    return timeframe.calcGeneratedSeries('ao', timeframe.dataset[:,c.DF_CLOSE], max(fast,slow), _generatedseries_calculate_ao, param)
 
-def BRAR( period:int, signal:float=None, timeframe = None )->generatedSeries_c:
+def BR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
-    br = timeframe.calcGeneratedSeries( 'br', timeframe.df['close'], period, _generatedseries_calculate_br )
-    ar = timeframe.calcGeneratedSeries( 'ar', timeframe.df['close'], period, _generatedseries_calculate_ar )
+    return timeframe.calcGeneratedSeries( 'br', timeframe.dataset[:,c.DF_CLOSE], period, _generatedseries_calculate_br )
+
+def AR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( 'ar', timeframe.dataset[:,c.DF_CLOSE], period, _generatedseries_calculate_ar )
+
+def BRAR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = timeframe or active.timeframe
+    br = BR(period, timeframe)
+    ar = AR(period, timeframe)
     return br, ar
 
-def CG( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
+def CG( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'cg', source, period, _generatedseries_calculate_cg )
-
-def barsSinceSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    import inspect
-    # Get caller info by going up 2 levels in the stack
-    caller_frame = inspect.currentframe().f_back
-    frame_info = inspect.getframeinfo(caller_frame)
-    caller_id = f"{frame_info.function[:5]}{frame_info.lineno}"
-
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('barsSince'+caller_id, source, period, _generatedseries_calculate_barssince)
-
-def barsWhileTrueSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('barsWhileTrue', source, period, _generatedseries_calculate_barswhiletrue)
-
-def barsWhileFalseSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('barsWhileFalse', source, period, _generatedseries_calculate_barswhilefalse)
-
-def indexWhenTrueSeries(source: pd.Series, period: int = None, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('indexwhentrue_series', source, period, _generatedseries_calculate_indexwhentrue)
-
-def indexWhenFalseSeries(source: pd.Series, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('indexwhenfalse_series', source, period, _generatedseries_calculate_indexwhenfalse)
+    return timeframe.calcGeneratedSeries( 'cg', _ensure_numpy_array(source), period, _generatedseries_calculate_cg )
 
 
-# #
-# # OTHER NOT GENERATED SERIES
-# #
 
-def BollingerBands( source:pd.Series, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+# # #
+# # # OTHER NOT GENERATED SERIES
+# # #
+
+def BollingerBands( source:np.ndarray, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the Bollinger Bands (basis, upper, lower) for the given source series and period.
 
@@ -1430,13 +2055,15 @@ def BollingerBands( source:pd.Series, period:int, mult:float = 2.0 )->tuple[gene
         Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
     """
     BBbasis = SMA(source, period)
-    STDEV(source, period)
-    BBupper = active.timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
-    BBlower = active.timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
+    stdev = STDEV(source, period)
+    BBupper = BBbasis + (stdev * mult)
+    BBlower = BBbasis - (stdev * mult)
+    # BBupper = active.timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
+    # BBlower = active.timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
     return BBbasis, BBupper, BBlower
 
 
-def MACD(source: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9, timeframe=None) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+def MACD( source:np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9, timeframe=None) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the MACD line, Signal line, and Histogram for given source and periods.
     Args:
@@ -1455,112 +2082,80 @@ def MACD(source: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9, tim
     slow_ema = EMA(source, slow, timeframe)
 
     # MACD line: difference between fast and slow EMA
-    fastminusslow = fast_ema - slow_ema # Same as # fastminusslow = subtractSeries(fast_ema.name, slow_ema.name)
-    macd_line = timeframe.calcGeneratedSeries('macd_line', fastminusslow.series(), 1, lambda s, p, d, x: s)
+    macd_line = fast_ema - slow_ema
 
     # Signal line: EMA of the MACD line
-    signal_line = EMA(macd_line.series(), signal, timeframe)
+    signal_line = EMA(macd_line, signal, timeframe)
 
     # Histogram: MACD line - Signal line
-    macdminussignal = macd_line - signal_line # Same as # macdminussignal = subtractSeries(macd_line.name, signal_line.name)
-    hist = timeframe.calcGeneratedSeries('macd_hist', macdminussignal.series(), 1, lambda s, p, d, x: s)
+    hist = macd_line - signal_line
 
     return macd_line, signal_line, hist
 
 
+################ Helpers. Not series #########################
 
-def indexWhenTrue( source ):
+def indexWhenTrue(source: str | generatedSeries_c | np.ndarray) -> Union[int, None]:
     """
-    Returns the index of the most recent (from the end) True value in the given series.
+    Finds the 0-based positional index of the last True value in a boolean-coercible array.
 
     Args:
-        source: The input series or generatedSeries_c to inspect.
+        source: A NumPy array, pandas Series, or generatedSeries_c containing boolean or
+                values that can be coerced to boolean (e.g., 0/1 integers).
 
     Returns:
-        int or None: The index position of the most recent True value, or None if not found.
+        int: The 0-based index of the last True value, or None if no True values are found.
     """
-    if( not isinstance(source, pd.Series ) ):
-        if( isinstance( source, generatedSeries_c) ):
-            source = source.series()
-        else:
-            raise ValueError( "calcIndexWhenTrue must be called with a series" )
-    boolean_source = source.astype(bool) if source.dtype != bool else source
-    if boolean_source.any():
-        return boolean_source[::-1].idxmax()
+    source_array = _ensure_numpy_array(source)
+    
+    # Ensure the array is boolean. This handles cases where source might be 0s and 1s.
+    boolean_source = source_array.astype(bool)
+
+    # Find all indices where the condition is True
+    true_indices = np.where(boolean_source)[0]
+
+    if true_indices.size > 0:
+        # Return the last (most recent) index where the condition was True
+        return int(true_indices[-1])
     else:
-        return None 
+        return None
 
-
-def barsSince( source ):
+def indexWhenFalse(source: str | generatedSeries_c | np.ndarray) -> Union[int, None]:
     """
-    Returns the number of bars since the last True value in the given series.
+    Finds the 0-based positional index of the last False value in a boolean-coercible array.
 
     Args:
-        source: The input series or generatedSeries_c to inspect.
+        source: A NumPy array, pandas Series, or generatedSeries_c containing boolean or
+                values that can be coerced to boolean.
 
     Returns:
-        int or None: The number of bars since the last True value, or None if not found.
+        int: The 0-based index of the last False value, or None if no False values are found.
     """
+    source_array = _ensure_numpy_array(source)
+    
+    # Ensure the array is boolean
+    boolean_source = source_array.astype(bool)
+    
+    # Find all indices where the condition is False (using logical NOT on the boolean array)
+    false_indices = np.where(~boolean_source)[0]
+
+    if false_indices.size > 0:
+        # Return the last (most recent) index where the condition was False
+        return int(false_indices[-1])
+    else:
+        return None
+    
+def barsSince( source ):
     index_when_true = indexWhenTrue( source )
     if index_when_true is None: 
         return None
     return active.barindex - index_when_true
 
-
-def indexWhenFalse( source ):
-    """
-    Returns the index of the most recent (from the end) False value in the given series.
-
-    Args:
-        source: The input series or generatedSeries_c to inspect.
-
-    Returns:
-        int: The index position of the most recent False value, or 0 if not found or series is empty.
-    """
-    if( not isinstance(source, pd.Series ) ):
-        if( isinstance( source, generatedSeries_c) ):
-            source = source.series()
-        else:
-            raise ValueError( "calcIndexWhenFalse must be called with a series" )
-    
-    boolean_source = source.astype(bool) if source.dtype != bool else source
-    
-    if (~boolean_source).any(): 
-        return (~boolean_source[::-1]).idxmin() 
-    else:
-        return None 
-
-
 def barsWhileTrue( source ):
-    """
-    Returns the number of bars for which the given series has continuously been True, up to the current barindex.
-
-    Args:
-        barindex: The current bar index.
-        source: The input series or generatedSeries_c to inspect.
-
-    Returns:
-        int or None: The number of bars while True, or None if not found.
-    """
     index_when_false = indexWhenFalse( source )
     if index_when_false is None: 
         return None
     return active.barindex - index_when_false
-
-
-
-
-from .pivots import pivots_c, pivot_c
-pivotsNow:pivots_c = None
-def pivots( high:pd.Series, low:pd.Series, amplitude: float = 1.0, reversal_percent: float = 32.0 )->pivots_c:
-    global pivotsNow
-    if pivotsNow == None:
-        pivotsNow = pivots_c(amplitude, reversal_percent)
-
-    pivotsNow.update(high, low)
-    return pivotsNow
-
-
 
 def crossingUp( self, other ):
     """
@@ -1577,20 +2172,20 @@ def crossingUp( self, other ):
         # Directly use self.iloc(-1) and self.iloc(-2) for current and previous values
         current_self_val = self.iloc(-1)
         previous_self_val = self.iloc(-2)
-        if pd.isna(current_self_val) or pd.isna(previous_self_val):
+        if np.isnan(current_self_val) or np.isnan(previous_self_val):
             return False
 
         if isinstance( other, generatedSeries_c ):
             current_other_val = other.iloc(-1)
             previous_other_val = other.iloc(-2)
-            if pd.isna(current_other_val) or pd.isna(previous_other_val):
+            if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, pd.Series ):
+        elif isinstance( other, np.ndarray ):
             # Use iloc directly from the pd.Series
-            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
+            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
-            return ( previous_self_val <= other.iloc[active.barindex-1] and current_self_val >= other.iloc[active.barindex] and current_self_val != previous_self_val )
+            return ( previous_self_val <= other[active.barindex-1] and current_self_val >= other[active.barindex] and current_self_val != previous_self_val )
         else: # assuming float or int
             try:
                 float_other = float(other)
@@ -1614,19 +2209,19 @@ def crossingUp( self, other ):
     self_new = 0
     other_old = 0
     other_new = 0
-    if isinstance( self, pd.Series ):
+    if isinstance( self, np.ndarray ):
         if( len(self) < 2 or active.barindex < 1 ):
             return False
-        self_old = self.iloc[active.barindex-1]
-        self_new = self.iloc[active.barindex]
-        if isinstance( other, pd.Series ):
+        self_old = self[active.barindex-1]
+        self_new = self[active.barindex]
+        if isinstance( other, np.ndarray ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.iloc[active.barindex-1]
-            other_new = other.iloc[active.barindex]
+            other_old = other[active.barindex-1]
+            other_new = other[active.barindex]
         elif isinstance( other, generatedSeries_c ):
             # Directly use other.iloc(-1) and other.iloc(-2)
-            if pd.isna(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
+            if np.isnan(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
                 return False
             other_old = other.iloc(-2)
             other_new = other.iloc(-1) 
@@ -1665,19 +2260,19 @@ def crossingDown( self, other ):
         # Directly use self.iloc(-1) and self.iloc(-2) for current and previous values
         current_self_val = self.iloc(-1)
         previous_self_val = self.iloc(-2)
-        if pd.isna(current_self_val) or pd.isna(previous_self_val):
+        if np.isnan(current_self_val) or np.isnan(previous_self_val):
             return False
 
         if isinstance( other, generatedSeries_c ):
             current_other_val = other.iloc(-1)
             previous_other_val = other.iloc(-2)
-            if pd.isna(current_other_val) or pd.isna(previous_other_val):
+            if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, pd.Series ):
-            if len(other) < 2 or active.barindex < 1 or pd.isna(other.iloc[active.barindex-1]) or pd.isna(other.iloc[active.barindex]):
+        elif isinstance( other, np.ndarray ):
+            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
-            return ( previous_self_val >= other.iloc[active.barindex-1] and current_self_val <= other.iloc[active.barindex] and current_self_val != previous_self_val )
+            return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and current_self_val != previous_self_val )
         else: 
             try:
                 float_other = float(other)
@@ -1701,19 +2296,19 @@ def crossingDown( self, other ):
     self_new = 0
     other_old = 0
     other_new = 0
-    if isinstance( self, pd.Series ):
+    if isinstance( self, np.ndarray ):
         if( len(self) < 2 or active.barindex < 1 ):
             return False
-        self_old = self.iloc[active.barindex-1]
-        self_new = self.iloc[active.barindex]
-        if isinstance( other, pd.Series ):
+        self_old = self[active.barindex-1]
+        self_new = self[active.barindex]
+        if isinstance( other, np.ndarray ):
             if( len(other) < 2 ):
                 return False
-            other_old = other.iloc[active.barindex-1]
-            other_new = other.iloc[active.barindex]
+            other_old = other[active.barindex-1]
+            other_new = other[active.barindex]
         elif isinstance( other, generatedSeries_c ):
             # Directly use other.iloc(-1) and other.iloc(-2)
-            if pd.isna(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
+            if np.isnan(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
                 return False
             other_old = other.iloc(-2)
             other_new = other.iloc(-1) 
@@ -1748,3 +2343,14 @@ def crossing( self, other ):
         bool: True if a crossing (up or down) occurred, False otherwise.
     """
     return crossingUp( self, other ) or crossingDown( self, other )
+
+
+from .pivots import pivots_c, pivot_c
+pivotsNow:pivots_c = None
+def pivots( high:np.ndarray, low:np.ndarray, amplitude: float = 1.0, reversal_percent: float = 32.0 )->pivots_c:
+    global pivotsNow
+    if pivotsNow == None:
+        pivotsNow = pivots_c(amplitude, reversal_percent)
+
+    pivotsNow.update(high, low)
+    return pivotsNow

@@ -1,4 +1,5 @@
-import pandas as pd
+
+import numpy as np
 from .constants import c
 from . import active
 
@@ -48,9 +49,9 @@ class pivots_c:
             
             # Initialize temp_pivot for the first time
             if self.trend > 0: # Long trend implies potential high pivot
-                self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
+                self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_high_extrema_index))
             else: # Short trend implies potential low pivot
-                self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
+                self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_low_extrema_index))
             self._current_reversal_percentage = 0.0 # It starts at 0 since there's no reversal yet
             return False
             
@@ -59,7 +60,7 @@ class pivots_c:
             if high >= self._current_trend_high_extrema:
                 self._current_trend_high_extrema = high
                 self._current_trend_high_extrema_index = index
-                self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
+                self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_high_extrema_index))
                 self._current_reversal_percentage = 0.0 # Reset as new high sets a new "base" for potential reversal
                 return False
             
@@ -86,7 +87,7 @@ class pivots_c:
                         self._last_confirmed_pivot_reversal_magnitude = current_reversal
                         self._current_trend_low_extrema = low
                         self._current_trend_low_extrema_index = index
-                        self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
+                        self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_low_extrema_index))
                         self._current_reversal_percentage = 0.0 # Reset for new trend
                         return True
                 else:
@@ -97,7 +98,7 @@ class pivots_c:
                     self._last_confirmed_pivot_reversal_magnitude = current_reversal
                     self._current_trend_low_extrema = low
                     self._current_trend_low_extrema_index = index
-                    self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
+                    self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_low_extrema_index))
                     self._current_reversal_percentage = 0.0 # Reset for new trend
                     return True
                     
@@ -106,7 +107,7 @@ class pivots_c:
             if low <= self._current_trend_low_extrema:
                 self._current_trend_low_extrema = low
                 self._current_trend_low_extrema_index = index
-                self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_low_extrema_index]))
+                self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_low_extrema_index))
                 self._current_reversal_percentage = 0.0 # Reset reversal percentage as a new low is made
                 return False
                 
@@ -133,7 +134,7 @@ class pivots_c:
                         self._last_confirmed_pivot_reversal_magnitude = current_reversal
                         self._current_trend_high_extrema = high
                         self._current_trend_high_extrema_index = index
-                        self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
+                        self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_high_extrema_index))
                         self._current_reversal_percentage = 0.0 # Reset for new trend
                         return True
                 else:
@@ -144,7 +145,7 @@ class pivots_c:
                     self._last_confirmed_pivot_reversal_magnitude = current_reversal
                     self._current_trend_high_extrema = high
                     self._current_trend_high_extrema_index = index
-                    self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=int(active.timeframe.df['timestamp'].iat[self._current_trend_high_extrema_index]))
+                    self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_high_extrema_index))
                     self._current_reversal_percentage = 0.0 # Reset for new trend
                     return True
         
@@ -155,7 +156,7 @@ class pivots_c:
                 index=index,
                 type=type,
                 price=price,
-                timestamp=int(active.timeframe.df['timestamp'].iat[index])
+                timestamp=active.timeframe.timestampAtIndex(index)
                 )
         if len(self.pivots) >= 500:
             self.pivots = self.pivots[1:] + [pivot]  # Slicing out the oldest element
@@ -174,6 +175,6 @@ class pivots_c:
             return pivot
         return None
     
-    def update(self, high: pd.Series, low: pd.Series):
+    def update(self, high: np.ndarray, low: np.ndarray):
         if( not active.timeframe.jumpstart ):
             self.isNewPivot = self.process_candle(active.barindex, high[active.barindex], low[active.barindex])
