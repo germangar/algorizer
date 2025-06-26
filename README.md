@@ -1,10 +1,12 @@
-This is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't pretend to mimic the language, although the structure should be familiar enough to you. It tries to avoid 'the pandas ways' and be sequential.
+This is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't pretend to mimic the language, but the structure should be familiar enough to you to feel comfortable.
 
-As of now it connects to crypto exchanges and fetches the candles required for backtesting, and it can also run in realtime and send alerts to the usual webhooks (Like [my own](https://github.com/germangar/whook)).
+What does it do:
+It connects to crypto exchanges using the CCXT library and downloads the required historical data. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook))..
 
-The project is in early stages so you'll most likely find nuissances, specially at writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces. However, fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime should be reliable at this point.
 
-I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and or pinescript.
+The project is in early stages so you'll most likely find a few nuissances, specially at writing your script since I didn't add much error handling yet so you'll find yourself reliant on Python's backtraces. However, **fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime should be reliable at this point.**
+
+I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
 I will provide basic documentation later on, but as of now there is a ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) file which I commented extensively which should provide a starting point.
 
