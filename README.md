@@ -10,7 +10,7 @@ I do think it provides a very intuitive and simple way of creating, backtesting 
 
 I will provide basic documentation later on, but as of now there is a ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) file which I commented extensively which should provide a starting point.
 
-You can use templaty.py as base to write scripts.
+You can use template.py as base to write scripts.
 
 (lines and tables are not yet implemented. They're coming soon. As of now only plots, histograms and markers are available).
 
