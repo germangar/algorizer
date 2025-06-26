@@ -15,7 +15,8 @@ I will provide basic documentation later on, but as of now there is a ['example_
 You can use template.py as base to write scripts.
 
 
-![algorizer screenshot](https://github.com/user-attachments/assets/e8a99250-9224-44f2-8c70-b738de66cddd)
+![algorizer screenshot](https://github.com/user-attachments/assets/40d84241-1895-4152-8201-080a44dfdca2)
+
 
 ### Future plans (aka to do list) ###
 - Add more indicators and drawing uptions, and improve the code interoperability in general.
