@@ -27,7 +27,7 @@ You can use template.py as base to write scripts.
 
 
 . I will not make much more work on the UI/Chart. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so whole new chart  replacements other than lightweight-charts could be added</br>
-. I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates.
+. I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates, but I have no idea where one can obtain that information in the world of stocks.
 
 --------------------
 
