@@ -2138,7 +2138,7 @@ def STOCHk(source: np.ndarray|generatedSeries_c, period:int, timeframe=None)-> t
 # # #
 
 
-def Stochastic(source: np.ndarray|generatedSeries_c|str, k_period: int = 14, d_period: int = 3, timeframe=None)-> tuple[generatedSeries_c, generatedSeries_c]:
+def Stochastic(source: np.ndarray|generatedSeries_c, k_period: int = 14, d_period: int = 3, timeframe=None)-> tuple[generatedSeries_c, generatedSeries_c]:
     """
     Calculates the Stochastic Oscillator (%K and %D lines).
 
@@ -2154,9 +2154,6 @@ def Stochastic(source: np.ndarray|generatedSeries_c|str, k_period: int = 14, d_p
         and the %D line as generatedSeries_c objects.
     """
     timeframe = timeframe or active.timeframe
-
-    # Resolve the close series input into a NumPy array and its identifier
-    source, close_idx = timeframe.arrayFromMultiobject(source)
 
     # Create the %K line generatedSeries_c
     k_line_series = STOCHk(source, k_period)

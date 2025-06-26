@@ -112,7 +112,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     # the top and bottom prices of the candles bodies. Wicks excluded.
     # You can use high and low instead, or whatever you prefer.
     # 'Amplitude' is the main value you want to tweak for each symbol/timeframe
-    pivots = calc.pivots( top, bottom, 12 )
+    pivots = calc.pivots( top, bottom, 11 )
     if pivots.isNewPivot:
         thisPivot = pivots.getLast() # only confirmed pivots. You can check the WIP pivot values in pivots.temp_pivot
         if thisPivot.type == c.PIVOT_HIGH:
