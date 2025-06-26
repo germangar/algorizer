@@ -14,6 +14,7 @@ I will provide basic documentation later on, but as of now there is a ['example_
 
 You can use template.py as base to write scripts.
 
+**Warning** When accesing old candle data directly from a series/array don't use relative indexing. During the backtest the barindex will not be at the end of the dataframe. Use always direct indexing [barindex-X]. If you are accessing a generatedSeries (aka, a calc.* function generated series) you can use relative indexing when you use it's iloc/value method.
 
 ![algorizer screenshot](https://github.com/user-attachments/assets/40d84241-1895-4152-8201-080a44dfdca2)
 
