@@ -6,13 +6,14 @@ It connects to crypto exchanges using the CCXT library and downloads the require
 
 The project is in early stages so you'll most likely find a few nuissances. Specially when writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces. However, **fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime should be reliable at this point.**
 
+Drawing capabilities are still a work in progress. As of today it's capable of plots, histograms and markers (labels). Lines, boxes and tables are still in the to do list.
+
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
 I will provide basic documentation later on, but as of now there is a ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) file which I commented extensively which should provide a starting point.
 
 You can use template.py as base to write scripts.
 
-(lines and tables are not yet implemented. They're coming soon. As of now only plots, histograms and markers are available).
 
 ![algorizer screenshot](https://github.com/user-attachments/assets/e8a99250-9224-44f2-8c70-b738de66cddd)
 
