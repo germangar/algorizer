@@ -2,12 +2,12 @@
 from typing import Union
 talib_available = False
 talib = None
-try:
-    import talib
-    talib_available = True
-except ImportError:
-    talib_available = False
-    print("Talib not available")
+# try:
+#     import talib
+#     talib_available = True
+# except ImportError:
+#     talib_available = False
+#     print("Talib not available")
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
@@ -56,89 +56,89 @@ def _rolling_window_apply_optimized(arr: np.ndarray, window: int, func) -> np.nd
 NumericScalar = Union[float, int]
 OperandType = Union[np.ndarray, NumericScalar]
 
-def _generatedseries_calculate_add_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_add_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source + param
 
-def _generatedseries_calculate_subtract_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_subtract_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source - param
 
-def _generatedseries_calculate_multiply_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_multiply_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source * param
 
-def _generatedseries_calculate_divide_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_divide_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source / param
 
-def _generatedseries_calculate_power_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_power_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return np.power(source, param)
 
-def _generatedseries_calculate_min_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_min_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return np.minimum(source, param)
 
-def _generatedseries_calculate_max_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return np.maximum(source, param)
 
-def _generatedseries_calculate_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source == param
 
-def _generatedseries_calculate_notequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_notequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source != param
 
-def _generatedseries_calculate_greater_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_greater_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source > param
 
-def _generatedseries_calculate_greaterorequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_greaterorequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source >= param
 
-def _generatedseries_calculate_less_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_less_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source < param
 
-def _generatedseries_calculate_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: OperandType) -> np.ndarray:
+def _generatedseries_calculate_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return source <= param
 
-def _generatedseries_calculate_logical_not(source: np.ndarray, period: int, dataset: np.ndarray, param= None) -> np.ndarray:
+def _generatedseries_calculate_logical_not(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     return ~source
 
 
 ##### scalars by series
 
 
-def _generatedseries_calculate_scalar_add_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_add_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param + source # Note: param is the scalar, source is the series
 
-def _generatedseries_calculate_scalar_subtract_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_subtract_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param - source
 
-def _generatedseries_calculate_scalar_multiply_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_multiply_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param * source
 
-def _generatedseries_calculate_scalar_divide_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_divide_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param / source
 
-def _generatedseries_calculate_scalar_power_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_power_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return np.power(param, source) # Note the order: scalar (param) first, then series (source)
 
-def _generatedseries_calculate_scalar_min_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_min_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return np.minimum(param, source)
 
-def _generatedseries_calculate_scalar_max_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return np.maximum(param, source)
 
-def _generatedseries_calculate_scalar_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param == source
 
-def _generatedseries_calculate_scalar_notequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_notequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param != source
 
-def _generatedseries_calculate_scalar_greater_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_greater_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param > source
 
-def _generatedseries_calculate_scalar_greaterorequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_greaterorequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param >= source
 
-def _generatedseries_calculate_scalar_less_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_less_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param < source
 
-def _generatedseries_calculate_scalar_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, param: NumericScalar) -> np.ndarray:
+def _generatedseries_calculate_scalar_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param <= source
 
 
@@ -148,7 +148,7 @@ def _generatedseries_calculate_scalar_lessequal_series(source: np.ndarray, perio
 
 
 # _highest250. Elapsed time: 0.00 seconds
-def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Calculates the highest value over a specified period using NumPy.
     """
@@ -157,7 +157,7 @@ def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset:
     source = np.asarray(source, dtype=np.float64)
     return _rolling_window_apply_optimized(source, period, lambda x: np.max(x, axis=1))
 
-def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Calculates the lowest value over a specified period using NumPy.
     """
@@ -167,7 +167,7 @@ def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: 
     return _rolling_window_apply_optimized(source, period, lambda x: np.min(x, axis=1))
 
 # _highestbars250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     # if talib_available:
     #     return talib.MAXINDEX(source, period)
     source = np.asarray(source, dtype=np.float64)
@@ -175,7 +175,7 @@ def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, data
     return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmax(x, axis=1))
 
 # _lowestbars250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     # if talib_available:
     #     return talib.MININDEX(source, period)
     source = np.asarray(source, dtype=np.float64)
@@ -183,7 +183,7 @@ def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, datas
     return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmin(x, axis=1))
 
 # _falling250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     source = np.asarray(source, dtype=np.float64)
     n = len(source)
 
@@ -212,7 +212,7 @@ def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset:
     return result_array.astype(bool)
 
 # _rising250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Calculates a boolean series indicating if the source has been strictly rising
     over the given period.
@@ -245,7 +245,7 @@ def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: 
     return result_array.astype(bool)
 
 #
-def _generatedseries_calculate_barssince(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_barssince(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     # Get array of indices where condition is True
     true_indices = np.where(series)[0]
     if len(true_indices) == 0:
@@ -263,7 +263,7 @@ def _generatedseries_calculate_barssince(series: np.ndarray, period: int, datase
     return result
 
 #
-def _generatedseries_calculate_indexwhentrue(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_indexwhentrue(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     out = np.full(length, np.nan, dtype=np.float64)
     last_true = -1
@@ -275,7 +275,7 @@ def _generatedseries_calculate_indexwhentrue(series: np.ndarray, period: int, da
     return out
 
 #
-def _generatedseries_calculate_indexwhenfalse(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_indexwhenfalse(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     out = np.full(length, np.nan, dtype=np.float64)
     last_false = -1
@@ -287,7 +287,7 @@ def _generatedseries_calculate_indexwhenfalse(series: np.ndarray, period: int, d
     return out
 
 #
-def _generatedseries_calculate_barswhiletrue(series: np.ndarray, period: int = None, dataset: np.ndarray = None, param=None) -> np.ndarray:
+def _generatedseries_calculate_barswhiletrue(series: np.ndarray, period: int = None, dataset: np.ndarray = None, cindex:int = None, param=None) -> np.ndarray:
     arr = series.astype(bool)
     counts = np.zeros_like(arr, dtype=int)
     c = 0
@@ -299,7 +299,7 @@ def _generatedseries_calculate_barswhiletrue(series: np.ndarray, period: int = N
     return counts.astype(np.float64)  # for consistency with other outputs
 
 #
-def _generatedseries_calculate_barswhilefalse(series: np.ndarray, period: int = None, dataset: np.ndarray = None, param=None) -> np.ndarray:
+def _generatedseries_calculate_barswhilefalse(series: np.ndarray, period: int = None, dataset: np.ndarray = None, cindex:int = None, param=None) -> np.ndarray:
     length = len(series)
     max_lookback = period if (period is not None and period <= length) else length
     out = np.zeros(length, dtype=int)
@@ -320,7 +320,7 @@ def _generatedseries_calculate_barswhilefalse(series: np.ndarray, period: int = 
 ########################### INDICATORS #################################
 
 #
-def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.SMA(source, period)
     
@@ -334,7 +334,7 @@ def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.
     return sma
 
 # _ema_250. Elapsed time: 0.03 seconds (a little slow, but it's the only reliable one. Talib is also unreliable)
-def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.EMA(series, period)
     length = len(series)
@@ -367,7 +367,7 @@ def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.
     return result
 
 #
-def _generatedseries_calculate_dema(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_dema(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -383,7 +383,7 @@ def _generatedseries_calculate_dema(series: np.ndarray, period: int, dataset: np
     return dema
 
 # _rma250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -404,7 +404,7 @@ def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.
     return rma
 
 # _wma250. Elapsed time: 0.02 seconds (talib 00.00 seconds)
-def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.WMA(series, period)
     
@@ -430,7 +430,7 @@ def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.
     return result
 
 # _linreg250. Elapsed time: 0.02 seconds (talib 0.01 seconds)
-def _generatedseries_calculate_linreg(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_linreg(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.LINEARREG(series, period)
 
@@ -465,7 +465,7 @@ def _generatedseries_calculate_linreg(series: np.ndarray, period: int, dataset: 
     return linreg
 
 # _bias250. Elapsed time: 0.00 seconds
-def _generatedseries_calculate_bias(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_bias(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     source = np.asarray(source, dtype=np.float64)
     n = len(source)
 
@@ -488,7 +488,7 @@ def _generatedseries_calculate_bias(source: np.ndarray, period: int, dataset: np
     return bias
 
 # _cci250. Elapsed time: 0.04 seconds (talib 0.01 seconds)
-def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -516,7 +516,7 @@ def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.
     return cci
 
 # 0.02
-def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -555,7 +555,7 @@ def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.
     return cfo
 
 # _cmo250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_cmo(source: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_cmo(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.CMO( source, period )
 
@@ -588,7 +588,7 @@ def _generatedseries_calculate_cmo(source: np.ndarray, period: int, dataset: np.
     return cmo
 
 #
-def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -617,7 +617,7 @@ def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np
     return result
 
 # _stdev250. Elapsed time: 0.02 seconds (talib 0.00 seconds)
-def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.STDDEV(series, period)
 
@@ -638,7 +638,7 @@ def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: n
     return result
 
 # _dev250. Elapsed time: 0.03 seconds
-def _generatedseries_calculate_dev(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_dev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -660,7 +660,7 @@ def _generatedseries_calculate_dev(series: np.ndarray, period: int, dataset: np.
     return result
 
 # _wpr250. Elapsed time: 0.01 seconds (talib 0.0 secods)
-def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.WILLR(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], series, period)
     
@@ -691,7 +691,7 @@ def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, datas
     return result
 
 # _tr250. Elapsed time: 0.00 seconds 
-def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.TRANGE(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE])
     
@@ -719,7 +719,7 @@ def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.n
     return tr
 
 # _atr250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.ATR(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE], period)
     
@@ -730,7 +730,7 @@ def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.
     return atr
 
 # _slope250. Elapsed time: 0.03 seconds (talib 0.01 seconds)
-def _generatedseries_calculate_slope(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_slope(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.LINEARREG_SLOPE(series, period)
 
@@ -763,7 +763,7 @@ def _generatedseries_calculate_slope(series: np.ndarray, period: int, dataset: n
     return result
 
 # _vhma250. Elapsed time: 0.04 seconds - Needs reset
-def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -801,35 +801,8 @@ def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np
 
     return vhma
 
-
-# def _generatedseries_calculate_bbupper(series, period, df: pd.DataFrame, param=None) -> pd.Series:
-#     BBmult = param
-#     # Correctly reference the SMA and STDEV columns from the provided DataFrame `df`
-#     sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
-#     stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
-
-#     # Ensure these names exist in the df passed to this function
-#     if sma_name not in df.columns or stdev_name not in df.columns:
-#         raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBUpper: {sma_name}, {stdev_name}")
-    
-#     return df[sma_name] + (BBmult * df[stdev_name])
-
-# def _generatedseries_calculate_bblower(series, period, df: pd.DataFrame, param=None) -> pd.Series:
-#     BBmult = param
-#     sma_name = tools.generatedSeriesNameFormat('sma', pd.Series(name=series.name), period)
-#     stdev_name = tools.generatedSeriesNameFormat('stdev', pd.Series(name=series.name), period)
-
-#     if sma_name not in df.columns or stdev_name not in df.columns:
-#         raise KeyError(f"Missing SMA or STDEV series in DataFrame for BBLower: {sma_name}, {stdev_name}")
-
-#     return df[sma_name] - (BBmult * df[stdev_name])
-
-
-
-
-
 # _rsi14. Elapsed time: 0.02 seconds
-def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.RSI(series, period)
 
@@ -876,7 +849,7 @@ def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.
     return rsi
 
 #
-def _generatedseries_calculate_inverse_fisher_rsi(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_inverse_fisher_rsi(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     # series is already the RSI as np.ndarray
     rsi = series.astype(np.float64)
     v1 = 0.1 * (rsi - 50)
@@ -899,7 +872,7 @@ def _generatedseries_calculate_inverse_fisher_rsi(series: np.ndarray, period: in
     return iftrsi
 
 #
-def _generatedseries_calculate_fisher(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_fisher(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Fisher Transform (main line)
     """
@@ -931,7 +904,7 @@ def _generatedseries_calculate_fisher(series: np.ndarray, period: int, dataset: 
     return fish
 
 #
-def _generatedseries_calculate_fisher_signal(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_fisher_signal(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Fisher Transform signal line: usually an EMA of Fisher line, default length 9 if not provided
     """
@@ -948,7 +921,7 @@ def _generatedseries_calculate_fisher_signal(series: np.ndarray, period: int, da
     return sig
 
 #
-def _generatedseries_calculate_ao(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_ao(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Awesome Oscillator: SMA(median_price, fast) - SMA(median_price, slow)
     `param` can optionally override the two SMA lengths as a tuple: (fast, slow)
@@ -976,7 +949,7 @@ def _generatedseries_calculate_ao(series: np.ndarray, period: int, dataset: np.n
     return ao
 
 #
-def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     BR (Buying Pressure Ratio) -- NumPy implementation
     BR = SUM(MAX(high - prev_close, 0), N) / SUM(MAX(prev_close - low, 0), N) * 100
@@ -1005,7 +978,7 @@ def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.n
     return br
 
 #
-def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     AR (Active Ratio) -- NumPy implementation
     AR = SUM(high - open, N) / SUM(open - low, N) * 100
@@ -1031,7 +1004,7 @@ def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.n
     return ar
 
 #
-def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.ndarray, param=None) -> np.ndarray:
+def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Center of Gravity (CG) oscillator (NumPy version).
     Formula: CG = sum(i * price[i]) / sum(price[i]), over the lookback window.
@@ -1052,7 +1025,7 @@ def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.n
     return cg
 
 #
-def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, dataset: np.ndarray, param= None) -> np.ndarray:
+def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
     Calculates the Stochastic %K line. It adapts to operate on either the full
     historical data (during initialization) or on a recent slice (during updates).
@@ -1159,6 +1132,61 @@ def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, da
     return k_line
 
 
+def _generatedseries_calculate_obv(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    """
+    Calculate On-Balance Volume (OBV) using numpy, optimized for full calculation.
+
+    Args:
+        series (np.ndarray): Placeholder (unused, for compatibility).
+        period (int): Unused (OBV is cumulative, no lookback).
+        dataset (np.ndarray): 2D array with columns [..., c.DF_CLOSE, ..., c.DF_VOLUME, ...].
+        param (tuple): (close_col_idx, volume_col_idx) for column indices.
+
+    Returns:
+        np.ndarray: OBV values, cumulative sum of signed volume.
+    """
+    if dataset.shape[0] == 0:
+        return np.array([], dtype=np.float64)
+
+    try:
+        close = source # dataset[:, c.DF_CLOSE]
+        volume = dataset[:, c.DF_VOLUME]
+        length = len(close)
+
+        # Initialize output
+        result = np.full(length, np.nan, dtype=np.float64)
+        if length < 1:
+            return result
+
+        # Set initial OBV to 0
+        result[0] = 0 if not np.isnan(volume[0]) and not np.isnan(close[0]) else np.nan
+
+        if length < 2:
+            return result
+
+        # Compute price direction: sign(close[i] - close[i-1])
+        close_diff = np.diff(close)
+        direction = np.sign(close_diff)
+
+        # Compute signed volume
+        signed_volume = np.zeros(length, dtype=np.float64)
+        signed_volume[1:] = direction * volume[1:]
+
+        # Handle NaNs in close or volume
+        valid_mask = ~np.isnan(close) & ~np.isnan(volume)
+        signed_volume[~valid_mask] = 0  # Set invalid to 0 for cumsum
+
+        # Cumulative sum for OBV
+        result = np.cumsum(signed_volume, dtype=np.float64)
+
+        # Set NaN where close or volume is invalid
+        result[~valid_mask] = np.nan
+
+        return result
+    except (IndexError, ValueError):
+        return np.full(len(dataset), np.nan, dtype=np.float64)
+    
+
 
 
 class generatedSeries_c:
@@ -1205,20 +1233,20 @@ class generatedSeries_c:
             barindex = len(source) - 1
             start_time = time.time()
 
+            # Call the func, which must now accept a 1D numpy array as the source and the 2D array as "dataset"
+            # Expect func to return a 1D numpy array of values, aligned with the full dataset length
+            values = self.func(source, self.period, timeframe.dataset, self.column_index, self.param)
+            if isinstance(values, (list, tuple)):
+                values = np.array(values, dtype=np.float64)
 
             # Add the new column if necessary
-            n_rows = timeframe.dataset.shape[0]
             if self.name not in timeframe.columns:
+                n_rows = timeframe.dataset.shape[0]
                 new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
                 timeframe.dataset = np.hstack([timeframe.dataset, new_col])
                 self.column_index = timeframe.dataset.shape[1] - 1
                 timeframe.columns.append(self.name)
 
-            # Call the func, which must now accept a 1D numpy array as the source and the 2D array as "dataset"
-            # Expect func to return a 1D numpy array of values, aligned with the full dataset length
-            values = self.func(source, self.period, timeframe.dataset, self.param)
-            if isinstance(values, (list, tuple)):
-                values = np.array(values, dtype=np.float64)
             # Only assign values where not nan (mimicking dropna)
             mask = ~np.isnan(values)
             timeframe.dataset[mask, self.column_index] = values[mask]
@@ -1248,7 +1276,7 @@ class generatedSeries_c:
         barindex = tf.barindex
         period_slice = source[-self.period:]
         # func should return a 1D array or scalar; we want the most recent value
-        newval = self.func(period_slice, self.period, tf.dataset, self.param)
+        newval = self.func(period_slice, self.period, tf.dataset, self.column_index, self.param)
         if isinstance(newval, (np.ndarray, list, tuple)):
             newval = newval[-1]
         tf.dataset[barindex, self.column_index] = newval
@@ -2129,9 +2157,16 @@ def CG( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->gen
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', _ensure_numpy_array(source), period, _generatedseries_calculate_cg )
 
-def STOCHk(source: np.ndarray|generatedSeries_c, period:int, timeframe=None)-> tuple[generatedSeries_c, generatedSeries_c]:
+def STOCHk( source: np.ndarray|generatedSeries_c, period:int, timeframe=None )-> tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "stochk", _ensure_numpy_array(source), period, _generatedseries_calculate_stoch_k )
+
+
+def OBV( source: np.ndarray|generatedSeries_c, timeframe=None ) -> generatedSeries_c:
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( 'obv', source, 1, _generatedseries_calculate_obv, always_reset=True )
+
+
 
 # # #
 # # # OTHER NOT GENERATED SERIES
@@ -2175,7 +2210,6 @@ def BollingerBands( source:np.ndarray|generatedSeries_c, period:int, mult:float 
         Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
     """
     timeframe = timeframe or active.timeframe
-    source = _ensure_numpy_array(source)
     BBbasis = SMA(source, period)
     stdev = STDEV(source, period)
     BBupper = BBbasis + (stdev * mult)
@@ -2198,7 +2232,6 @@ def MACD( source:np.ndarray|generatedSeries_c, fast: int = 12, slow: int = 26, s
         Tuple of (MACD line, Signal line, Histogram) as generatedSeries_c objects.
     """
     timeframe = timeframe or active.timeframe
-    source = _ensure_numpy_array(source)
     # Calculate the fast and slow EMAs
     fast_ema = EMA(source, fast, timeframe)
     slow_ema = EMA(source, slow, timeframe)
@@ -2217,7 +2250,7 @@ def MACD( source:np.ndarray|generatedSeries_c, fast: int = 12, slow: int = 26, s
 
 ################ Helpers. Not series #########################
 
-def indexWhenTrue(source: str | generatedSeries_c | np.ndarray) -> Union[int, None]:
+def indexWhenTrue(source: generatedSeries_c|np.ndarray)-> Union[int, None]:
     """
     Finds the 0-based positional index of the last True value in a boolean-coercible array.
 
@@ -2242,7 +2275,7 @@ def indexWhenTrue(source: str | generatedSeries_c | np.ndarray) -> Union[int, No
     else:
         return None
 
-def indexWhenFalse(source: str | generatedSeries_c | np.ndarray) -> Union[int, None]:
+def indexWhenFalse(source: generatedSeries_c|np.ndarray)-> Union[int, None]:
     """
     Finds the 0-based positional index of the last False value in a boolean-coercible array.
 
@@ -2279,7 +2312,7 @@ def barsWhileTrue( source ):
         return None
     return active.barindex - index_when_false
 
-def crossingUp( self, other ):
+def crossingUp( self:np.ndarray|generatedSeries_c|float, other:np.ndarray|generatedSeries_c|float ):
     """
     Determines if 'self' crosses up over 'other' between the previous and current bar.
 
@@ -2367,7 +2400,7 @@ def crossingUp( self, other ):
     return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
 
 
-def crossingDown( self, other ):
+def crossingDown( self:np.ndarray|generatedSeries_c|float, other:np.ndarray|generatedSeries_c|float ):
     """
     Determines if 'self' crosses down below 'other' between the previous and current bar.
 
