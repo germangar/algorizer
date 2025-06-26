@@ -1,6 +1,6 @@
 This is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't pretend to mimic the language, but the structure should be familiar enough to you to feel comfortable.
 
-What does it do:
+**What does it do:**
 It connects to crypto exchanges using the CCXT library and downloads the required historical data. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook))..
 
 
@@ -21,13 +21,14 @@ You can use template.py as base to write scripts.
 
 ### Future plans (aka to do list) ###
 - Add more indicators and drawing options, and improve the code interoperability in general.
+- Add stoploss capability to the strategy (realtime triggered) and make it figure out liquidation price.
 - Add inputs with ranges and steps for future batch-backtesting
 - Direct broker connection with the exchange for the strategy code to confirm operations
 - Make the chart load bars in modular blocks so it doesn't take so long on high bar count.
 
 
-. I will not make much more work on the UI/Chart. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so whole new charts other than lightweight chart replacements could be added</br>
-. I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates.
+. I will not make much more work on the UI/Chart. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so whole new chart  replacements other than lightweight-charts could be added</br>
+. I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates, but I have no idea where one can obtain that information in the world of stocks.
 
 --------------------
 
