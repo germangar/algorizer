@@ -435,7 +435,8 @@ class window_c:
                 index = columns.index(plot.name)
                 value = row[index]
                 if value is None or pd.isna(value):
-                    raise ValueError(f"Plot value for [{plot.name}] is None or NaN (row={row})")
+                    continue
+                    # raise ValueError(f"Plot value for [{plot.name}] is None or NaN (row={row})")
 
                 if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
                     plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
