@@ -45,7 +45,7 @@ def tick( realtimeCandle:candle_c ):
 
 def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
     calc.SMA(close, 200).plot()
-    calc.RSI(close, 14).plot('rsi')
+    calc.RSI(close, 14).plot('rsi_subpanel')
 
 
 if __name__ == '__main__':
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     
     stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['1h'], [runCloseCandle], event, tick, 25000 )
 
-    stream.registerPanel('rsi', 1.0, 0.2 )
+    stream.registerPanel('rsi_subpanel', 1.0, 0.2 )
 
     stream.createWindow( '1h' )
 
