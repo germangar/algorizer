@@ -23,7 +23,7 @@ You can use templaty.py as base to write scripts.
 - Make the chart load bars in modular blocks so it doesn't take so long on high bar count.
 
 
-. I will not make much more work on the UI/Chart. But I'll gladly accept contributions on it.</br>
+. I will not make much more work on the UI/Chart. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so whole new charts other than lightweight chars could be added</br>
 . I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates.
 
 --------------------
