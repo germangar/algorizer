@@ -309,7 +309,10 @@ class window_c:
         
         # verify the timestamp is not older than the last marker
         lastMarker = self.markers[-1]
-        if lastMarker.timestamp <= msg["timestamp"] :
+        marker_timestamp = int(msg.get('timestamp'))
+        if marker_timestamp is None:
+            return
+        if lastMarker.timestamp <= marker_timestamp :
             self.createMarker( msg )
             return
         
@@ -317,7 +320,7 @@ class window_c:
         try:
             marker = marker_c(
                 id = msg.get('id'),
-                timestamp = int(msg.get('timestamp')),
+                timestamp = marker_timestamp,
                 position = msg.get('position'),
                 shape = msg.get('shape'),
                 color = msg.get('color'),
@@ -392,6 +395,7 @@ class window_c:
 
     def newRow(self, msg):
         row = msg.get('data')
+        row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP]) # fix type
         columns = msg.get('columns')
         if row is None:
             return
