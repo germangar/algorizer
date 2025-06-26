@@ -20,7 +20,7 @@ You can use template.py as base to write scripts.
 
 
 ### Future plans (aka to do list) ###
-- Add more indicators and drawing uptions, and improve the code interoperability in general.
+- Add more indicators and drawing options, and improve the code interoperability in general.
 - Add inputs with ranges and steps for future batch-backtesting
 - Direct broker connection with the exchange for the strategy code to confirm operations
 - Make the chart load bars in modular blocks so it doesn't take so long on high bar count.
