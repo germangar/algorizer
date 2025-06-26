@@ -370,6 +370,8 @@ class window_c:
         row = msg.get('data')
         if not row:
             return
+        assert(row[c.DF_TIMESTAMP] is not None)
+        row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP])
         
         self.lastCandle.updateFromSource(row) # for the clock
         self.lastCandle.updateRemainingTime()
@@ -395,6 +397,7 @@ class window_c:
     def newRow(self, msg):
         row = msg.get('data')
         row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP]) # fix type
+        assert(row[c.DF_TIMESTAMP] is not None)
         columns = msg.get('columns')
         if row is None:
             return
@@ -409,10 +412,13 @@ class window_c:
             'volume': row[c.DF_VOLUME]
         }
         
-        series = pd.Series(data_dict)
-        for n in self.panels.keys():
-            chart = self.panels[n]['chart']
-            chart.update( series )
+        try:
+            series = pd.Series(data_dict)
+            for n in self.panels.keys():
+                chart = self.panels[n]['chart']
+                chart.update( series )
+        except Exception as e:
+            raise ValueError( f"Failed  to locate the charts to update OHLCVs. {e}")
 
         # Second part - full data update
         if columns is None:
@@ -422,19 +428,19 @@ class window_c:
             # ToDo: The dataframe has changed. We need to reload it
             raise ValueError( "Dataframe columns have changed" )
         
-        # Create DataFrame from single row - wrap row in a list
-        df = pd.DataFrame([row], columns=columns)
         
+        try:
         # run through the list of plots and issue the updates
-        for plot in self.plots:
-            try:
-                value = df[plot.name].iloc[0]
-            except Exception as e:
-                print( f"ERROR: Couldn't find value for plot [{plot.name}]" )
-                continue
+            for plot in self.plots:
+                index = columns.index(plot.name)
+                value = row[index]
+                if value is None or pd.isna(value):
+                    raise ValueError(f"Plot value for [{plot.name}] is None or NaN (row={row})")
 
-            if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
-                plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
+                if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
+                    plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
+        except Exception as e:
+            raise ValueError( f"Failed to update a plot because: {e}")
 
         # finally add the opening of the realtime candle
         self.newTick( msg.get('tick') )
