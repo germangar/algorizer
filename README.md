@@ -14,12 +14,21 @@ You can use templaty.py as base to write scripts.
 
 ![algorizer screenshot](https://github.com/user-attachments/assets/e8a99250-9224-44f2-8c70-b738de66cddd)
 
+### Future plans (aka to do list) ###
+- Add more indicators and drawing uptions, and improve the code interoperability in general.
+- Add inputs with ranges and steps for future batch-backtesting
+- Direct broker connection with the exchange for the strategy code to confirm operations
+- Make the chart load bars in modular blocks so it doesn't take so long on high bar count.
+
+
+. I will not make much more work on the UI/Chart. But I'll gladly accept contributions on it.</br>
+. I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates.
+
+--------------------
 
 Install the required modules with the usual requirements.txt
 
-
 pip install -r requirements.txt
 
-- I would love it if the project could also be used for stocks, but I'm not familiar with that type of brokers. So if anyone is willing to collaborate in adding a fetcher and realtime updates of candles for stoks it will be very welcome.
 
 
