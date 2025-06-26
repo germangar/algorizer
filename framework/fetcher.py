@@ -1,8 +1,10 @@
-
 import csv
 import ccxt
 
-from pprint import pprint
+# The code in this file started as me trying one of CCXT's examples on how to
+# fetch data from an exchange, and I kept piling stuff on it without any plan.
+# So it's messy a parts of it are never used.
+# It does the job. I don't have any interest in refining this part.
 
 path = 'data/'
 
