@@ -84,82 +84,6 @@ def create_config_message() -> str:
     return json.dumps(message)
 
 
-
-'''
-import json
-import numpy as np
-
-def prepare_dataframe_for_sending(dataset, columns):
-    """
-    Prepare a 2D NumPy float64 dataset for sending.
-    Returns a float64 NumPy array.
-    """
-    # Ensure dataset is float64
-    return np.asarray(dataset, dtype=np.float64)
-
-def create_data_descriptor(dataset, timeframeStr: str, columns):
-    """
-    Create a descriptor message for the dataset that will be sent.
-    """
-    message = {
-        "type": "data_descriptor",
-        "datatype": "dataframe",
-        "timeframe": timeframeStr,
-        "timeframemsec": tools.timeframeMsec(timeframeStr),
-        "rows": len(dataset),
-        "columns": columns,
-        "dtypes": {col: "float64" for col in columns},
-        "plots": getPlotsList(),
-        "markers": getMarkersList()
-    }
-    return json.dumps(message)
-
-async def send_dataframe(cmd_socket, dataset, timeframe_str, columns):
-    """
-    Send the dataset (NumPy 2D array of float64) to client with proper descriptor and data handling.
-    """
-    try:
-        # Prepare the dataset for sending
-        arr = prepare_dataframe_for_sending(dataset, columns)
-
-        # Send descriptor
-        descriptor = create_data_descriptor(dataset, timeframe_str, columns)
-        await cmd_socket.send_string(descriptor)
-
-        # Wait for acknowledgment
-        ack = await cmd_socket.recv_string()
-        if ack != "ready":
-            raise ValueError(f"Unexpected acknowledgment: {ack}")
-
-        # Send the raw data (as bytes)
-        await cmd_socket.send(arr.tobytes())
-
-        return True
-
-    except Exception as e:
-        print(f"Error sending DataFrame: {e}")
-        return False
-'''
-
-# def prepare_dataframe_for_sending(df):
-#     """Prepare DataFrame for sending by ensuring consistent data types."""
-#     df_copy = df.copy()
-    
-#     # Handle different data types
-#     for col in df_copy.columns:
-#         if df_copy[col].dtype == 'object' or df_copy[col].dtype == 'bool':
-#             # Convert boolean-like strings to 1.0/0.0
-#             if df_copy[col].isin(['True', 'False', True, False]).all():
-#                 df_copy[col] = df_copy[col].map({'True': 1.0, 'False': 0.0, True: 1.0, False: 0.0})
-#             else:
-#                 # Replace None/NaN with np.nan
-#                 df_copy[col] = df_copy[col].replace([None], np.nan)
-    
-#     # Convert all numeric data to float64
-#     df_float = df_copy.select_dtypes(include=['int', 'float', 'number']).astype('float64')
-    
-#     return df_float
-
 def prepare_dataframe_for_sending(dataset):
     """
     Prepare a 2D NumPy float64 dataset for sending.
@@ -169,22 +93,6 @@ def prepare_dataframe_for_sending(dataset):
     return np.asarray(dataset, dtype=np.float64)
 
 
-
-# def create_data_descriptor(df, timeframeStr: str) -> str:
-#     """Create a descriptor message for the DataFrame that will be sent"""
-#     message = {
-#         "type": "data_descriptor",
-#         "datatype": "dataframe",
-#         "timeframe": timeframeStr,
-#         "timeframemsec": tools.timeframeMsec(timeframeStr),
-#         "rows": len(df),
-#         "columns": active.timeframe.columns,
-#         "dtypes": {col: str(df[col].dtype) for col in df.columns},
-#         "plots": getPlotsList(),
-#         "markers": getMarkersList()
-#     }
-#     return json.dumps(message)
-
 def create_data_descriptor(dataset, timeframeStr: str, columns):
     """
     Create a descriptor message for the dataset that will be sent.
@@ -202,32 +110,7 @@ def create_data_descriptor(dataset, timeframeStr: str, columns):
     }
     return json.dumps(message)
     
-
-# async def send_dataframe(cmd_socket, df, timeframe_str):
-#     """Send DataFrame to client with proper descriptor and data handling."""
-#     try:
-#         # Prepare DataFrame
-#         df_float = prepare_dataframe_for_sending(df)
-        
-#         # Send descriptor
-#         descriptor = create_data_descriptor(df, timeframe_str)
-#         await cmd_socket.send_string(descriptor)
-        
-#         # Wait for acknowledgment
-#         ack = await cmd_socket.recv_string()
-#         if ack != "ready":
-#             raise ValueError(f"Unexpected acknowledgment: {ack}")
-            
-#         # Send the raw data
-#         raw_data = df_float.values.tobytes()
-#         await cmd_socket.send(raw_data)
-        
-#         return True
-        
-#     except Exception as e:
-#         print(f"Error sending DataFrame: {e}")
-#         return False
-    
+  
 async def send_dataframe(cmd_socket, timeframe):
     """
     Send the dataset (NumPy 2D array of float64) to client with proper descriptor and data handling.
@@ -388,11 +271,6 @@ async def proccess_message(msg: str, cmd_socket):
         elif command == 'dataframe':
             client.status = CLIENT_LOADING
 
-            # Get DataFrame from active timeframe
-            # df = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch].df
-            # timeframeStr = active.timeframe.stream.timeframeFetch
-            # client.timeframeStr = timeframeStr
-            
             # Send DataFrame to client
             success = await send_dataframe(cmd_socket, active.timeframe)
             if not success:
@@ -410,34 +288,6 @@ async def proccess_message(msg: str, cmd_socket):
 
     client.update_last_send()
     return response if response else create_command_response("unknown command")
-
-'''
-def launch_client_window(cmd_port):
-    """Launch the client window process with the specified port"""
-    import os
-    import sys
-    import subprocess
-    
-    # Get the directory where server.py is located
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Construct path to client.py
-    client_script = os.path.join(current_dir, "client.py")
-    
-    try:
-        # Launch client process with port parameter
-        process = subprocess.Popen([
-            sys.executable,  # Use same Python interpreter
-            client_script,
-            "--port", str(cmd_port)
-        ])
-        
-        if debug:print(f"Launched client window with port {cmd_port}")
-        return process
-        
-    except subprocess.SubprocessError as e:
-        print(f"Error launching client window: {e}")
-        return None
-'''
 
 def launch_client_window(cmd_port):
     """Launch client.py - SIMPLE VERSION THAT JUST WORKS"""
