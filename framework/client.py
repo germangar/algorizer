@@ -310,8 +310,7 @@ class window_c:
         # verify the timestamp is not older than the last marker
         lastMarker = self.markers[-1]
         marker_timestamp = int(msg.get('timestamp'))
-        if marker_timestamp is None:
-            return
+        assert(marker_timestamp != None)
         if lastMarker.timestamp <= marker_timestamp :
             self.createMarker( msg )
             return

@@ -294,22 +294,14 @@ def push_tick_update(timeframe) -> str:
 def push_row_update(timeframe):
     if client.status != CLIENT_LISTENING or client.timeframeStr != active.timeframe.timeframeStr:
         return
-    # df = timeframe.df
-    # # Convert the row to native Python types
-    # row_data = [item.item() if hasattr(item, 'item') else item for item in df.iloc[-1].tolist()]
-
-    # row_data = timeframe.dataset[-1] # as a single row
-
-    # row2Ddata = timeframe.dataset[-1:, :] # as a 2D array
-
-    #  dataset = prepare_dataframe_for_sending(timeframe.dataset[-1:, :])
-    row:np.ndarray = timeframe.dataset[-1]
+    row = timeframe.dataset[-1].tolist()
+    row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP])
     
     message = {
         "type": "row",
         "timeframe": timeframe.timeframeStr,
         "columns": timeframe.columns,
-        "data": row.tolist(),
+        "data": row,
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
     asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
