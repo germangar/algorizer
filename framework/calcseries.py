@@ -2097,7 +2097,7 @@ def RSI( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->ge
 
 def IFTrsi( source:np.ndarray|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    rsi = timeframe.calcGeneratedSeries( 'rsi', _ensure_numpy_array(source), period, _generatedseries_calculate_rsi )
+    rsi = timeframe.calcGeneratedSeries( 'rsi', _ensure_numpy_array(source), period, _generatedseries_calculate_rsi, always_reset=True )
     return timeframe.calcGeneratedSeries( 'iftrsi', rsi.series(), period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
