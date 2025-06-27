@@ -14,7 +14,7 @@ I will provide basic documentation later on, but as of now there is a ['example_
 
 You can use template.py as base to write scripts.
 
-**Warning** When accesing old candle data directly from a series/array don't use relative indexing (don't do close[-2]). **During the backtest the barindex will not be at the end of the series.** Use always absolute indexing (close[barindex-1]). If you are accessing a generatedSeries (aka, a calc.* function generated series) you can use relative indexing when you use its iloc/value method, but not directly at the series (rsi14.iloc(-2) good, rsi14.series()[-2] bad). In general using always absolute indexing is the safe path both at direct series access and the methods.
+**Warning** When accesing old candle data directly from a series/array don't use relative indexing (don't do close[-2]). **During the backtest the barindex will not be at the end of the series.** Use always absolute indexing (close[barindex-1]). If you are accessing a generatedSeries (aka, a calc.* function generated series) you can use relative indexing when you use its iloc/value method, but not directly at the series (rsi14.iloc(-2) good, rsi14.series()[-2] bad). In general **using always absolute indexing is the safe path** both at direct series access and the methods.
 
 ![algorizer screenshot](https://github.com/user-attachments/assets/40d84241-1895-4152-8201-080a44dfdca2)
 
@@ -27,7 +27,7 @@ You can use template.py as base to write scripts.
 - Make the chart load bars in modular blocks so it doesn't take so long on high bar count.
 
 
-. I will not make much more work on the UI/Chart. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so whole new chart  replacements other than lightweight-charts could be added</br>
+. I will not make much work on the chart window UI. I'll make it able to change timeframe if the lightweight-charts gods allow it and that's it. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so even whole new chart replacements other than lightweight-charts could be added</br>
 . I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates, but I have no idea where one can obtain that information in the world of stocks.
 
 --------------------
