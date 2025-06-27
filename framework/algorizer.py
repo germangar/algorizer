@@ -32,6 +32,7 @@ class plot_c:
         self.name = name
         self.type = type
         self.chart_name = chart_name
+        self.column_index = -1
         self.color = color if color.startswith('rgba') else tools.hx2rgba(color)
         self.style = style
         self.width = width
@@ -40,7 +41,7 @@ class plot_c:
         self.screen_name = screen_name
         self._temp_values = []
 
-        timeframe = active.timeframe  # FIXME - ensure active.timeframe is set before plot_c init
+        timeframe = active.timeframe
 
         if source is None or isinstance(source, (float, int)):
             if name:
@@ -52,64 +53,21 @@ class plot_c:
                 if not self.screen_name:
                     self.screen_name = self.name
 
-                series = timeframe.createColumn( self.name )
-
-                # # Add column to columns list
-                # timeframe.columns.append(self.name)
-                # # Add column to dataset (all np.nan)
-                # rows, cols = timeframe.dataset.shape
-                # new_col = np.full((rows, 1), np.nan, dtype=np.float64)
-                # timeframe.dataset = np.hstack([timeframe.dataset, new_col])
+                series = timeframe.createColumn( self.name ) # it creates a series_c with its name and stores it in timeframe.registeredSeries
+                self.column_index = series.index
 
         elif isinstance(source, generatedSeries_c):
             self.name = source.name
-            # Column should already exist
 
         if not self.name or self.name not in timeframe.registeredSeries.keys():
             raise ValueError(f"plot_c:Couldn't assign a name to the plot [{name}]")
 
     def update(self, source, timeframe):
-        """
-        Updates the plot's data in the NumPy dataset.
-        """
         if isinstance(source, (generatedSeries_c, np.ndarray, series_c)):
             return
-
-        # col_idx = timeframe.columns.index(self.name)
-        col_idx = timeframe.registeredSeries[self.name].index
-
-        if isinstance(source, (int, float, type(None))):
-            if timeframe.backtesting:
-                self._temp_values.append(source)
-            else:
-                # Real-time: directly assign to the dataset
-                timeframe.dataset[timeframe.barindex, col_idx] = np.nan if source is None else float(source)
+        if self.column_index == -1:
             return
-
-        raise ValueError(f"Unvalid plot type {self.name}: {type(source)}")
-
-    def _apply_batch_updates(self, timeframe):
-        """
-        Applies all collected temporary values to the dataset column in a single vectorized operation.
-        """
-        if not self._temp_values:
-            return
-
-        # col_idx = timeframe.columns.index(self.name)
-        col_idx = timeframe.registeredSeries[self.name].index
-        num_values = len(self._temp_values)
-        rows = timeframe.dataset.shape[0]
-        values_to_assign = np.array(self._temp_values, dtype=np.float64)
-
-        if num_values > rows:
-            print(f"Warning: Plot '{self.name}' has more collected values ({num_values}) than dataset rows ({rows}). Truncating values_to_assign.")
-            values_to_assign = values_to_assign[:rows]
-            num_values = rows
-
-        # Assign by slice
-        timeframe.dataset[:num_values, col_idx] = values_to_assign
-        self._temp_values = []
-
+        timeframe.dataset[timeframe.barindex, self.column_index] = np.nan if source is None else float(source)
 
 
 class marker_c:
@@ -214,18 +172,7 @@ class timeframe_c:
         self.realtimeCandle.bottom = min(self.realtimeCandle.open, self.realtimeCandle.close)
         self.stream.timestampFetch = self.realtimeCandle.timestamp
 
-        print( len(self.dataset), "candles processed." )
-
-        # --- Phase 3: Apply batch updates for plots ---
-        # This MUST happen after the backtesting loop is finished,
-        # as all plot values for historical data would have been collected in _temp_values by now.
-        if len(self.registeredPlots) :
-            for plot_obj in self.registeredPlots.values():
-                plot_obj._apply_batch_updates(self)
-            print(f"Batch updates applied to plots {self.timeframeStr}.")
-        ###############################################################################
-
-        print( "Total time: {:.2f} seconds".format(time.time() - start_time))
+        print( len(self.dataset), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
 
 
     def parseCandleUpdate( self, rows ): # rows is a 2D numpy array now
