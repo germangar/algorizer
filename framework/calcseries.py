@@ -1113,49 +1113,100 @@ def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, da
 
     return k_line
 
+#
+def _generatedseries_calculate_obv(source: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param=None) -> np.ndarray:
+    """
+    Calculate On-Balance Volume (OBV) using numpy, optimized for full and incremental updates.
 
-def _generatedseries_calculate_obv(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if dataset.shape[0] == 0:
+    Args:
+        source (np.ndarray): Close prices (dataset[:, c.DF_CLOSE] or slice [-2:]).
+        period (int): Set to 2 (for close[i], close[i-1]).
+        dataset (np.ndarray): 2D array with columns [..., c.DF_VOLUME, ...].
+        cindex (int): Output column index (-1 for init, >=0 for update).
+        param (int): Volume column index (c.DF_VOLUME).
+
+    Returns:
+        np.ndarray: OBV values, full array or single value.
+    """
+    # oddly enough, talib is slower on this one
+    # if talib_available:
+    #     return talib.OBV( dataset[:, c.DF_CLOSE], dataset[:, c.DF_VOLUME] )
+
+    if dataset.shape[0] == 0 or len(source) == 0:
         return np.array([], dtype=np.float64)
 
     try:
-        close = source # dataset[:, c.DF_CLOSE]
+        # Get volume column
         volume = dataset[:, c.DF_VOLUME]
-        length = len(close)
+        length = dataset.shape[0]
+        source_length = len(source)
 
         # Initialize output
         result = np.full(length, np.nan, dtype=np.float64)
-        if length < 1:
+
+        # Determine if update mode (source is slice, period=2)
+        is_update = source_length == 2 and cindex >= 0 and cindex < dataset.shape[1]
+        barindex = length - 1
+
+        # Update mode: compute single new OBV value
+        if is_update:
+            if barindex < 0 or source_length < 2:
+                return np.array([np.nan], dtype=np.float64)
+            if np.any(np.isnan(source)) or np.isnan(volume[barindex]):
+                return np.array([np.nan], dtype=np.float64)
+            
+            # Get previous OBV
+            prev_obv = 0.0 if barindex == 0 else dataset[barindex-1, cindex]
+            if barindex > 0 and np.isnan(prev_obv):
+                return np.array([np.nan], dtype=np.float64)
+
+            # Compute direction and new OBV
+            direction = np.sign(source[-1] - source[-2])
+            signed_volume = direction * volume[barindex]
+            new_obv = prev_obv + signed_volume
+            return np.array([new_obv], dtype=np.float64)
+
+        # Full calculation: initialize or recompute
+        if source_length != length:
+            return np.full(length, np.nan, dtype=np.float64)
+
+        # Set initial OBV
+        result[0] = 0 if not np.isnan(source[0]) and not np.isnan(volume[0]) else np.nan
+        if length == 1:
             return result
 
-        # Set initial OBV to 0
-        result[0] = 0 if not np.isnan(volume[0]) and not np.isnan(close[0]) else np.nan
-
-        if length < 2:
-            return result
-
-        # Compute price direction: sign(close[i] - close[i-1])
-        close_diff = np.diff(close)
-        direction = np.sign(close_diff)
+        # Determine start index for partial recalculation
+        start_idx = 0
+        prev_obv = 0.0
+        if cindex >= 0 and cindex < dataset.shape[1] and length > 1:
+            valid_obv = dataset[:-1, cindex]
+            valid_mask = ~np.isnan(valid_obv)
+            if np.any(valid_mask):
+                start_idx = np.where(valid_mask)[0][-1] + 1
+                prev_obv = valid_obv[start_idx - 1]
 
         # Compute signed volume
-        signed_volume = np.zeros(length, dtype=np.float64)
-        signed_volume[1:] = direction * volume[1:]
+        close_diff = np.diff(source[start_idx:])
+        direction = np.sign(close_diff)
+        signed_volume = np.zeros(length - start_idx, dtype=np.float64)
+        signed_volume[1:] = direction * volume[start_idx + 1:]
 
-        # Handle NaNs in close or volume
-        valid_mask = ~np.isnan(close) & ~np.isnan(volume)
-        signed_volume[~valid_mask] = 0  # Set invalid to 0 for cumsum
+        # Handle NaNs
+        valid_mask = ~np.isnan(source[start_idx:]) & ~np.isnan(volume[start_idx:])
+        signed_volume[~valid_mask] = 0
 
-        # Cumulative sum for OBV
-        result = np.cumsum(signed_volume, dtype=np.float64)
-
-        # Set NaN where close or volume is invalid
-        result[~valid_mask] = np.nan
+        # Cumulative sum
+        result[start_idx:] = np.cumsum(signed_volume, dtype=np.float64) + prev_obv
+        result[start_idx:][~valid_mask] = np.nan
 
         return result
     except (IndexError, ValueError):
-        return np.full(len(dataset), np.nan, dtype=np.float64)
+        return np.full(length, np.nan, dtype=np.float64)
     
+
+
+
+
 
 
 
@@ -1534,9 +1585,9 @@ def _ensure_object_array( data: series_c|generatedSeries_c )-> series_c:
         return data.series()
     elif isinstance(data, np.ndarray):
         # try to guess its index but we won't allow it anyway. We want to get rid of this option
-        index = tools.get_column_index_from_array( self.dataset, source )
+        index = tools.get_column_index_from_array( active.timeframe.dataset, data )
         if index:
-            name = list(self.registeredSeries.keys())[index]
+            name = list(active.timeframe.registeredSeries.keys())[index]
             raise ValueError( f"_ensure_object_array: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{name}]" )
         raise ValueError( "_ensure_object_array: Numpy np.ndarray is not a valid object" )
     else:
@@ -1906,7 +1957,6 @@ def SMA( source: series_c|generatedSeries_c, period: int, timeframe=None )->gene
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries('sma', _ensure_object_array(source), period, _generatedseries_calculate_sma)
 
-
 def EMA( source: series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "ema", _ensure_object_array(source), period, _generatedseries_calculate_ema, always_reset=True )
@@ -1914,7 +1964,6 @@ def EMA( source: series_c|generatedSeries_c, period:int, timeframe = None )->gen
 def DEMA( source: series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "dema", _ensure_object_array(source), period, _generatedseries_calculate_dema, always_reset=True )
-
 
 def RMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
@@ -1945,15 +1994,6 @@ def HMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->gene
     # Final WMA with sqrt(period)
     sqrt_period = int(np.sqrt(period))
     return timeframe.calcGeneratedSeries( "hma", raw_hma.series(), sqrt_period, _generatedseries_calculate_wma )
-
-# # def JMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-# #     timeframe = timeframe or active.timeframe
-# #     return timeframe.calcGeneratedSeries( "jma", source, period, pt.jma )
-
-# # def KAMA( source:pd.Series, period:int, timeframe = None )->generatedSeries_c:
-# #     timeframe = timeframe or active.timeframe
-# #     return timeframe.calcGeneratedSeries( "kama", source, period, pt.kama )
-
 
 def STDEV( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
@@ -2054,11 +2094,10 @@ def STOCHk( source: series_c|generatedSeries_c, period:int, timeframe=None )-> t
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( "stochk", _ensure_object_array(source), period, _generatedseries_calculate_stoch_k )
 
-
-def OBV( source: series_c|generatedSeries_c, timeframe=None ) -> generatedSeries_c:
+def OBV( timeframe=None ) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'obv', source, 1, _generatedseries_calculate_obv, always_reset=True )
-
+    # period=2 because obv reads the previous value of close. It can not be anything else.
+    return timeframe.calcGeneratedSeries( 'obv', timeframe.registeredSeries['close'], 2, _generatedseries_calculate_obv )
 
 
 # # #
