@@ -2005,17 +2005,17 @@ def DEV( source:series_c|generatedSeries_c, period:int, timeframe = None )->gene
 
 def WILLR( period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    source = timeframe.dataset[:, c.DF_CLOSE]
+    source = timeframe.registeredSeries['close']
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
 def TR( period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    source = timeframe.dataset[:, c.DF_CLOSE] # pass through the checks
+    source = timeframe.registeredSeries['close'] # pass through the checks
     return timeframe.calcGeneratedSeries( 'tr', source, period, _generatedseries_calculate_tr )
 
 def ATR( period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    source = timeframe.dataset[:, c.DF_CLOSE]
+    source = timeframe.registeredSeries['close']
     return timeframe.calcGeneratedSeries( 'atr', source, period, _generatedseries_calculate_atr )
 
 def SLOPE( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
@@ -2038,7 +2038,7 @@ def CCI(period: int = 20, timeframe=None) -> generatedSeries_c:
     if not isinstance(period, int ):
         raise ValueError( "CCI requires only a period argument" )
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('cci', timeframe.dataset[:, c.DF_CLOSE], period, _generatedseries_calculate_cci, always_reset= True)
+    return timeframe.calcGeneratedSeries('cci', timeframe.registeredSeries['close'], period, _generatedseries_calculate_cci, always_reset= True)
 
 def CFO( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
@@ -2063,22 +2063,22 @@ def IFTrsi( source:series_c|generatedSeries_c, period:int, timeframe = None )->g
 
 def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
-    fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.dataset[:, c.DF_CLOSE], period, _generatedseries_calculate_fisher )
-    sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.dataset[:, c.DF_CLOSE], period, _generatedseries_calculate_fisher_signal, signal )
+    fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.registeredSeries['close'], period, _generatedseries_calculate_fisher )
+    sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.registeredSeries['close'], period, _generatedseries_calculate_fisher_signal, signal )
     return fish, sig
 
 def AO( fast: int = 5, slow: int = 34, timeframe = None ) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
     param = (fast, slow)
-    return timeframe.calcGeneratedSeries('ao', timeframe.dataset[:,c.DF_CLOSE], max(fast,slow), _generatedseries_calculate_ao, param)
+    return timeframe.calcGeneratedSeries('ao', timeframe.registeredSeries['close'], max(fast,slow), _generatedseries_calculate_ao, param)
 
 def BR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'br', timeframe.dataset[:,c.DF_CLOSE], period, _generatedseries_calculate_br )
+    return timeframe.calcGeneratedSeries( 'br', timeframe.registeredSeries['close'], period, _generatedseries_calculate_br )
 
 def AR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries( 'ar', timeframe.dataset[:,c.DF_CLOSE], period, _generatedseries_calculate_ar )
+    return timeframe.calcGeneratedSeries( 'ar', timeframe.registeredSeries['close'], period, _generatedseries_calculate_ar )
 
 def BRAR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = timeframe or active.timeframe
