@@ -2,12 +2,12 @@
 from typing import Union
 talib_available = False
 talib = None
-# try:
-#     import talib
-#     talib_available = True
-# except ImportError:
-#     talib_available = False
-#     print("Talib not available")
+try:
+    import talib
+    talib_available = True
+except ImportError:
+    talib_available = False
+    print("Talib not available")
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
