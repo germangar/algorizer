@@ -474,7 +474,7 @@ def _generatedseries_calculate_bias(source: np.ndarray, period: int, dataset: np
         return np.full_like(source, np.nan)
 
     # Calculate the Simple Moving Average (SMA) of the source price
-    sma_values = _generatedseries_calculate_sma(source, period, dataset)
+    sma_values = _generatedseries_calculate_sma(source, period, -1, dataset)
 
     # Initialize bias array with NaNs
     bias = np.full_like(source, np.nan)
