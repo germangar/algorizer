@@ -213,7 +213,7 @@ class timeframe_c:
                     self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
 
                 # Print progress only during the main historical processing loop
-                if self.barindex % 5000 == 0 and not self.jumpstart: 
+                if self.barindex % 10000 == 0 and not self.jumpstart: 
                     print( self.barindex, "candles processed." )
 
                 self.jumpstart = False
