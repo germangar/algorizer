@@ -44,7 +44,7 @@ class plot_c:
 
         if source is None or isinstance(source, (float, int)):
             if name:
-                if name in timeframe.columns:
+                if name in timeframe.registeredSeries.keys():
                     raise ValueError(f"plot_c:name [{name}] is already in use")
                 if name.startswith('_'):
                     raise ValueError(f"plot_c:names starting with an underscore are reserved for generatedSeries_c objects")
@@ -52,28 +52,31 @@ class plot_c:
                 if not self.screen_name:
                     self.screen_name = self.name
 
-                # Add column to columns list
-                timeframe.columns.append(self.name)
-                # Add column to dataset (all np.nan)
-                rows, cols = timeframe.dataset.shape
-                new_col = np.full((rows, 1), np.nan, dtype=np.float64)
-                timeframe.dataset = np.hstack([timeframe.dataset, new_col])
+                series = timeframe.createColumn( self.name )
+
+                # # Add column to columns list
+                # timeframe.columns.append(self.name)
+                # # Add column to dataset (all np.nan)
+                # rows, cols = timeframe.dataset.shape
+                # new_col = np.full((rows, 1), np.nan, dtype=np.float64)
+                # timeframe.dataset = np.hstack([timeframe.dataset, new_col])
 
         elif isinstance(source, generatedSeries_c):
             self.name = source.name
             # Column should already exist
 
-        if not self.name or self.name not in timeframe.columns:
+        if not self.name or self.name not in timeframe.registeredSeries.keys():
             raise ValueError(f"plot_c:Couldn't assign a name to the plot [{name}]")
 
     def update(self, source, timeframe):
         """
         Updates the plot's data in the NumPy dataset.
         """
-        if isinstance(source, (generatedSeries_c, np.ndarray)):
+        if isinstance(source, (generatedSeries_c, np.ndarray, series_c)):
             return
 
-        col_idx = timeframe.columns.index(self.name)
+        # col_idx = timeframe.columns.index(self.name)
+        col_idx = timeframe.registeredSeries[self.name].index
 
         if isinstance(source, (int, float, type(None))):
             if timeframe.backtesting:
@@ -92,7 +95,8 @@ class plot_c:
         if not self._temp_values:
             return
 
-        col_idx = timeframe.columns.index(self.name)
+        # col_idx = timeframe.columns.index(self.name)
+        col_idx = timeframe.registeredSeries[self.name].index
         num_values = len(self._temp_values)
         rows = timeframe.dataset.shape[0]
         values_to_assign = np.array(self._temp_values, dtype=np.float64)
@@ -147,7 +151,6 @@ class timeframe_c:
         self.jumpstart = False
 
         self.dataset:Optional[np.NDArray[np.float64]] = None
-        self.columns:list[str] = []
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
         self.registeredSeries: dict[str, series_c] = {}
@@ -156,7 +159,7 @@ class timeframe_c:
         self.realtimeCandle.timeframemsec = self.timeframeMsec
 
  
-    def initDataframe( self, ohlcvNP, columns:list[str] ):
+    def initDataframe( self, ohlcvNP ):
         print( "=================" )
         print( f"Creating dataframe {self.timeframeStr}" )
 
@@ -165,9 +168,9 @@ class timeframe_c:
         # --- Phase 1: Create a copy of the dataframe skipping the last row as the candle is not closed ---
         start_time = time.time()
         self.dataset = ohlcvNP[:-1, :].copy()
-        self.columns = columns
 
         # create series_c objects representing the columns
+        self.registeredSeries['timestamp'] = series_c( self.dataset[:, c.DF_TIMESTAMP], 'timestamp' )
         self.registeredSeries['open'] = series_c( self.dataset[:, c.DF_OPEN], 'open' )
         self.registeredSeries['high'] = series_c( self.dataset[:, c.DF_HIGH], 'high' )
         self.registeredSeries['low'] = series_c( self.dataset[:, c.DF_LOW], 'low' )
@@ -372,9 +375,6 @@ class timeframe_c:
 
 
     def createColumn( self, name )->series_c:
-        if name in self.columns: #FIXME: we need to remove the columns names
-            raise ValueError( f"column [{name}] already exists" )
-        
         if name in self.registeredSeries.keys():
             raise ValueError( f"column [{name}] already exists" )
         
@@ -384,7 +384,6 @@ class timeframe_c:
         self.dataset = np.hstack([self.dataset, new_col])
         index = self.dataset.shape[1] - 1
         self.registeredSeries[name] = series_c(self.dataset[:,index], name, index = index)
-        self.columns.append(name) #FIXME: we need to remove the columns names
         return self.registeredSeries[name]
 
 
@@ -464,31 +463,10 @@ class timeframe_c:
             }
             di[p.name] = plot
         return di
-
-    def arrayFromMultiobject( self, source: str|generatedSeries_c|np.ndarray )->tuple[np.ndarray, int|None]:
-        # Resolve source to a NumPy array and get its index/name
-        if isinstance(source, str):
-            # Find index for string column name
-            try:
-                source = self.registeredSeries[source]
-                index = source.index
-                array = source
-            except Exception as e:
-                index = self.columns.index(source)
-                array = self.dataset[:, index]
-        elif isinstance(source, generatedSeries_c):
-            array = source.series()
-            index = source.column_index
-        elif isinstance(source, series_c):
-            array = source
-            index = source.index
-        elif isinstance(source, np.ndarray): # FIXME: We need to get rid of this
-            array = source
-            index = tools.get_column_index_from_array(self.dataset, array)
-        else:
-            raise ValueError(f"Unsupported type for operand array: {type(source)}")
-        return (array, index)
     
+    def columnsList( self )->list:
+        return list( self.registeredSeries.keys() )
+
     def seriesFromMultiObject( self, source: str|generatedSeries_c|np.ndarray )->series_c:
         if isinstance( source, series_c ):
             return source
@@ -501,11 +479,11 @@ class timeframe_c:
             # try to guess its index but we won't allow it anyway
             index = tools.get_column_index_from_array( self.dataset, source )
             if index:
-                raise ValueError( f"seriesFromMultiObject: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{self.columns[index]}]" )
+                name = list(self.registeredSeries.keys())[index]
+                raise ValueError( f"seriesFromMultiObject: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{name}]" )
             raise ValueError( "seriesFromMultiObject: Numpy np.ndarray is not a valid object" )
         else:
             raise ValueError( "seriesFromMultiObject: Not a recognized series object" )
-
 
     def indexForTimestamp( self, timestamp:int )->int:
         # Estimate the index by dividing the offset by the time difference between rows
@@ -517,15 +495,15 @@ class timeframe_c:
         return int( self.dataset[index, c.DF_TIMESTAMP] )
 
     def _columnIndex( self, column_name ):
-        return self.columns.index(column_name)
+        return list(self.registeredSeries.keys()).index[column_name]
 
     def valueAtTimestamp( self, column_name, timestamp:int ):
         index = self.indexForTimestamp(timestamp)
         if index == -1:
             return None
-        if column_name not in self.columns:
-            raise ValueError(f"Column '{column_name}' not found in DataFrame.")
-        return self.dataset[index, self._columnIndex(column_name)]
+        if column_name not in self.registeredSeries.keys():
+            raise ValueError(f"Column '{column_name}' not found in dataset.")
+        return self.registeredSeries[column_name][index]
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
@@ -620,10 +598,6 @@ class stream_c:
                 candles = tools.resample_ohlcv_np( ohlcvNP, t )
                 print( f"Resampled {t} : {len(candles)} rows" )
 
-            # create top and bottom columns
-            # candles['top'] = candles[['open', 'close']].max(axis=1)
-            # candles['bottom'] = candles[['open', 'close']].min(axis=1)
-
             # Add the new 'top' and 'bottom' columns to the candles NumPy array
             top_values = np.maximum(candles[:, c.DF_OPEN], candles[:, c.DF_CLOSE]).reshape(-1, 1)
             bottom_values = np.minimum(candles[:, c.DF_OPEN], candles[:, c.DF_CLOSE]).reshape(-1, 1)
@@ -635,7 +609,7 @@ class stream_c:
                 timeframe.callback = callbacks[i]
 
             self.timeframes[t] = timeframe
-            timeframe.initDataframe( candles, ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'top', 'bottom'] )
+            timeframe.initDataframe( candles )
             
             candles = []
 
@@ -697,7 +671,6 @@ class stream_c:
             #pprint( response )
             if( len(response) ):
                 self.parseCandleUpdateMulti( np.array( response, dtype=np.float64 ) )
-                # self.parseCandleUpdateMulti( pd.DataFrame( response, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'] ) )
             
             await asyncio.sleep(0.01)
 

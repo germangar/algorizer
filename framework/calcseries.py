@@ -1027,25 +1027,6 @@ def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.n
 
 #
 def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    """
-    Calculates the Stochastic %K line. It adapts to operate on either the full
-    historical data (during initialization) or on a recent slice (during updates).
-
-    Args:
-        source_close (np.ndarray): The close price series. This can be the full series
-                                   during initialization or a recent slice during update.
-                                   Its length determines the scope of calculation.
-        k_period (int): The lookback period for the %K calculation (e.g., 14 bars).
-        dataset (np.ndarray): The full 2D dataset array (e.g., timeframe.dataset).
-                              Used to access the high and low columns for the
-                              corresponding slice of data being processed.
-        param (Any): Unused for standard %K, but kept for signature consistency.
-
-    Returns:
-        np.ndarray: The calculated %K line as a 1D NumPy array.
-                    Its length will match the length of `source_close`.
-                    Returns NaNs if `k_period` cannot be met.
-    """
     if talib_available:
         high = dataset[:, c.DF_HIGH]
         low = dataset[:, c.DF_LOW]
@@ -1134,18 +1115,6 @@ def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, da
 
 
 def _generatedseries_calculate_obv(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    """
-    Calculate On-Balance Volume (OBV) using numpy, optimized for full calculation.
-
-    Args:
-        series (np.ndarray): Placeholder (unused, for compatibility).
-        period (int): Unused (OBV is cumulative, no lookback).
-        dataset (np.ndarray): 2D array with columns [..., c.DF_CLOSE, ..., c.DF_VOLUME, ...].
-        param (tuple): (close_col_idx, volume_col_idx) for column indices.
-
-    Returns:
-        np.ndarray: OBV values, cumulative sum of signed volume.
-    """
     if dataset.shape[0] == 0:
         return np.array([], dtype=np.float64)
 
@@ -1200,19 +1169,10 @@ class generatedSeries_c:
         if timeframe is None:
             raise SystemError(f"Generated Series has no assigned timeframe [unknown]")
 
-        if isinstance( source, series_c ):
-            source_col_idx = source.index
-            source_col_name = source.name
-        else:
+        if not isinstance( source, series_c ):
             raise ValueError( "Source must be 'series_c' type" )
-            # source_col_idx = tools.get_column_index_from_array(timeframe.dataset, source)
-            # if source_col_idx is None:
-            #     raise ValueError("Column not found in dataset")
-            # source_col_name = timeframe.columns[source_col_idx]
 
         self.name = tools.generatedSeriesNameFormat(type, source, period)
-        self.sourceName = source_col_name
-        self.sourceIndex = source_col_idx
         self.column_index = -1
         self.period = period if period is not None else len(source)
         self.param = param
@@ -1232,7 +1192,7 @@ class generatedSeries_c:
 
     def initialize( self, source: series_c ):
         assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
-        if len(source) >= self.period and (self.name not in self.timeframe.columns or self.alwaysReset):
+        if len(source) >= self.period and (self.name not in self.timeframe.registeredSeries.keys() or self.alwaysReset):
             timeframe = self.timeframe
             if timeframe.backtesting and not timeframe.jumpstart:
                 raise SystemError(f"[{self.name}] tried to initialize as backtesting")
@@ -1247,16 +1207,9 @@ class generatedSeries_c:
                 values = np.array(values, dtype=np.float64)
 
             # Add the new column if necessary
-            if self.name not in timeframe.columns:
+            if self.name not in timeframe.registeredSeries.keys():
                 series = timeframe.createColumn( self.name )
                 self.column_index = series.index
-
-                # n_rows = timeframe.dataset.shape[0]
-                # new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
-                # timeframe.dataset = np.hstack([timeframe.dataset, new_col])
-                # self.column_index = timeframe.dataset.shape[1] - 1
-                # timeframe.columns.append(self.name)
-                # timeframe.registeredSeries[self.name] = series_c(timeframe.dataset[:,self.column_index], self.name)
 
             # Only assign values where not nan (mimicking dropna)
             mask = ~np.isnan(values)
@@ -1583,7 +1536,8 @@ def _ensure_object_array( data: series_c|generatedSeries_c )-> series_c:
         # try to guess its index but we won't allow it anyway. We want to get rid of this option
         index = tools.get_column_index_from_array( self.dataset, source )
         if index:
-            raise ValueError( f"_ensure_object_array: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{self.columns[index]}]" )
+            name = list(self.registeredSeries.keys())[index]
+            raise ValueError( f"_ensure_object_array: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{name}]" )
         raise ValueError( "_ensure_object_array: Numpy np.ndarray is not a valid object" )
     else:
         raise TypeError(f"Unsupported input type: {type(data)}. Expected np.ndarray, pd.Series, or generatedSeries_c.")

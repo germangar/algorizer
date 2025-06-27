@@ -117,7 +117,7 @@ async def send_dataframe(cmd_socket, timeframe):
     """
 
     dataset = timeframe.dataset
-    columns = timeframe.columns
+    columns = timeframe.columnsList()
     timeframe_str = timeframe.timeframeStr
     client.timeframeStr = timeframe_str
 
@@ -183,7 +183,7 @@ def push_row_update(timeframe):
     message = {
         "type": "row",
         "timeframe": timeframe.timeframeStr,
-        "columns": timeframe.columns,
+        "columns": timeframe.columnsList(),
         "data": row,
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
