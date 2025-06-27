@@ -1,4 +1,6 @@
 import numpy as np
+from .nameseries import series_c
+from .calcseries import generatedSeries_c
 
 def get_column_index_from_array( dataset:np.ndarray, candidate_col:np.ndarray ):
     # Try to find the index of the candidate_col in the dataset columns
@@ -20,7 +22,9 @@ def stringToValue( arg )->float:
 # used to standarize the name given to a generated series (calcseries.py)
 # I probably should defined type pd.series for 'source' but I don't feel like importing pandas here
 def generatedSeriesNameFormat( type, source, period:int ):
-    return f'_{type}_{period}'#{source.name}'
+    if isinstance(source, (series_c, generatedSeries_c)):
+        return f'_{type}_{period}{source.name}'
+    return f'_{type}_{period}'
 
 def hx2rgba(hex_color):
     """Converts a hex color code (with or without alpha) to an RGBA string for CSS."""

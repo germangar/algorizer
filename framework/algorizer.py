@@ -11,6 +11,7 @@ from . import tasks
 from . import tools
 from .fetcher import ohlcvs_c
 from .candle import candle_c
+from .nameseries import series_c
 from . import calcseries as calc
 from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
@@ -149,6 +150,7 @@ class timeframe_c:
         self.columns:list[str] = []
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
+        self.registeredSeries: dict[str, series_c] = {}
 
         self.realtimeCandle:candle_c = candle_c()
         self.realtimeCandle.timeframemsec = self.timeframeMsec
@@ -165,6 +167,16 @@ class timeframe_c:
         self.dataset = ohlcvNP[:-1, :].copy()
         self.columns = columns
 
+        # create series_c objects representing the columns
+        self.registeredSeries['open'] = series_c( self.dataset[:, c.DF_OPEN], 'open' )
+        self.registeredSeries['high'] = series_c( self.dataset[:, c.DF_HIGH], 'high' )
+        self.registeredSeries['low'] = series_c( self.dataset[:, c.DF_LOW], 'low' )
+        self.registeredSeries['close'] = series_c( self.dataset[:, c.DF_CLOSE], 'close' )
+        self.registeredSeries['volume'] = series_c( self.dataset[:, c.DF_VOLUME], 'volume' )
+        self.registeredSeries['top'] = series_c( self.dataset[:, c.DF_TOP], 'top' )
+        self.registeredSeries['bottom'] = series_c( self.dataset[:, c.DF_BOTTOM], 'bottom' )
+        
+
         # --- Phase 2: backtesting (row-by-row backtest simulation) ---
         if self.callback and not tools.emptyFunction( self.callback ):
             print( f"Computing script logic {self.timeframeStr}." )
@@ -177,6 +189,8 @@ class timeframe_c:
             self.realtimeCandle.low = self.dataset[0, c.DF_LOW]
             self.realtimeCandle.close = self.dataset[0, c.DF_CLOSE]
             self.realtimeCandle.volume = self.dataset[0, c.DF_VOLUME]
+            self.realtimeCandle.top = self.dataset[0, c.DF_TOP]
+            self.realtimeCandle.bottom = self.dataset[0, c.DF_BOTTOM]
 
             self.backtesting = True
             self.jumpstart = True
@@ -193,6 +207,8 @@ class timeframe_c:
         self.realtimeCandle.low = row[c.DF_LOW]
         self.realtimeCandle.close = row[c.DF_CLOSE]
         self.realtimeCandle.volume = row[c.DF_VOLUME]
+        self.realtimeCandle.top = max(self.realtimeCandle.open, self.realtimeCandle.close)
+        self.realtimeCandle.bottom = min(self.realtimeCandle.open, self.realtimeCandle.close)
         self.stream.timestampFetch = self.realtimeCandle.timestamp
 
         print( len(self.dataset), "candles processed." )
@@ -244,7 +260,7 @@ class timeframe_c:
 
                 # Execute the user-defined callback for each historical candle.
                 if( self.callback != None ):
-                    self.callback( self, self.dataset[:, c.DF_OPEN], self.dataset[:, c.DF_HIGH], self.dataset[:, c.DF_LOW], self.dataset[:, c.DF_CLOSE], self.dataset[:, c.DF_VOLUME], self.dataset[:, c.DF_TOP], self.dataset[:, c.DF_BOTTOM] )
+                    self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
 
                 # Print progress only during the main historical processing loop
                 if self.barindex % 5000 == 0 and not self.jumpstart: 
@@ -316,6 +332,14 @@ class timeframe_c:
             new_row[c.DF_TOP]    = self.realtimeCandle.top
             new_row[c.DF_BOTTOM]    = self.realtimeCandle.bottom
             self.dataset = np.vstack([self.dataset, new_row]) # Append the new row to the dataset
+            
+            # reallocate the named series views because a new row was created
+            for n in self.registeredSeries.keys():
+                series = self.registeredSeries[n]
+                index = series.index
+                name = series.name
+                assignable = series.assignable
+                self.registeredSeries[n] = series_c( self.dataset[:, index], name, assignable= assignable, index= index )
 
             # copy newrow into realtimeCandle for the NEXT incoming tick
             self.realtimeCandle.timestamp = newrow_timestamp
@@ -341,25 +365,32 @@ class timeframe_c:
                 self.stream.tick_callback( self.realtimeCandle )
 
             if( self.callback != None ):
-                self.callback( self, self.dataset[:, c.DF_OPEN], self.dataset[:, c.DF_HIGH], self.dataset[:, c.DF_LOW], self.dataset[:, c.DF_CLOSE], self.dataset[:, c.DF_VOLUME], self.dataset[:, c.DF_TOP], self.dataset[:, c.DF_BOTTOM] )
+                self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
 
             if not self.stream.initializing:
                 push_row_update( self )
 
 
-
-
-
-
-
-
+    def createColumn( self, name )->series_c:
+        if name in self.columns: #FIXME: we need to remove the columns names
+            raise ValueError( f"column [{name}] already exists" )
         
-
+        if name in self.registeredSeries.keys():
+            raise ValueError( f"column [{name}] already exists" )
+        
+        # Add the new column if necessary
+        n_rows = self.dataset.shape[0]
+        new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
+        self.dataset = np.hstack([self.dataset, new_col])
+        index = self.dataset.shape[1] - 1
+        self.registeredSeries[name] = series_c(self.dataset[:,index], name, index = index)
+        self.columns.append(name) #FIXME: we need to remove the columns names
+        return self.registeredSeries[name]
 
 
     def calcGeneratedSeries( self, type:str, source: np.ndarray|generatedSeries_c, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
-        if isinstance( source, generatedSeries_c ):
-            source = source.series()
+        # if isinstance( source, generatedSeries_c ):
+        #     source = source.series()
 
         name = tools.generatedSeriesNameFormat( type, source, period )
 
@@ -438,12 +469,20 @@ class timeframe_c:
         # Resolve source to a NumPy array and get its index/name
         if isinstance(source, str):
             # Find index for string column name
-            index = self.columns.index(source)
-            array = self.dataset[:, index]
+            try:
+                source = self.registeredSeries[source]
+                index = source.index
+                array = source
+            except Exception as e:
+                index = self.columns.index(source)
+                array = self.dataset[:, index]
         elif isinstance(source, generatedSeries_c):
             array = source.series()
             index = source._columnIndex()
-        elif isinstance(source, np.ndarray):
+        elif isinstance(source, series_c):
+            array = source
+            index = source.index
+        elif isinstance(source, np.ndarray): # FIXME: We need to get rid of this
             array = source
             index = tools.get_column_index_from_array(self.dataset, array)
         else:
