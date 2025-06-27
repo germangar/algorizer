@@ -374,10 +374,10 @@ def _generatedseries_calculate_dema(series: np.ndarray, period: int, dataset: np
         return np.full(length, np.nan)
 
     # Calculate first EMA
-    ema1 = _generatedseries_calculate_ema(series, period, dataset)
+    ema1 = _generatedseries_calculate_ema(series, period, cindex, dataset)
 
     # Calculate EMA of EMA
-    ema2 = _generatedseries_calculate_ema(ema1, period, dataset)
+    ema2 = _generatedseries_calculate_ema(ema1, period, cindex, dataset)
 
     # Calculate DEMA: 2 * EMA1 - EMA2
     dema = 2 * ema1 - ema2
@@ -725,8 +725,8 @@ def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.
         return talib.ATR(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE], period)
     
     # Compute RMA of True Range
-    tr = _generatedseries_calculate_tr(series, period, dataset, param)
-    atr = _generatedseries_calculate_rma(tr, period, dataset, param)
+    tr = _generatedseries_calculate_tr(series, period, dataset, cindex, param)
+    atr = _generatedseries_calculate_rma(tr, period, dataset, cindex, param)
 
     return atr
 
@@ -910,7 +910,7 @@ def _generatedseries_calculate_fisher_signal(series: np.ndarray, period: int, da
     Fisher Transform signal line: usually an EMA of Fisher line, default length 9 if not provided
     """
     signal_period = param if param else 9
-    fish = _generatedseries_calculate_fisher(series, period, dataset)
+    fish = _generatedseries_calculate_fisher(series, period, cindex, dataset)
     length = len(fish)
     sig = np.full(length, np.nan, dtype=np.float64)
     alpha = 2 / (signal_period + 1)
