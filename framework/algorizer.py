@@ -478,7 +478,7 @@ class timeframe_c:
                 array = self.dataset[:, index]
         elif isinstance(source, generatedSeries_c):
             array = source.series()
-            index = source._columnIndex()
+            index = source.column_index
         elif isinstance(source, series_c):
             array = source
             index = source.index
@@ -488,6 +488,24 @@ class timeframe_c:
         else:
             raise ValueError(f"Unsupported type for operand array: {type(source)}")
         return (array, index)
+    
+    def seriesFromMultiObject( self, source: str|generatedSeries_c|np.ndarray )->series_c:
+        if isinstance( source, series_c ):
+            return source
+        elif isinstance( source, generatedSeries_c ):
+            return source.series()
+        elif isinstance( source, str ):
+            if source in self.registeredSeries.keys():
+                return self.registeredSeries[source]
+        elif isinstance( source, np.ndarray ):
+            # try to guess its index but we won't allow it anyway
+            index = tools.get_column_index_from_array( self.dataset, source )
+            if index:
+                raise ValueError( f"seriesFromMultiObject: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{self.columns[index]}]" )
+            raise ValueError( "seriesFromMultiObject: Numpy np.ndarray is not a valid object" )
+        else:
+            raise ValueError( "seriesFromMultiObject: Not a recognized series object" )
+
 
     def indexForTimestamp( self, timestamp:int )->int:
         # Estimate the index by dividing the offset by the time difference between rows

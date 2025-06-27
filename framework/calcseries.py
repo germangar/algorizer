@@ -859,8 +859,6 @@ def _generatedseries_calculate_inverse_fisher_rsi(series: np.ndarray, period: in
     def wma(arr, window):
         weights = np.arange(1, window + 1)
         ret = np.full_like(arr, np.nan, dtype=np.float64)
-        print(f"Type of ret after creation: {type(ret)}")
-        # ret.assignable = True
         for i in range(window - 1, len(arr)):
             windowed = arr[i - window + 1:i + 1]
             if np.any(np.isnan(windowed)):
@@ -1206,10 +1204,11 @@ class generatedSeries_c:
             source_col_idx = source.index
             source_col_name = source.name
         else:
-            source_col_idx = tools.get_column_index_from_array(timeframe.dataset, source)
-            if source_col_idx is None:
-                raise ValueError("Column not found in dataset")
-            source_col_name = timeframe.columns[source_col_idx]
+            raise ValueError( "Source must be 'series_c' type" )
+            # source_col_idx = tools.get_column_index_from_array(timeframe.dataset, source)
+            # if source_col_idx is None:
+            #     raise ValueError("Column not found in dataset")
+            # source_col_name = timeframe.columns[source_col_idx]
 
         self.name = tools.generatedSeriesNameFormat(type, source, period)
         self.sourceName = source_col_name
@@ -1231,7 +1230,8 @@ class generatedSeries_c:
             raise SystemError(f"Generated Series with invalid period [{period}]")
 
 
-    def initialize(self, source: np.ndarray|series_c):
+    def initialize( self, source: series_c ):
+        assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
         if len(source) >= self.period and (self.name not in self.timeframe.columns or self.alwaysReset):
             timeframe = self.timeframe
             if timeframe.backtesting and not timeframe.jumpstart:
@@ -1268,9 +1268,11 @@ class generatedSeries_c:
             if timeframe.stream.initializing:
                 print(f"Initialized {self.name}. Elapsed time: {time.time() - start_time:.2f} seconds")
 
-    def update(self, source: np.ndarray):
+    def update( self, source:series_c ):
         if self.timeframe.backtesting:
             return
+        
+        assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
         
         tf = self.timeframe
 
@@ -1293,10 +1295,6 @@ class generatedSeries_c:
         tf.dataset[barindex, self.column_index] = newval
         self.lastUpdatedTimestamp = tf.timestamp
 
-    def _columnIndex( self ):
-        assert( self.column_index >= 0 )
-        return self.column_index
-
     def iloc( self, index = -1 ):
         barindex = self.timeframe.barindex
 
@@ -1312,7 +1310,7 @@ class generatedSeries_c:
             else:
                 # If cache is invalid or not yet populated, fetch from DataFrame
                 if barindex >= 0 and barindex < len(self.timeframe.dataset):
-                    value = self.timeframe.dataset[barindex, self._columnIndex()]
+                    value = self.timeframe.dataset[barindex, self.column_index]
                     self.__current_cache = value
                     self.__cached_barindex = barindex
                     return value
@@ -1328,7 +1326,7 @@ class generatedSeries_c:
         if index < 0 or index >= len(self.timeframe.dataset):
             return np.nan # Return NaN for out-of-bounds access
             
-        return self.timeframe.dataset[index, self._columnIndex()]
+        return self.timeframe.dataset[index, self.column_index]
     iat = iloc # alias for the same method
     value = iloc # alias for the same method
     
@@ -1342,7 +1340,7 @@ class generatedSeries_c:
         try:
             series = self.timeframe.registeredSeries[self.name]
         except Exception as e:
-            series = self.timeframe.dataset[:, self._columnIndex()]
+            series = self.timeframe.dataset[:, self.column_index]
         return series
     
 
@@ -1582,7 +1580,11 @@ def _ensure_object_array( data: series_c|generatedSeries_c )-> series_c:
     elif isinstance(data, generatedSeries_c):
         return data.series()
     elif isinstance(data, np.ndarray):
-        return data # the goal is to get rid of these
+        # try to guess its index but we won't allow it anyway. We want to get rid of this option
+        index = tools.get_column_index_from_array( self.dataset, source )
+        if index:
+            raise ValueError( f"_ensure_object_array: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{self.columns[index]}]" )
+        raise ValueError( "_ensure_object_array: Numpy np.ndarray is not a valid object" )
     else:
         raise TypeError(f"Unsupported input type: {type(data)}. Expected np.ndarray, pd.Series, or generatedSeries_c.")
 
@@ -1591,257 +1593,191 @@ def _ensure_object_array( data: series_c|generatedSeries_c )-> series_c:
 def addSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"add_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"add_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"add_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
 
-        name = f"add_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
-        
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_add_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_add_series, colB )
 
 def subtractSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"sub_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"sub_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"sub_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"sub_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_subtract_series, arrayB)
+    return timeframe.calcGeneratedSeries( name, colA, 1, _generatedseries_calculate_subtract_series, colB )
 
 def multiplySeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"mul_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"mul_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"mul_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"mul_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_multiply_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_multiply_series, colB)
 
 def divideSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"div_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"div_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"div_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"div_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_divide_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_divide_series, colB)
 
 def powerSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"pow_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"pow_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"pow_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"pow_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_power_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_power_series, colB)
 
 def minSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"min_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"min_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"min_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"min_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_min_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, colB)
 
 def maxSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"max_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"max_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"max_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"max_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_max_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, colB)
 
 def equalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"eq_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"eq_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"eq_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"eq_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_equal_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_equal_series, colB)
 
 def notequalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"neq_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"neq_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"neq_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"neq_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_notequal_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_notequal_series, colB)
 
 def greaterSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"gr_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"gr_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"gr_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"gr_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_greater_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greater_series, colB)
 
 def greaterOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"gre_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"gre_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"gre_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"gre_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_greaterorequal_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greaterorequal_series, colB)
 
 def lessSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"lt_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"lt_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"lt_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"lt_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_less_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_less_series, colB)
 
 def lessOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    arrayA, idxA_raw = timeframe.arrayFromMultiobject(colA)
-    idxA = idxA_raw if idxA_raw is not None else f"anon{id(arrayA)}"
-
+    colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"le_{idxA}_{colB}"
-        arrayB = colB # not really an array
+        name = f"le_{colA.index}_{colB}"
     else:
-        arrayB, idxB_raw = timeframe.arrayFromMultiobject(colB)
-        idxB = idxB_raw if idxB_raw is not None else f"anon{id(arrayB)}"
-        if arrayA.shape != arrayB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"le_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
+        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
-
-        name = f"le_{idxA}_{idxB}" # Using resolved indices/names for consistent naming
         
-    return timeframe.calcGeneratedSeries(name, arrayA, 1, _generatedseries_calculate_lessequal_series, arrayB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_lessequal_series, colB)
 
 def notSeries(source: str | generatedSeries_c | series_c, timeframe=None) ->generatedSeries_c:
     timeframe = timeframe or active.timeframe
 
-    array, idx_raw = timeframe.arrayFromMultiobject(source)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"not_{idx}"
-    return timeframe.calcGeneratedSeries( name, array, 1, _generatedseries_calculate_logical_not, None )
+    source = timeframe.seriesFromMultiObject( source )
+    name = f"not_{source.index}"
+    return timeframe.calcGeneratedSeries( name, source, 1, _generatedseries_calculate_logical_not, None )
 
 #
 ########## SCALARS By SERIES
@@ -1853,118 +1789,105 @@ def addScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c,
     Factory function for scalar + series.
     """
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"add_{scalar}_{idx}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries( name, array, 1, _generatedseries_calculate_scalar_add_series, scalar )
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"add_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_add_series, scalar )
 
 def subtractScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """
     Factory function for scalar - series.
     """
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"sub_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_subtract_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"sub_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_subtract_series, scalar)
 
 def multiplyScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """
     Factory function for scalar * series.
     """
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"mult_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_multiply_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"mul_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_multiply_series, scalar)
 
 def divideScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """
     Factory function for scalar / series.
     """
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"div_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_divide_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"div_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_divide_series, scalar)
 
 def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """
     Factory function for scalar ** series.
     """
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"pow_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_power_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"pow_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_power_series, scalar)
 
 def minScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """
     Factory function for min(scalar, series).
     """
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"min_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_min_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"min_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_min_series, scalar)
 
 def maxScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """
     Factory function for max(scalar, series).
     """
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"max_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_max_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"max_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_max_series, scalar)
 
 def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """Factory for scalar == series."""
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"eq_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_equal_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"eq_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_equal_series, scalar)
 
 def notEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """Factory for scalar != series."""
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"ne_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_notequal_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"neq_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_notequal_series, scalar)
 
 def greaterScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """Factory for scalar > series."""
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"gt_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_greater_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"gt_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greater_series, scalar)
 
 def greaterOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """Factory for scalar >= series."""
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"ge_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_greaterorequal_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"ge_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greaterorequal_series, scalar)
 
 def lessScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """Factory for scalar < series."""
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"lt_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_less_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"lt_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_less_series, scalar)
 
 def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
     """Factory for scalar <= series."""
     timeframe = timeframe or active.timeframe
-    array, idx_raw = timeframe.arrayFromMultiobject(series)
-    idx = idx_raw if idx_raw is not None else f"anon{id(array)}"
-    name = f"le_{scalar}_{idx}"
-    return timeframe.calcGeneratedSeries(name, array, 1, _generatedseries_calculate_scalar_lessequal_series, scalar)
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"le_{scalar}_{series.index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_lessequal_series, scalar)
 
 
 
