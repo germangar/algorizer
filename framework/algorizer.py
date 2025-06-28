@@ -39,7 +39,6 @@ class plot_c:
         self.hist_margin_top = hist_margin_top
         self.hist_margin_bottom = hist_margin_bottom
         self.screen_name = screen_name
-        self._temp_values = []
 
         timeframe = active.timeframe
 
@@ -285,10 +284,10 @@ class timeframe_c:
             
             # reallocate the named series views because a new row was created
             for n in self.registeredSeries.keys():
-                series = self.registeredSeries[n]
-                index = series.index
-                name = series.name
-                assignable = series.assignable
+                gs = self.registeredSeries[n]
+                index = gs.index
+                name = gs.name
+                assignable = gs.assignable
                 self.registeredSeries[n] = series_c( self.dataset[:, index], name, assignable= assignable, index= index )
 
             # copy newrow into realtimeCandle for the NEXT incoming tick
@@ -316,6 +315,12 @@ class timeframe_c:
 
             if( self.callback != None ):
                 self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
+
+            # make sure no generated series is left unupdated
+            for n in self.generatedSeries.keys():
+                gs = self.generatedSeries[n]
+                if gs.lastUpdatedTimestamp < self.barindex:
+                    gs.update(self.registeredSeries[gs.source_name])
 
             if not self.stream.initializing:
                 push_row_update( self )

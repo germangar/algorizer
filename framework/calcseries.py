@@ -1225,6 +1225,7 @@ class generatedSeries_c:
 
         self.name = tools.generatedSeriesNameFormat(type, source, period)
         self.column_index = -1
+        self.source_name = source.name
         self.period = period if period is not None else len(source)
         self.param = param
         self.func = func
