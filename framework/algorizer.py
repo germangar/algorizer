@@ -52,7 +52,7 @@ class plot_c:
                 if not self.screen_name:
                     self.screen_name = self.name
 
-                series = timeframe.createColumn( self.name ) # it creates a series_c with its name and stores it in timeframe.registeredSeries
+                series = timeframe.createColumnSeries( self.name, True ) # it creates a series_c with its name and stores it in timeframe.registeredSeries
                 self.column_index = series.index
 
         elif isinstance(source, generatedSeries_c):
@@ -127,14 +127,14 @@ class timeframe_c:
         self.dataset = ohlcvNP[:-1, :].copy()
 
         # create series_c objects representing the columns
-        self.registeredSeries['timestamp'] = series_c( self.dataset[:, c.DF_TIMESTAMP], 'timestamp' )
-        self.registeredSeries['open'] = series_c( self.dataset[:, c.DF_OPEN], 'open' )
-        self.registeredSeries['high'] = series_c( self.dataset[:, c.DF_HIGH], 'high' )
-        self.registeredSeries['low'] = series_c( self.dataset[:, c.DF_LOW], 'low' )
-        self.registeredSeries['close'] = series_c( self.dataset[:, c.DF_CLOSE], 'close' )
-        self.registeredSeries['volume'] = series_c( self.dataset[:, c.DF_VOLUME], 'volume' )
-        self.registeredSeries['top'] = series_c( self.dataset[:, c.DF_TOP], 'top' )
-        self.registeredSeries['bottom'] = series_c( self.dataset[:, c.DF_BOTTOM], 'bottom' )
+        self.registeredSeries['timestamp'] = series_c( self.dataset[:, c.DF_TIMESTAMP], 'timestamp', False )
+        self.registeredSeries['open'] = series_c( self.dataset[:, c.DF_OPEN], 'open', False )
+        self.registeredSeries['high'] = series_c( self.dataset[:, c.DF_HIGH], 'high', False )
+        self.registeredSeries['low'] = series_c( self.dataset[:, c.DF_LOW], 'low', False )
+        self.registeredSeries['close'] = series_c( self.dataset[:, c.DF_CLOSE], 'close', False )
+        self.registeredSeries['volume'] = series_c( self.dataset[:, c.DF_VOLUME], 'volume', False )
+        self.registeredSeries['top'] = series_c( self.dataset[:, c.DF_TOP], 'top', False )
+        self.registeredSeries['bottom'] = series_c( self.dataset[:, c.DF_BOTTOM], 'bottom', False )
         
 
         # --- Phase 2: backtesting (row-by-row backtest simulation) ---
@@ -325,17 +325,20 @@ class timeframe_c:
             if not self.stream.initializing:
                 push_row_update( self )
 
-
-    def createColumn( self, name )->series_c:
-        if name in self.registeredSeries.keys():
-            raise ValueError( f"column [{name}] already exists" )
-        
+    def createColumn( self )->int:
         # Add the new column if necessary
         n_rows = self.dataset.shape[0]
         new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
         self.dataset = np.hstack([self.dataset, new_col])
         index = self.dataset.shape[1] - 1
-        self.registeredSeries[name] = series_c(self.dataset[:,index], name, index = index)
+        return index
+
+    def createColumnSeries( self, name, assignable = True )->series_c:
+        if name in self.registeredSeries.keys():
+            raise ValueError( f"column [{name}] already exists" )
+
+        index = self.createColumn()
+        self.registeredSeries[name] = series_c(self.dataset[:,index], name, assignable, index)
         return self.registeredSeries[name]
 
 

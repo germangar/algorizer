@@ -76,6 +76,7 @@ def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, 
 
 
 def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
+    barindex = timeframe.barindex # for simplicity
 
     # bollinger bands returns 3 generatedSeries
     BBbasis, BBupper, BBlower = calc.BollingerBands( close, 350 )
@@ -147,7 +148,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
         offset = 50
         if longpos:
             lastorderindex = longpos.get_order_by_direction(c.LONG)['barindex']
-            offset = timeframe.barindex - lastorderindex
+            offset = barindex - lastorderindex
         if offset > 40:
             trade.order( 'buy', c.LONG )
 
@@ -157,7 +158,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
         offset = 50
         if shortpos:
             lastorderindex = shortpos.get_order_by_direction(c.SHORT)['barindex']
-            offset = timeframe.barindex - lastorderindex
+            offset = barindex - lastorderindex
         if offset > 40:
             trade.order( 'sell', c.SHORT )
 

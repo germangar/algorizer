@@ -1260,7 +1260,7 @@ class generatedSeries_c:
 
             # Add the new column if necessary
             if self.name not in timeframe.registeredSeries.keys():
-                series = timeframe.createColumn( self.name )
+                series = timeframe.createColumnSeries( self.name, False )
                 self.column_index = series.index
 
             # Only assign values where not nan (mimicking dropna)
