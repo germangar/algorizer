@@ -16,10 +16,18 @@ class series_c(np.ndarray):
                 if np.shares_memory(dataset[:, idx], input_array) or np.all(dataset[:, idx] == input_array):
                     index = idx
 
+        if assignable and name.startswith('_'):
+            raise ValueError( f"series_c [{name}] : Names starting with underscore are reserver for generated series." )
+
+        # the series doesnot have a column, create one
+        if index == -1:
+            assignable = True
+            index = active.timeframe.createColumn()
+
         # Add the name property to the instance
         obj.name = name
         obj.index = index
-        obj.assignable = assignable or index == -1
+        obj.assignable = assignable
 
         # check if it's already registered in the timeframe, otherwise register it
         if name not in active.timeframe.registeredSeries.keys():
@@ -31,11 +39,11 @@ class series_c(np.ndarray):
         if obj is None: return
         self.name = getattr(obj, 'name', None)
         self.index = getattr(obj, 'index', -1)
-        self.assignable = getattr(obj, 'assignable', False)
+        self.assignable = True # getattr(obj, 'assignable', False)
 
     def __setitem__(self, key, value):
         if not self.assignable:
-            raise ValueError("Assignment to this NamedArray is currently disabled.")
+            raise ValueError( f"Assigning values to series_c [{self.name}] is not allowed.")
         super().__setitem__(key, value) # Call the parent class's __setitem__ method to actually set the value
 
     @staticmethod
