@@ -385,7 +385,7 @@ class strategy_c:
                     if self.verbose or not isInitializing():
                         print(f"Partial close: Reduced {current_overall_active_pos.type} position by {actual_quantity_to_process_base_units:.2f} base units.")
 
-        # NEW: Call the broker_event after the order is processed and position state is updated
+        # Call the broker_event after the order is processed and position state is updated
         if not isInitializing() and affected_pos is not None:
             final_position_type_for_broker_event = 0
             final_position_size_base_for_broker_event = 0.0
@@ -714,6 +714,7 @@ class position_c:
         self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime (in base units)
         self.active_capital_invested = 0.0 # NEW: Tracks the USD capital (cost basis) currently tied up in the open position
         self.close_timestamp = None # NEW: Store timestamp when position is closed
+        self.liquidation_price = 0.0
 
     def _recalculate_current_position_state(self):
         """
@@ -761,6 +762,18 @@ class position_c:
         else:
             self.active_capital_invested = 0.0
 
+        self._update_liquidation_price()
+
+    def _update_liquidation_price(self):
+        if self.leverage == 1 or self.size == 0:
+            self.liquidation_price = 0.0
+            return
+        if self.type == c.LONG:
+            self.liquidation_price = self.priceAvg * (1 - 1.0 / self.leverage)
+        elif self.type == c.SHORT:
+            self.liquidation_price = self.priceAvg * (1 + 1.0 / self.leverage)
+        else:
+            self.liquidation_price = 0.0
 
     def get_average_entry_price_from_history(self) -> float:
         """
@@ -1131,3 +1144,6 @@ def print_summary_stats(): # New function
 
 def print_pnl_by_period_summary(): # New global function for PnL by period
     strategy.print_pnl_by_period()
+
+def priceUpdate( candle:candle_c, realtime:bool ):
+    pass
