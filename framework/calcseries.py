@@ -1301,28 +1301,13 @@ class generatedSeries_c:
         self.lastUpdatedTimestamp = tf.timestamp
 
     def iloc( self, index = -1 ):
+        return self.__getitem__(index)
         barindex = self.timeframe.barindex
 
         if self.timeframe != active.timeframe :
             timestamp = active.timeframe.timestamp + ( (index+1) * self.timeframe.timeframeMsec )
             return self.timeframe.valueAtTimestamp( self.name, timestamp )
 
-        # Handle lazy-loading cache for the current bar (index -1)
-        if index == -1:
-            # Check if the cache is valid for the current active.barindex
-            if self.__cached_barindex == barindex and not np.isnan(self.__current_cache):
-                return self.__current_cache
-            else:
-                # If cache is invalid or not yet populated, fetch from DataFrame
-                if barindex >= 0 and barindex < len(self.timeframe.dataset):
-                    value = self.timeframe.dataset[barindex, self.column_index]
-                    self.__current_cache = value
-                    self.__cached_barindex = barindex
-                    return value
-                else:
-                    # Handle out-of-bounds access for current bar
-                    return np.nan # Or raise an error, depending on desired behavior
-        
         # Original iloc logic for other indices
         if index < 0:
             index = barindex + 1 + index
@@ -1338,7 +1323,7 @@ class generatedSeries_c:
     
     def current( self ):
         '''returns the last value in the series'''
-        return self.iloc(-1)
+        return self.__getitem__(-1)
     
 
     def series(self):
@@ -1348,7 +1333,25 @@ class generatedSeries_c:
             series = self.timeframe.dataset[:, self.column_index]
         return series
     
+    def __getitem__(self, key):
+        if self.timeframe != active.timeframe :
+            if key < 0:
+                key = active.timeframe.barindex + 1 + key
+            timestamp = active.timeframe.timestamp - ( (active.timeframe.barindex - key) * active.timeframe.timeframeMsec )
+            return self.timeframe.valueAtTimestamp( self.name, timestamp )
+        # Original iloc logic for other indices
+        if key < 0:
+            key = self.timeframe.barindex + 1 + key
+        if key < 0 or key >= len(self.timeframe.dataset):
+            return np.nan # Return NaN for out-of-bounds access
+        return self.timeframe.dataset[:, self.column_index][key]
 
+    def __setitem__(self, key, value):
+        self.series()[key] = value # This is going to be denied
+
+    def __len__(self):
+        return len(self.timeframe.dataset[:, self.column_index])
+    
     def __add__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
             return addSeries(self, other)

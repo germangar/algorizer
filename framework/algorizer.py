@@ -55,18 +55,20 @@ class plot_c:
                 series = timeframe.createColumnSeries( self.name, True ) # it creates a series_c with its name and stores it in timeframe.registeredSeries
                 self.column_index = series.index
 
-        elif isinstance(source, generatedSeries_c):
+        elif isinstance( source, (generatedSeries_c, series_c) ):
             self.name = source.name
 
         if not self.name or self.name not in timeframe.registeredSeries.keys():
             raise ValueError(f"plot_c:Couldn't assign a name to the plot [{name}]")
 
     def update(self, source, timeframe):
-        if isinstance(source, (generatedSeries_c, np.ndarray, series_c)):
-            return
-        if self.column_index == -1:
-            return
-        timeframe.dataset[timeframe.barindex, self.column_index] = np.nan if source is None else float(source)
+        # if isinstance(source, (generatedSeries_c, np.ndarray, series_c)):
+        #     return
+        # if self.column_index == -1:
+        #     print( f"WARNING plot_c [{self.name}] has column_index -1")
+        #     return
+        if source is None or isinstance(source, (float, int)):
+            timeframe.dataset[timeframe.barindex, self.column_index] = np.nan if source is None else float(source)
 
 
 class marker_c:
@@ -285,6 +287,7 @@ class timeframe_c:
             # reallocate the named series views because a new row was created
             for n in self.registeredSeries.keys():
                 gs = self.registeredSeries[n]
+                # gs.refresh_view()
                 index = gs.index
                 name = gs.name
                 assignable = gs.assignable
