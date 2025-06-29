@@ -95,7 +95,13 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     # but in this case it's easier to use the generatedSeries object to retrieve it.
     # You can read its value here, but not operate with the object nor use the plot method
     # since this object belongs to a different timeframe.
-    invRSI = rsiSlow.current()
+    
+    # These all do the same, but negative indexing should only be used in the iloc() method:
+    invRSI = rsiSlow[barindex]
+    # invRSI = rsiSlow.current()
+    # invRSI = rsiSlow.iloc(barindex)
+    # invRSI = rsiSlow.iloc(-1)
+    #invRSI = rsiSlow.series()[barindex]
 
     # We convert the -1/+1 value to the scale of standard rsi so they can share the same panel.
     if invRSI is not None:
