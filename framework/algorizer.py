@@ -15,7 +15,6 @@ from .nameseries import series_c
 from . import calcseries as calc
 from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
-from .trade import priceUpdate
 from . import active
 
 
@@ -214,9 +213,6 @@ class timeframe_c:
                 if( self.callback != None ):
                     self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
 
-                # inform the strategy of the new price
-                priceUpdate( self.candle(), False )
-                
                 # Print progress only during the main historical processing loop
                 if self.barindex % 10000 == 0 and not self.jumpstart: 
                     print( self.barindex, "candles processed." )
@@ -267,11 +263,8 @@ class timeframe_c:
                     if self.stream.tick_callback != None:
                         self.stream.tick_callback( self.realtimeCandle )
 
-                # inform the strategy about the price change
-                priceUpdate( self.realtimeCandle, True )
-
-                if not self.stream.initializing:
-                    push_tick_update( self )
+                    if not self.stream.initializing:
+                        push_tick_update( self )
 
                 continue
 
@@ -332,12 +325,8 @@ class timeframe_c:
                 if gs.lastUpdatedTimestamp < self.barindex:
                     gs.update(self.registeredSeries[gs.source_name])
 
-            # inform the strategy about the price change (maybe we should do this before running the script?)
-            priceUpdate( self.realtimeCandle, True )
-
             if not self.stream.initializing:
                 push_row_update( self )
-            
 
     def createColumn( self )->int:
         # Add the new column if necessary
