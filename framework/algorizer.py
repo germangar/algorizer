@@ -213,7 +213,7 @@ class timeframe_c:
                 if self.barindex % 10000 == 0 and not self.jumpstart: 
                     print( self.barindex, "candles processed." )
 
-                self.tickEvent( self.realtimeCandle, False )
+                self.stream.tickEvent( self.realtimeCandle, False )
 
                 self.jumpstart = False
                 continue # Move to the next row in the `rows` input
@@ -258,7 +258,7 @@ class timeframe_c:
                 self.realtimeCandle.updateRemainingTime()
 
                 if is_fetch :
-                    self.tickEvent( self.realtimeCandle, True )
+                    self.stream.tickEvent( self.realtimeCandle, True )
                     if not self.stream.initializing:
                         push_tick_update( self )
 
@@ -317,18 +317,11 @@ class timeframe_c:
                 if gs.lastUpdatedTimestamp < self.barindex:
                     gs.update(self.registeredSeries[gs.source_name])
 
-            self.tickEvent( self.realtimeCandle, True )
+            self.stream.tickEvent( self.realtimeCandle, True )
 
             if not self.stream.initializing:
                 push_row_update( self )
-            
-    def tickEvent( self, candle:candle_c, realtime:bool ):
-        if self.timeframeStr != self.stream.timeframeFetch :
-           return
-
-        if self.stream.event_callback:
-            self.stream.event_callback( self.stream, "tick", (candle, realtime), 2 )
-
+        
 
     def createColumn( self )->int:
         # Add the new column if necessary
@@ -635,6 +628,12 @@ class stream_c:
 
         await self.exchange.close()
 
+    def tickEvent( self, candle:candle_c, realtime:bool ):
+        if active.timeframe.timeframeStr != self.timeframeFetch :
+           return
+
+        if self.event_callback:
+            self.event_callback( self, "tick", (candle, realtime), 2 )
 
     def broker_event( self, order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
         '''
