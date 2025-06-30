@@ -62,11 +62,6 @@ class plot_c:
             raise ValueError(f"plot_c:Couldn't assign a name to the plot [{name}]")
 
     def update(self, source, timeframe):
-        # if isinstance(source, (generatedSeries_c, np.ndarray, series_c)):
-        #     return
-        # if self.column_index == -1:
-        #     print( f"WARNING plot_c [{self.name}] has column_index -1")
-        #     return
         if source is None or isinstance(source, (float, int)):
             timeframe.dataset[timeframe.barindex, self.column_index] = np.nan if source is None else float(source)
 
@@ -179,6 +174,7 @@ class timeframe_c:
     def parseCandleUpdate( self, rows ): # rows is a 2D numpy array now
 
         active.timeframe = self
+        is_fetch = self.timeframeStr == self.stream.timeframeFetch
 
         for newrow in rows:
             # print( newrow )
@@ -206,7 +202,7 @@ class timeframe_c:
                 self.realtimeCandle.index = self.barindex + 1
 
                 # Update stream's fetch timestamp if this is the smallest timeframe
-                if self.timeframeStr == self.stream.timeframeFetch :
+                if is_fetch:
                     self.stream.timestampFetch = self.realtimeCandle.timestamp
 
                 # Execute the user-defined callback for each historical candle.
@@ -216,6 +212,8 @@ class timeframe_c:
                 # Print progress only during the main historical processing loop
                 if self.barindex % 10000 == 0 and not self.jumpstart: 
                     print( self.barindex, "candles processed." )
+
+                self.tickEvent( self.realtimeCandle, False )
 
                 self.jumpstart = False
                 continue # Move to the next row in the `rows` input
@@ -230,7 +228,7 @@ class timeframe_c:
             # has it reached a new candle yet?
             if newrow_timestamp < self.realtimeCandle.timestamp + self.timeframeMsec:
                 # no. This is still a real time candle update
-                if self.timeframeStr == self.stream.timeframeFetch:
+                if is_fetch:
                     self.realtimeCandle.timestamp = newrow_timestamp
                     self.realtimeCandle.open = newrow_open
                     self.realtimeCandle.high = newrow_high
@@ -259,10 +257,8 @@ class timeframe_c:
                 self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
                 self.realtimeCandle.updateRemainingTime()
 
-                if( self.timeframeStr == self.stream.timeframeFetch ): # a tick is the same to all timeframes, so do it only for one
-                    if self.stream.tick_callback != None:
-                        self.stream.tick_callback( self.realtimeCandle )
-
+                if is_fetch :
+                    self.tickEvent( self.realtimeCandle, True )
                     if not self.stream.initializing:
                         push_tick_update( self )
 
@@ -287,7 +283,6 @@ class timeframe_c:
             # reallocate the named series views because a new row was created
             for n in self.registeredSeries.keys():
                 gs = self.registeredSeries[n]
-                # gs.refresh_view()
                 index = gs.index
                 name = gs.name
                 assignable = gs.assignable
@@ -308,13 +303,10 @@ class timeframe_c:
             self.barindex = new_idx
             active.barindex = self.barindex
             self.timestamp = int( self.dataset[ self.barindex, c.DF_TIMESTAMP ] )
-            if self.timeframeStr == self.stream.timeframeFetch :
+            if is_fetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
 
             print( f"NEW CANDLE {self.timeframeStr} : {newrow.tolist()}" )
-
-            if( self.timeframeStr == self.stream.timeframeFetch and self.stream.tick_callback != None ):
-                self.stream.tick_callback( self.realtimeCandle )
 
             if( self.callback != None ):
                 self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
@@ -325,8 +317,18 @@ class timeframe_c:
                 if gs.lastUpdatedTimestamp < self.barindex:
                     gs.update(self.registeredSeries[gs.source_name])
 
+            self.tickEvent( self.realtimeCandle, True )
+
             if not self.stream.initializing:
                 push_row_update( self )
+            
+    def tickEvent( self, candle:candle_c, realtime:bool ):
+        if self.timeframeStr != self.stream.timeframeFetch :
+           return
+
+        if self.stream.event_callback:
+            self.stream.event_callback( self.stream, "tick", (candle, realtime), 2 )
+
 
     def createColumn( self )->int:
         # Add the new column if necessary
@@ -483,7 +485,7 @@ class timeframe_c:
 
 
 class stream_c:
-    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, event_callback = None, tick_callback = None, max_amount = 5000, cache_only = False ):
+    def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, event_callback = None, max_amount = 5000, cache_only = False ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
         self.isRunning = False
@@ -493,7 +495,6 @@ class stream_c:
         self.precision = 0.0
         self.mintick = 0.0
         self.cache_only = cache_only
-        self.tick_callback = tick_callback
         self.event_callback = event_callback
         if event_callback == None:
             self.event_callback = globals().get('event')

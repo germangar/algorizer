@@ -15,6 +15,16 @@ def event( stream:stream_c, event:str, param, numparams ):
         if cmd == 'echo': # command will always be lower case
             print( 'Echo ', args )
 
+    elif event == "tick":
+        assert( isinstance(param, tuple) and len(param) == numparams)
+        '''
+        candle : a cancle_c containing the OHLCV values of the latest price.
+        realtime : boolean. True for realtime, false for backtesting.
+        '''
+        candle, realtime = param
+        if not realtime:
+            return
+
     # This event will be called when the strategy executes an order in real time. Not when backtesting.
     elif event == "broker_event":
         assert( isinstance(param, tuple) and len(param) == numparams)
@@ -137,8 +147,10 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     # print( signal_line.current() )
 
     # trading logic 
-    buySignal = rsi14 > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 30
-    sellSignal = rsi14 < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 70
+    # buySignal = rsi14.current() > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 30
+    # sellSignal = rsi14.current() < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 70
+    buySignal = calc.crossingUp( close, BBlower ) and invRSI < 40
+    sellSignal = calc.crossingDown( close, BBupper ) and invRSI > 60
 
     # same thing using methods
     # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 35
@@ -227,7 +239,7 @@ if __name__ == '__main__':
     #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bybit', ['1d', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, tick, 25000 )
+    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['4h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 100000 )
 
     # Create subpanels to plot the oscilators.
     # with and height are values between 0 amd 1, representing the percentage of the

@@ -1301,7 +1301,7 @@ class generatedSeries_c:
         self.lastUpdatedTimestamp = tf.timestamp
 
     def iloc( self, index = -1 ):
-        return self.__getitem__(index)
+        # return self.__getitem__(index)
         barindex = self.timeframe.barindex
 
         if self.timeframe != active.timeframe :

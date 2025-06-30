@@ -4,17 +4,23 @@ from framework import stream_c, timeframe_c, generatedSeries_c, candle_c, pivots
 from framework import plot, histogram, requestValue, createMarker
 
 
-
 def event( stream:stream_c, event:str, param, numparams ):
-    if event == "cli_command":
+    if event == "tick":
+        '''
+        candle : a cancle_c containing the OHLCV values of the latest price.
+        realtime : boolean. True for realtime, false for backtesting.
+        '''
+        assert( isinstance(param, tuple) and len(param) == numparams)
+        candle, realtime = param
+        if not realtime : return
+
+    elif event == "cli_command":
         assert( isinstance(param, tuple) and len(param) == numparams)
         cmd, args = param
         if cmd == 'echo': # command will always be lower case
             print( 'Echo ', args )
 
     elif event == "broker_event":
-        import requests
-        assert( isinstance(param, tuple) and len(param) == numparams)
         '''
         order_type (Buy/Sell): represented as the constants c.LONG (1) and c.SHORT (-1)
         quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.01 BTC).
@@ -25,6 +31,8 @@ def event( stream:stream_c, event:str, param, numparams ):
         leverage (Leverage of the Order)
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
+        import requests
+        assert( isinstance(param, tuple) and len(param) == numparams)
         order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage = param
 
         # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
@@ -37,10 +45,6 @@ def event( stream:stream_c, event:str, param, numparams ):
             message = f"{account} {stream.symbol} {order} {quantity_dollars:.4f}$ {leverage}x"
         if url:
             req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
-
-
-def tick( realtimeCandle:candle_c ):
-    pass
 
 
 def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
@@ -59,7 +63,7 @@ if __name__ == '__main__':
     trade.strategy.leverage_long = 1
     trade.strategy.leverage_short = 1
     
-    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['1h'], [runCloseCandle], event, tick, 25000 )
+    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['1h'], [runCloseCandle], event, 25000 )
 
     stream.registerPanel('rsi_subpanel', 1.0, 0.2 )
 
