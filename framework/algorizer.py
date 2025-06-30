@@ -635,6 +635,9 @@ class stream_c:
         if self.event_callback:
             self.event_callback( self, "tick", (candle, realtime), 2 )
 
+        from .trade import newTick
+        newTick(candle, realtime)
+
     def broker_event( self, order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
         '''
         order_type (Buy/Sell Event): represented as the constants c.LONG (1) and c.SHORT (-1)

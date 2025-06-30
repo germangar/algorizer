@@ -1,4 +1,3 @@
-
 # THIS FILE HAS BEEN WRITTEN BY GEMINI AI 
 # I find this annoying to write so I just asked the AI to do it. 
 
@@ -46,6 +45,11 @@ class strategy_c:
         self.first_order_timestamp = None # NEW: To track the very first order timestamp in the strategy
         self.leverage_long = leverage_long   # Default leverage for LONG trades
         self.leverage_short = leverage_short # Default leverage for SHORT trades
+
+        # Liquidation tracking
+        self.total_liquidated_positions = 0
+        self.total_liquidated_long_positions = 0
+        self.total_liquidated_short_positions = 0
 
         # Validate currency_mode
         if self.currency_mode not in ['USD', 'BASE']:
@@ -179,47 +183,28 @@ class strategy_c:
         if self.currency_mode == 'USD':
             current_active_pos = self.get_active_position() # Get the single active position in one-way mode
 
-            # Calculate potential USD cost/value of the incoming order, considering leverage
-            # This is the cost basis for the amount of base units in this order.
-            # Using current_price * leverage for cost of 1 base unit for the order.
-            cost_per_base_unit_with_leverage = current_price * leverage
-            if cost_per_base_unit_with_leverage < EPSILON: # Avoid division by zero
-                cost_per_base_unit_with_leverage = EPSILON # Set to a small non-zero value
+            cost_per_base_unit = current_price
+            if cost_per_base_unit < EPSILON:
+                cost_per_base_unit = EPSILON # Set to a small non-zero value
 
-            # Clamp incoming order quantity based on max_position_size (USD capital limit)
-            if current_active_pos is None: # No active position, this is an opening order
-                # The total capital for this initial order must not exceed max_position_size (USD)
-                max_base_units_from_usd_capital_limit = self.max_position_size / cost_per_base_unit_with_leverage
-                
-                # Clamp the incoming order quantity and round to precision
-                actual_quantity_to_process_base_units = round_to_tick_size(min(actual_quantity_to_process_base_units, max_base_units_from_usd_capital_limit), getPrecision())
-
-                if actual_quantity_to_process_base_units < EPSILON:
-                    if self.verbose or not isInitializing():
-                        print(f"Warning: Calculated initial order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping and precision rounding. No position opened.")
-                    return # Exit if clamped to zero
-
-            elif order_direction == current_active_pos.type: # Increasing an existing position
-                # Calculate remaining USD capital capacity based on active_capital_invested
-                remaining_usd_capital_capacity = self.max_position_size - current_active_pos.active_capital_invested
-
-                if remaining_usd_capital_capacity <= EPSILON:
-                    if self.verbose or not isInitializing():
-                        print(f"Warning: Max USD position size ({self.max_position_size}) based on capital invested reached. No new {cmd} order placed.")
-                    return # Exit if no more USD capacity
-
-                # Calculate max base units that can be bought with remaining USD capacity
-                max_base_units_from_usd_capital_capacity = remaining_usd_capital_capacity / cost_per_base_unit_with_leverage
-                
-                # Clamp the incoming order quantity and round to precision
-                actual_quantity_to_process_base_units = round_to_tick_size(min(actual_quantity_to_process_base_units, max_base_units_from_usd_capital_capacity), getPrecision())
-
-                if actual_quantity_to_process_base_units < EPSILON:
-                    if self.verbose or not isInitializing():
-                        print(f"Warning: Calculated order quantity ({actual_quantity_to_process_base_units:.6f} base units) is effectively zero after USD capital clamping and precision rounding. No order placed.")
-                    return # Exit if clamped to zero
-
-            # Note: For opposing orders (partial close/reversal), no capital clamping is applied here.
+            # Clamp incoming order quantity based on max_position_size (USD collateral limit)
+            available_liquidity = self.initial_liquidity
+            max_cap = min(self.max_position_size, available_liquidity)
+            if current_active_pos is None:
+                # No active position, so max allowed collateral is min(max_position_size, initial_liquidity)
+                max_allowed_collateral = max_cap
+                clamped_quantity = min(actual_quantity_to_process_base_units, max_allowed_collateral / cost_per_base_unit)
+                actual_quantity_to_process_base_units = round_to_tick_size(clamped_quantity, getPrecision())
+            elif order_direction == current_active_pos.type:
+                # Increasing existing position: only allow up to remaining collateral, but not more than available liquidity
+                current_collateral = current_active_pos.priceAvg * current_active_pos.size
+                remaining_collateral = max_cap - current_collateral
+                if remaining_collateral > EPSILON:
+                    clamped_quantity = min(actual_quantity_to_process_base_units, remaining_collateral / cost_per_base_unit)
+                    actual_quantity_to_process_base_units = round_to_tick_size(clamped_quantity, getPrecision())
+                else:
+                    actual_quantity_to_process_base_units = 0.0
+            # Note: For opposing orders (partial close/reversal), no collateral clamping is applied here.
             # They are meant to reduce/close the position, not increase capital exposure.
             # `actual_quantity_to_process_base_units` remains `quantity_in_base_units_input` in this case for opposing orders.
 
@@ -461,6 +446,15 @@ class strategy_c:
         # Use the position's effective leverage for closing order
         self.execute_order(close_cmd, pos_to_close.type, pos_to_close.size, pos_to_close.leverage) 
 
+    def check_liquidation(self, candle:candle_c, realtime: bool = True):
+        """
+        Checks all active positions for liquidation and closes them if triggered.
+        Should be called on every price update.
+        """
+        for pos in self.positions:
+            if pos.active:
+                pos.check_liquidation_and_close( candle.close, realtime )
+
     def get_total_profit_loss(self) -> float:
         """
         Returns the total accumulated profit or loss for the strategy.
@@ -590,11 +584,14 @@ class strategy_c:
 
 
         # Print header
-        print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Acct PnL %':<12}")
+        print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Acct PnL %':<12} {'Liquidated':<12}")
         # Print values
-        print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {pnl_percentage_vs_liquidity:<12.2f}")
-        
+        print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {pnl_percentage_vs_liquidity:<12.2f} {self.total_liquidated_positions:<12}")
         print("------------------------------")
+        if self.initial_liquidity > 1:
+            print(f"Final Account Liquidity: {self.initial_liquidity:.2f} USD")
+        else:
+            print("Your account has been terminated.")
 
     def print_pnl_by_period(self):
         """
@@ -714,6 +711,8 @@ class position_c:
         self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime (in base units)
         self.active_capital_invested = 0.0 # NEW: Tracks the USD capital (cost basis) currently tied up in the open position
         self.close_timestamp = None # NEW: Store timestamp when position is closed
+        self.liquidation_price = 0.0
+        self.was_liquidated = False
 
     def _recalculate_current_position_state(self):
         """
@@ -757,10 +756,25 @@ class position_c:
         # Calculate active_capital_invested based on the current (recalculated) state
         # This uses the position's overall leverage (self.leverage)
         if abs(self.size) > EPSILON: # Only if there's an active position size
-            self.active_capital_invested = self.priceAvg * self.size * self.leverage
+            if self.strategy_instance.currency_mode == 'USD':
+                self.active_capital_invested = self.priceAvg * self.size
+            else:
+                self.active_capital_invested = self.priceAvg * self.size * self.leverage
         else:
             self.active_capital_invested = 0.0
 
+        self._update_liquidation_price()
+
+    def _update_liquidation_price(self):
+        if self.leverage == 1 or self.size == 0:
+            self.liquidation_price = 0.0
+            return
+        if self.type == c.LONG:
+            self.liquidation_price = self.priceAvg * (1 - 1.0 / self.leverage)
+        elif self.type == c.SHORT:
+            self.liquidation_price = self.priceAvg * (1 + 1.0 / self.leverage)
+        else:
+            self.liquidation_price = 0.0
 
     def get_average_entry_price_from_history(self) -> float:
         """
@@ -851,23 +865,54 @@ class position_c:
         marker_shape = 'arrow_up' if op_type == c.LONG else 'arrow_down'
 
         # Handle markers based on the *net* change in position
-        # Markers for opening are handled in openPosition (already correct)
         if previous_active and self.active: # Position is still active
             # If the type has changed, it implies a reversal that didn't fully close the prior position
             if self.type != previous_type and self.size > EPSILON:
                 createMarker('🔄', location='inside', shape='circle', color='#FFD700') # Gold circle for partial reversal
             elif self.size > previous_size + EPSILON: # Increasing position
-                createMarker('➕', location='below', shape=marker_shape, color=marker_color)
+                collateral = price * quantity
+                marker_text = f"➕ ${collateral:.2f}"
+                createMarker(marker_text, location='below', shape=marker_shape, color=marker_color)
             elif self.size < previous_size - EPSILON: # Decreasing position
-                createMarker('➖', location='above', shape=marker_shape, color=marker_color)
+                collateral = price * quantity
+                marker_text = f"➖ ${collateral:.2f}"
+                createMarker(marker_text, location='above', shape=marker_shape, color=marker_color)
         # If previous_active was True and self.active is now False, it means the position was closed.
         # This specific case is handled by the `close` method.
 
-    def close(self, price: float):
+    def check_liquidation_and_close(self, current_price: float, realtime: bool = True):
+        """
+        Checks if the position should be liquidated at the given price. If so, closes it at the correct price.
+        Liquidation is triggered when the leveraged loss equals the unleveraged collateral.
+        """
+        if not self.active or self.size < EPSILON or self.leverage <= 1:
+            return
+        self._update_liquidation_price()
+        # Calculate current leveraged PnL
+        if self.type == c.LONG:
+            pnl = (current_price - self.priceAvg) * self.size * self.leverage
+            collateral = self.priceAvg * self.size
+            if pnl <= -collateral + EPSILON:
+                self.was_liquidated = True
+                close_price = current_price if realtime else self.liquidation_price
+                self.close(close_price, liquidation_reason="LIQUIDATION")
+                self.strategy_instance.total_liquidated_positions += 1
+                self.strategy_instance.total_liquidated_long_positions += 1
+        elif self.type == c.SHORT:
+            pnl = (self.priceAvg - current_price) * self.size * self.leverage
+            collateral = self.priceAvg * self.size
+            if pnl <= -collateral + EPSILON:
+                self.was_liquidated = True
+                close_price = current_price if realtime else self.liquidation_price
+                self.close(close_price, liquidation_reason="LIQUIDATION")
+                self.strategy_instance.total_liquidated_positions += 1
+                self.strategy_instance.total_liquidated_short_positions += 1
+
+    def close(self, price: float, liquidation_reason: str = None):
         """
         Closes the active position by adding an opposing order that nets out the current size.
         Calculates the total realized profit/loss for this position and adds it to the global total.
-        This method no longer adds the '❌' marker; that is handled by the 'execute_order' function for full closes.
+        If liquidation_reason is provided, a special marker is created with the reason text and the color of the position direction.
         """
         if not self.active:
             return
@@ -892,7 +937,6 @@ class position_c:
         })
 
         # Recalculate metrics based on the updated history
-        # This call should result in self.size == 0.0 if the closing order perfectly nets out.
         self._recalculate_current_position_state()
 
         # If the position is now effectively closed (size is 0), calculate total PnL for this position object
@@ -904,7 +948,6 @@ class position_c:
                     print(f"DEBUG LONG PNL CALC: ({price:.6f} - {previous_avg_price:.6f}) * {closing_quantity:.6f} * {previous_leverage}")
                 elif previous_position_type == c.SHORT:
                     print(f"DEBUG SHORT PNL CALC: ({previous_avg_price:.6f} - {price:.6f}) * {closing_quantity:.6f} * {previous_leverage}")
-
 
             final_close_pnl_q = 0.0
             if previous_position_type == c.LONG:
@@ -930,15 +973,10 @@ class position_c:
             self.profit = self.realized_pnl_quantity # Total position PnL is the cumulative realized PnL
             
             # Calculate final percentage PnL for the entire position
-            # Sum only entry capital (orders where pnl_quantity is approx 0) to get total invested capital.
-            # This is the sum of (price * quantity * leverage) for opening/increasing orders.
-            # For simplicity, if total_entry_capital_for_position is 0, the percentage is 0.
             total_entry_capital_for_position = 0.0
             for order_data in self.order_history:
-                # Assuming entry orders have pnl_quantity close to zero
                 if order_data['pnl_quantity'] >= -EPSILON and order_data['pnl_quantity'] <= EPSILON:
-                    # Use the leverage stored with the order
-                    order_leverage = order_data.get('leverage', 1.0) # Default to 1.0 if not found for old data
+                    order_leverage = order_data.get('leverage', 1.0)
                     total_entry_capital_for_position += order_data['price'] * order_data['quantity'] * order_leverage
             
             self.realized_pnl_percentage = (self.profit / total_entry_capital_for_position) * 100 if total_entry_capital_for_position != 0 else 0.0
@@ -969,6 +1007,14 @@ class position_c:
             self.active_capital_invested = 0.0 # Reset capital invested when position is closed
             self.close_timestamp = getRealtimeCandle().timestamp # NEW: Record closure timestamp
 
+            # Update account liquidity with realized PnL (ensure float type and correct attribute)
+            if hasattr(self.strategy_instance, 'initial_liquidity') and self.profit is not None:
+                self.strategy_instance.initial_liquidity = float(self.strategy_instance.initial_liquidity) + float(self.profit)
+
+            # Marker for liquidation or normal close
+            if liquidation_reason is not None:
+                marker_color = '#00CC00' if previous_position_type == c.LONG else '#FF0000'
+                createMarker(liquidation_reason, location='above', shape='square', color=marker_color)
             # Print PnL to console
             if self.strategy_instance.verbose or not isInitializing():
                 print(f"CLOSED POSITION ({'LONG' if previous_position_type == c.LONG else 'SHORT'}): PnL: {self.profit:.2f} (quote currency) | PnL %: {self.realized_pnl_percentage:.2f}% | Total Strategy PnL: {self.strategy_instance.total_profit_loss:.2f} (quote currency)")
@@ -1131,3 +1177,10 @@ def print_summary_stats(): # New function
 
 def print_pnl_by_period_summary(): # New global function for PnL by period
     strategy.print_pnl_by_period()
+
+def newTick( candle:candle_c, realtime: bool = True):
+    strategy.check_liquidation( candle, realtime )
+
+
+
+

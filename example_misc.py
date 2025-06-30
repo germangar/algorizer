@@ -147,10 +147,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     # print( signal_line.current() )
 
     # trading logic 
-    # buySignal = rsi14.current() > 50.0 and calc.crossingUp( close, BBlower ) and invRSI < 30
-    # sellSignal = rsi14.current() < 50.0 and calc.crossingDown( close, BBupper ) and invRSI > 70
-    buySignal = calc.crossingUp( close, BBlower ) and invRSI < 40
-    sellSignal = calc.crossingDown( close, BBupper ) and invRSI > 60
+    buySignal = calc.crossingUp( close, BBlower ) and invRSI < 30
+    sellSignal = calc.crossingDown( close, BBupper ) and invRSI > 70
 
     # same thing using methods
     # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 35
@@ -204,8 +202,8 @@ if __name__ == '__main__':
     trade.strategy.currency_mode = 'USD'
     trade.strategy.order_size = 1000
     trade.strategy.max_position_size = 3000 # allow pyramiding of 3 orders
-    trade.strategy.leverage_long = 1
-    trade.strategy.leverage_short = 1
+    trade.strategy.leverage_long = 5
+    trade.strategy.leverage_short = 5
     
     #   Create the candles stream:
     #
