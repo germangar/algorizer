@@ -21,12 +21,12 @@ class ohlcvs_c:
         return self.exchange.load_markets()
     
     def getPrecision( self ):
-        if( self.exchange.id == 'binance' or self.exchange.id == 'bingx' ):
+        if( self.exchange.id == 'bingx' ):
             return 1.0 / (10.0 ** self.getMarkets()[self.symbol]['precision'].get('amount'))
         return self.getMarkets()[self.symbol]['precision'].get('amount')
     
     def getMintick( self ):
-        if( self.exchange.id == 'binance' or self.exchange.id == 'bingx' ):
+        if( self.exchange.id == 'bingx' ):
             return 1.0 / (10.0 ** self.getMarkets()[self.symbol]['precision'].get('price'))
         return self.getMarkets()[self.symbol]['precision'].get('price')
 
