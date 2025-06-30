@@ -59,7 +59,7 @@ class strategy_c:
         if self.currency_mode == 'USD' and self.max_position_size > self.initial_liquidity:
             # If max_position_size is meant as the *capital invested* in a single position, it should not exceed initial_liquidity.
             # If it's a notional size with leverage, it can be larger than initial_liquidity.
-            # Given `active_capital_invested` is `price * size * leverage`, `max_position_size` is a limit on this `active_capital_invested`.
+            # Given `collateral` is `price * size`, `max_position_size` is a limit on this `collateral`.
             # So, `max_position_size` as USD limit cannot be greater than `initial_liquidity` if it's supposed to represent a portion of the *account* capital for a single position.
             # If it's just a "target notional size", it can be anything.
             # Let's keep the user's intent: max_position_size acts as a capital limit per single position.
@@ -380,7 +380,7 @@ class strategy_c:
             if affected_pos.active and affected_pos.size > EPSILON:
                 final_position_type_for_broker_event = affected_pos.type
                 final_position_size_base_for_broker_event = affected_pos.size * affected_pos.type # Signed
-                final_position_size_dollars_for_broker_event = affected_pos.active_capital_invested * affected_pos.type # Signed (notional value including leverage)
+                final_position_size_dollars_for_broker_event = affected_pos.collateral * affected_pos.type # Signed (notional value including leverage)
                 # Position collateral is priceAvg * size (no leverage applied here)
                 final_position_collateral_dollars_for_broker_event = (affected_pos.priceAvg * affected_pos.size) * affected_pos.type # Signed
             # If position is inactive and size is effectively zero, it means it's flat, so leave values as 0.0
@@ -525,8 +525,8 @@ class strategy_c:
             unrealized_pnl_qty = pos.get_unrealized_pnl_quantity() if pos.active else 0.0
             unrealized_pnl_pct = pos.get_unrealized_pnl_percentage() if pos.active else 0.0
             
-            # Added active_capital_invested to print
-            print(f"\nPosition #{i+1} (Status: {status}, Type: {position_type_str}, Current Size: {pos.size:.2f} base units, Avg Price: {pos.priceAvg:.2f}, Max Size Held: {pos.max_size_held:.2f} base units, Active Capital Invested: {pos.active_capital_invested:.2f} USD, Position Leverage: {pos.leverage})") 
+            # Added collateral to print
+            print(f"\nPosition #{i+1} (Status: {status}, Type: {position_type_str}, Current Size: {pos.size:.2f} base units, Avg Price: {pos.priceAvg:.2f}, Max Size Held: {pos.max_size_held:.2f} base units, Collateral: {pos.collateral:.2f} USD, Position Leverage: {pos.leverage})") 
             if pos.active:
                 print(f"   Unrealized PnL: {unrealized_pnl_qty:.2f} (quote currency) ({unrealized_pnl_pct:.2f}%)")
             else:
@@ -709,7 +709,7 @@ class position_c:
         self.realized_pnl_percentage = 0.0 # Cumulative realized PnL in percentage for this position (final value)
         self.order_history = []  # Stores {'type': c.LONG/c.SHORT, 'price': float, 'quantity': float, 'barindex': int, 'pnl_quantity': float, 'pnl_percentage': float, 'leverage': int}
         self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime (in base units)
-        self.active_capital_invested = 0.0 # NEW: Tracks the USD capital (cost basis) currently tied up in the open position
+        self.collateral = 0.0 # Tracks the USD collateral (cost basis) currently tied up in the open position
         self.close_timestamp = None # NEW: Store timestamp when position is closed
         self.liquidation_price = 0.0
         self.was_liquidated = False
@@ -717,7 +717,7 @@ class position_c:
     def _recalculate_current_position_state(self):
         """
         Recalculates the position's current size (in base units), average price (in quote currency),
-        and active_capital_invested based on the accumulated order history.
+        and collateral based on the accumulated order history.
         The 'type' is only set if the net quantity is non-zero,
         otherwise, it retains its last known direction or remains 0 if no orders.
         This method does not change `self.active`.
@@ -753,16 +753,12 @@ class position_c:
             # self.type retains its last non-zero value, or remains 0 if no orders yet.
             # self.active will be set to False by the close method.
 
-        # Calculate active_capital_invested based on the current (recalculated) state
+        # Calculate collateral based on the current (recalculated) state
         # This uses the position's overall leverage (self.leverage)
         if abs(self.size) > EPSILON: # Only if there's an active position size
-            if self.strategy_instance.currency_mode == 'USD':
-                self.active_capital_invested = self.priceAvg * self.size
-            else:
-                self.active_capital_invested = self.priceAvg * self.size * self.leverage
+            self.collateral = self.priceAvg * self.size
         else:
-            self.active_capital_invested = 0.0
-
+            self.collateral = 0.0
         self._update_liquidation_price()
 
     def _update_liquidation_price(self):
@@ -804,7 +800,7 @@ class position_c:
     def update(self, op_type: int, price: float, quantity: float, leverage: int):
         """
         Records an order into the position's history and then recalculates
-        the position's current state (type, size, average price, active_capital_invested).
+        the position's current state (type, size, average price, collateral).
         Handles markers based on the net change in position.
         This method is primarily for increasing or partially reducing a position.
         Quantity must always be in base units.
@@ -872,10 +868,25 @@ class position_c:
             elif self.size > previous_size + EPSILON: # Increasing position
                 collateral = price * quantity
                 marker_text = f"➕ ${collateral:.2f}"
+                marker_color = '#00FF00' if op_type == c.LONG else '#FF0000' # Green for Buy, Red for Sell
+                marker_shape = 'arrow_up' if op_type == c.LONG else 'arrow_down'
                 createMarker(marker_text, location='below', shape=marker_shape, color=marker_color)
-            elif self.size < previous_size - EPSILON: # Decreasing position
+            elif self.size < previous_size - EPSILON: # Decreasing position (partial reduction)
                 collateral = price * quantity
                 marker_text = f"➖ ${collateral:.2f}"
+                # Special logic for reduction markers:
+                if previous_type == c.SHORT and op_type == c.LONG:
+                    # Reducing a SHORT with a BUY: red, arrow_up
+                    marker_color = '#FF0000'
+                    marker_shape = 'arrow_up'
+                elif previous_type == c.LONG and op_type == c.SHORT:
+                    # Reducing a LONG with a SELL: green, arrow_down
+                    marker_color = '#00FF00'
+                    marker_shape = 'arrow_down'
+                else:
+                    # Fallback to default coloring
+                    marker_color = '#00FF00' if op_type == c.LONG else '#FF0000'
+                    marker_shape = 'arrow_up' if op_type == c.LONG else 'arrow_down'
                 createMarker(marker_text, location='above', shape=marker_shape, color=marker_color)
         # If previous_active was True and self.active is now False, it means the position was closed.
         # This specific case is handled by the `close` method.
@@ -1004,7 +1015,7 @@ class position_c:
 
             self.strategy_instance.total_profit_loss += self.profit # Update strategy's total PnL
             self.active = False # Explicitly set to inactive as it's fully closed
-            self.active_capital_invested = 0.0 # Reset capital invested when position is closed
+            self.collateral = 0.0 # Reset capital invested when position is closed
             self.close_timestamp = getRealtimeCandle().timestamp # NEW: Record closure timestamp
 
             # Update account liquidity with realized PnL (ensure float type and correct attribute)
@@ -1049,8 +1060,8 @@ class position_c:
             return 0.0
 
         # Capital involved in the active position based on entry price and quantity (in quote currency)
-        # This is self.active_capital_invested
-        capital_involved = self.active_capital_invested
+        # This is self.collateral
+        capital_involved = self.collateral
         if abs(capital_involved) < EPSILON: # Avoid division by zero
             return 0.0
         
