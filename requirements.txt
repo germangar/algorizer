@@ -2,9 +2,6 @@
 pandas>=2.0.0
 numpy>=1.26.0
 
-# Technical analysis
-pandas_ta>=0.3.14b0
-
 # Cryptocurrency exchange APIs
 ccxt>=4.4.77
 

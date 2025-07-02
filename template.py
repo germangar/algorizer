@@ -1,4 +1,3 @@
-import pandas as pd
 from framework import calc, trade
 from framework import stream_c, timeframe_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
 from framework import plot, histogram, requestValue, createMarker
