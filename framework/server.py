@@ -36,22 +36,20 @@ LOADING_TIMEOUT = 60.0    # 1 minute timeout for other states
 MAX_QUEUE_SIZE = 1000
 
 
-class client_t:
+class client_state_t:
     def __init__(self):
         self.status = CLIENT_DISCONNECTED
         self.last_successful_send = 0.0
         self.timeframeStr = ""
 
         self.last_markers_dict:dict = {}
-        self.last_markers:list = []
-        self.last_lines:list = []
+        self.last_lines_dict:dict = {}
 
 
-    def prepareMarkersUpdate( self, new_markers ):
+    def prepareMarkersUpdate( self, markers ):
         # Convert old and new markers to dictionaries
-        # old_dict = {marker.id: marker for marker in old_markers}
         old_dict = self.last_markers_dict
-        new_dict = {marker.id: marker for marker in new_markers}
+        new_dict = {marker.id: marker for marker in markers}
 
         # Find added and removed marker IDs using set operations
         old_ids = set(old_dict.keys())
@@ -74,6 +72,28 @@ class client_t:
         self.last_markers_dict = new_dict
         return delta
 
+    def prepareLinesUpdate( self, lines ):
+        # Convert old and new markers to dictionaries
+        old_dict = self.last_lines_dict
+        new_dict = {marker.id: marker for marker in lines}
+
+            # Find added and removed marker IDs using set operations
+        added_ids = new_dict.keys() - old_dict.keys()
+        removed_ids = old_dict.keys() - new_dict.keys()
+
+        # Generate lists of added and removed markers (unsorted)
+        added = [new_dict[id] for id in added_ids]
+        removed = [old_dict[id] for id in removed_ids]
+
+        # Build delta with descriptors
+        delta = {
+            "added": [marker.descriptor() for marker in added],
+            "removed": [marker.descriptor() for marker in removed]
+        }
+        from pprint import pprint
+
+        self.last_lines_dict = new_dict
+        return delta
         ############################################################################
 
         
@@ -96,7 +116,7 @@ class client_t:
             # More lenient timeout for connecting/loading states
             return elapsed > LOADING_TIMEOUT
 
-client = client_t()
+client = client_state_t()
 
 
 def create_command_response(message: str) -> str:
@@ -138,7 +158,8 @@ def create_data_descriptor(dataset, timeframeStr: str, columns):
         "columns": columns,
         "dtypes": {col: "float64" for col in columns},
         "plots": getPlotsList(),
-        "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ) # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
+        "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
+        "lines": client.prepareLinesUpdate( active.timeframe.stream.lines ) # same as above
     }
     return json.dumps(message)
     
@@ -193,6 +214,7 @@ def push_row_update(timeframe):
     message = {
         "type": "row",
         "timeframe": timeframe.timeframeStr,
+        "barindex": active.timeframe.barindex,
         "columns": timeframe.columnsList(),
         "data": row,
         "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ),

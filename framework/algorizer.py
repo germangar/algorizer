@@ -81,16 +81,28 @@ class marker_c:
         active.timeframe.stream.removeMarker(self)
 
     def descriptor(self):
-        return {
-                'id':self.id,
-                'timestamp':self.timestamp,
-                'position':self.position,
-                'shape':self.shape,
-                'color':self.color,
-                'panel':self.panel,
-                'text':self.text
-            }
-
+        return vars(self)
+    
+class line_c:
+    def __init__( self, x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, chart_name:str = 'main' ):
+        if isinstance( x1, (generatedSeries_c, series_c, np.ndarray ) ):
+            x1 = x1[active.timeframe.barindex]
+        if isinstance( y1, (generatedSeries_c, series_c, np.ndarray ) ):
+            y1 = y1[active.timeframe.barindex]
+        if isinstance( x2, (generatedSeries_c, series_c, np.ndarray ) ):
+            x2 = x2[active.timeframe.barindex]
+        if isinstance( y2, (generatedSeries_c, series_c, np.ndarray ) ):
+            y2 = y2[active.timeframe.barindex]
+        self.id = id(self)
+        self.x1 = x1
+        self.x2 = x2
+        self.y1 = y1
+        self.y2 = y2
+        self.color = color
+        self.width = width
+        self.panel = chart_name
+    def descriptor(self):
+        return vars(self)
 
 class timeframe_c:
     def __init__( self, stream, timeframeStr ):
@@ -493,6 +505,7 @@ class stream_c:
             self.event_callback = globals().get('event')
 
         self.markers:list[marker_c] = []
+        self.lines:list[line_c] = []
         self.registeredPanels:dict = {}
 
         #################################################
@@ -696,7 +709,17 @@ class stream_c:
     def removeMarker( self, marker:marker_c ):
         if marker != None and isinstance(marker, marker_c):
             self.markers.remove( marker )
+    
+    def createLine( self, x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, chart_name:str = 'main' )->line_c:
+        line = line_c( x1, y1, x2, y2, color, width, chart_name )
+        self.lines.append( line )
+        return line
+    
+    def deleteLine( self, line:line_c ):
+        if line:
+            self.lines.remove(line)
 
+    
     def createWindow(self, timeframeStr):
         """Create and show a window for the given timeframe"""
         # TODO: add validation of the timeframe

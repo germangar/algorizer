@@ -77,13 +77,25 @@ class plot_c:
 
 @dataclass
 class marker_c:
-    id:str
+    id:int
     timestamp:int
     position:str
     shape:str
     color:str
     panel:str
     text:str
+    instance:object
+
+@dataclass
+class line_c:
+    id:int
+    x1:int
+    y1:int
+    x2:int
+    y2:int
+    color:str
+    width:int
+    panel:str
     instance:object
     
 class window_c:
@@ -93,11 +105,14 @@ class window_c:
         self.columns:list = []
         self.plots:list[plot_c] = []
         self.markers:list = []
+        self.lines:list = []
         self.showRealTimeCandle = True
         self.numpanels = 0
         self.lastCandle:candle_c = None
         self.timerOnPriceLabel = False
         self.priceScaleMinimumWidth = 90
+        self.barindex = -1
+        self.timestamp = 0
 
         # calculate the panels sizes
         self.panels = config['panels']
@@ -151,6 +166,8 @@ class window_c:
         if debug : print( "Initializing window" )
 
         self.descriptor = descriptor
+        self.barindex = len(df) - 1
+        self.timestamp = df['timestamp'].iat[self.barindex]
 
         window_width = 1024
         window_height = 768
@@ -218,7 +235,9 @@ class window_c:
 
         self.createPlots(df)
         self.addMarkers( descriptor['markers'].get("added") )
+        self.addLines( descriptor['lines'].get("added") )
 
+        
         
 
         tasks.registerTask('window', chart.show_async)
@@ -391,6 +410,89 @@ class window_c:
         for m in removelist:
             self.removeMarker(m)
 
+    def addLine( self, msg ):
+        try:
+            line = line_c(
+                id = int( msg.get('id') ),
+                x1 = int( msg.get('x1') ),
+                y1 = float( msg.get('y1') ),
+                x2 = int( msg.get('x2') ),
+                y2 = float( msg.get('y2') ),
+                color = msg.get('color'),
+                width = int( msg.get('width') ),
+                panel = msg.get('panel'),
+                instance = None
+            )
+
+            if line.x1 > line.x2: # keep x1 and x2 always chronologically aligned
+                x1 = line.x1
+                y1 = line.y1
+                line.x1 = line.x2
+                line.y1 = line.y2
+                line.x2 = x1
+                line.y2 = y1
+
+            # clip the lines when they go out of bounds
+            # FIXME: I shouldn't modify the objects but only
+            # the values that go into the chart itself.
+            if line.x1 < 0:
+                if line.x2 != line.x1:
+                    x1 = float(line.x1)
+                    x2 = float(line.x2)
+                    # Calculate y at x_boundary
+                    slope = (line.y2 - line.y1) / (x2 - x1)
+                    line.y1 = line.y1 + slope * (0 - x1)
+                    line.x1 = 0
+                else:
+                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
+                    return
+
+            if line.x2 > self.barindex:
+                if line.x2 != line.y2:
+                    x_boundary = self.barindex
+                    x1 = float(line.x1)
+                    x2 = float(line.x2)
+                    slope = (line.y2 - line.y1) / (x2 - x1)
+                    line.y2 = line.y1 + slope * (x_boundary - x1)
+                    line.x2 = self.barindex
+                else:
+                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
+                    return
+
+            if line.panel not in self.panels.keys():
+                line.panel = 'main'
+
+            chart = self.panels[line.panel]['chart']
+            # chart = self.panels['main']['chart']
+
+            # convert the indexes to timestamps
+            timeframeMsec = int( self.descriptor['timeframemsec'] )
+            time1 = self.timestamp - (( self.barindex - line.x1 ) * timeframeMsec)
+            time2 = self.timestamp - (( self.barindex - line.x2 ) * timeframeMsec)
+            line.instance = chart.trend_line( 
+                pd.to_datetime( time1, unit='ms' ), 
+                line.y1, 
+                pd.to_datetime( time2, unit='ms' ), 
+                line.y2, 
+                round = False, 
+                line_color=line.color, 
+                width=line.width )
+            
+            if line.instance == None:
+                print( "FAILED TO ADD LINE" )
+            self.lines.append(line)
+        except Exception as e:
+            print( "Exception", e )
+
+
+
+    def addLines( self, addlist ):
+        if addlist is None or len(addlist) == 0:
+            return
+        
+        for line in addlist:
+            self.addLine( line )
+
 
     def newTick(self, msg):
         
@@ -426,8 +528,8 @@ class window_c:
         row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP]) # fix type
         assert(row[c.DF_TIMESTAMP] is not None)
         columns = msg.get('columns')
-        if row is None:
-            return
+        self.barindex = int( msg.get('barindex') )
+        self.timestamp = row[c.DF_TIMESTAMP]
 
         # OHLCV update
         data_dict = {
@@ -473,6 +575,8 @@ class window_c:
         # markers delta update
         self.removeMarkers( msg['markers'].get("removed") ) 
         self.addMarkers( msg['markers'].get("added") ) 
+
+        
 
         # finally add the opening of the realtime candle
         self.newTick( msg.get('tick') )
