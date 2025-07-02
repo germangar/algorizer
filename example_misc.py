@@ -145,13 +145,15 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     signal_line.plot( 'macd', color = "#1BC573" )
     # print( signal_line.current() )
 
+    
     # trading logic 
-    buySignal = calc.crossingUp( close, BBlower ) and invRSI < 30
-    sellSignal = calc.crossingDown( close, BBupper ) and invRSI > 70
+    # buySignal = calc.crossingUp( close, BBlower ) and invRSI < 30
+    # sellSignal = calc.crossingDown( close, BBupper ) and invRSI > 70
 
+    
     # same thing using methods
-    # buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 35
-    # sellSignal = rsi14 < 50.0 and BBupper.crossingUp(close) and invRSI > 65
+    buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 20
+    sellSignal = rsi14 < 50.0 and BBupper.crossingUp(close) and invRSI > 80
 
     # accesing positions and making orders
     shortpos = trade.getActivePosition(c.SHORT)
@@ -164,8 +166,15 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
         if longpos:
             lastorderindex = longpos.get_order_by_direction(c.LONG)['barindex']
             offset = barindex - lastorderindex
+            if close[barindex] > longpos.priceAvg :
+                offset = 0
         if offset > 40:
             trade.order( 'buy', c.LONG )
+
+    if longpos:
+        if longpos.get_unrealized_pnl_percentage() > 100 and longpos.collateral >= trade.strategy.order_size * 1.9:
+            # print("REDUCING")
+            trade.order( 'sell', c.LONG )
 
     if sellSignal:
         if longpos is not None:
@@ -174,8 +183,20 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
         if shortpos:
             lastorderindex = shortpos.get_order_by_direction(c.SHORT)['barindex']
             offset = barindex - lastorderindex
+            if close[barindex] < shortpos.priceAvg:
+                offset = 0
         if offset > 40:
             trade.order( 'sell', c.SHORT )
+
+    if shortpos:
+        if shortpos.get_unrealized_pnl_percentage() > 100 and shortpos.collateral >= trade.strategy.order_size * 1.9:
+            # print("REDUCING")
+            trade.order( 'buy', c.SHORT )
+
+
+    
+
+    
 
     
 

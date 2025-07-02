@@ -538,6 +538,11 @@ class stream_c:
         self.markets = fetcher.getMarkets()
         self.precision = fetcher.getPrecision()
         self.mintick = fetcher.getMintick()
+
+        # hack thefor kucoin. It expects contracts and their contracts are units. That doesn't work for us
+        if exchangeID == "kucoinfutures":
+            self.mintick = 0.0
+            self.precision = 0.0
             
         # fetch OHLCVs
         if self.cache_only:
