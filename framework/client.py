@@ -96,6 +96,7 @@ class line_c:
     color:str
     width:int
     panel:str
+    clipped:bool
     instance:object
     
 class window_c:
@@ -410,6 +411,84 @@ class window_c:
         for m in removelist:
             self.removeMarker(m)
 
+    def reclipLine( self, id ):
+        print("RECLIPPING LINE")
+        for line in reversed(self.lines):
+            if line.id != id:
+                continue
+            if not line.clipped:
+                print("NOT CLIPPED")
+                break
+            if line.instance == None:
+                print("NO INSTANCE")
+                break
+
+            line.clipped = False
+            try:
+                line.instance.delete()
+            except Exception as e:
+                print("LINE DIDN'T DELETE", e)
+            
+            line.instance = None
+
+            x1 = line.x1
+            y1 = line.y1
+            x2 = line.x2
+            y2 = line.y2
+
+            # clip the lines when they go out of bounds
+            # FIXME: I shouldn't modify the objects but only
+            # the values that go into the chart itself.
+            if x1 < 0:
+                if line.x2 != line.x1:
+                    # Calculate y at x_boundary
+                    slope = (line.y2 - line.y1) / float(x2 - x1)
+                    y1 = y1 + slope * (0 - x1)
+                    x1 = 0
+                else:
+                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
+                    return
+
+            if line.x2 > self.barindex:
+                if line.x2 != line.y2:
+                    x_boundary = self.barindex
+                    slope = (line.y2 - line.y1) / float(line.x2 - line.x1)
+                    y2 = line.y1 + slope * (x_boundary - line.x1)
+                    x2 = self.barindex
+                    line.clipped = True
+                else:
+                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
+                    return
+                
+            chart:Chart = self.panels[line.panel]['chart']
+
+            # convert the indexes to timestamps
+            timeframeMsec = int( self.descriptor['timeframemsec'] )
+            time1 = self.timestamp - (( self.barindex - x1 ) * timeframeMsec)
+            time2 = self.timestamp - (( self.barindex - x2 ) * timeframeMsec)
+            line.instance = chart.trend_line( 
+                pd.to_datetime( time1, unit='ms' ), 
+                y1, 
+                pd.to_datetime( time2, unit='ms' ), 
+                y2, 
+                round = False, 
+                line_color=line.color, 
+                width=line.width )
+            
+            if line.clipped == False:
+                pass # remove it from the list of clipped lines
+
+            break
+
+    def reclipLines( self ):
+        if len(self.lines) == 0:
+            print( "LINES LEN = 0")
+            return
+        for line in self.lines:
+            if line.clipped:
+                self.reclipLine(line.id)
+
+
     def addLine( self, msg ):
         try:
             line = line_c(
@@ -421,6 +500,7 @@ class window_c:
                 color = msg.get('color'),
                 width = int( msg.get('width') ),
                 panel = msg.get('panel'),
+                clipped = False,
                 instance = None
             )
 
@@ -432,17 +512,20 @@ class window_c:
                 line.x2 = x1
                 line.y2 = y1
 
+            x1 = line.x1
+            y1 = line.y1
+            x2 = line.x2
+            y2 = line.y2
+
             # clip the lines when they go out of bounds
             # FIXME: I shouldn't modify the objects but only
             # the values that go into the chart itself.
-            if line.x1 < 0:
+            if x1 < 0:
                 if line.x2 != line.x1:
-                    x1 = float(line.x1)
-                    x2 = float(line.x2)
                     # Calculate y at x_boundary
-                    slope = (line.y2 - line.y1) / (x2 - x1)
-                    line.y1 = line.y1 + slope * (0 - x1)
-                    line.x1 = 0
+                    slope = (line.y2 - line.y1) / float(x2 - x1)
+                    y1 = y1 + slope * (0 - x1)
+                    x1 = 0
                 else:
                     print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
                     return
@@ -450,11 +533,10 @@ class window_c:
             if line.x2 > self.barindex:
                 if line.x2 != line.y2:
                     x_boundary = self.barindex
-                    x1 = float(line.x1)
-                    x2 = float(line.x2)
-                    slope = (line.y2 - line.y1) / (x2 - x1)
-                    line.y2 = line.y1 + slope * (x_boundary - x1)
-                    line.x2 = self.barindex
+                    slope = (line.y2 - line.y1) / float(line.x2 - line.x1)
+                    y2 = line.y1 + slope * (x_boundary - line.x1)
+                    x2 = self.barindex
+                    line.clipped = True
                 else:
                     print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
                     return
@@ -462,24 +544,27 @@ class window_c:
             if line.panel not in self.panels.keys():
                 line.panel = 'main'
 
-            chart = self.panels[line.panel]['chart']
-            # chart = self.panels['main']['chart']
+            chart:Chart = self.panels[line.panel]['chart']
 
             # convert the indexes to timestamps
             timeframeMsec = int( self.descriptor['timeframemsec'] )
-            time1 = self.timestamp - (( self.barindex - line.x1 ) * timeframeMsec)
-            time2 = self.timestamp - (( self.barindex - line.x2 ) * timeframeMsec)
+            time1 = self.timestamp - (( self.barindex - x1 ) * timeframeMsec)
+            time2 = self.timestamp - (( self.barindex - x2 ) * timeframeMsec)
             line.instance = chart.trend_line( 
                 pd.to_datetime( time1, unit='ms' ), 
-                line.y1, 
+                y1, 
                 pd.to_datetime( time2, unit='ms' ), 
-                line.y2, 
+                y2, 
                 round = False, 
                 line_color=line.color, 
                 width=line.width )
             
+            
+            
             if line.instance == None:
                 print( "FAILED TO ADD LINE" )
+            if line.clipped:
+                print( "line was clipped:", line.clipped)
             self.lines.append(line)
         except Exception as e:
             print( "Exception", e )
@@ -576,7 +661,8 @@ class window_c:
         self.removeMarkers( msg['markers'].get("removed") ) 
         self.addMarkers( msg['markers'].get("added") ) 
 
-        
+        self.reclipLines()
+        self.addLines( msg['lines'].get("added") )
 
         # finally add the opening of the realtime candle
         self.newTick( msg.get('tick') )
