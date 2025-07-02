@@ -412,15 +412,12 @@ class window_c:
             self.removeMarker(m)
 
     def reclipLine( self, id ):
-        print("RECLIPPING LINE")
         for line in reversed(self.lines):
             if line.id != id:
                 continue
             if not line.clipped:
-                print("NOT CLIPPED")
                 break
             if line.instance == None:
-                print("NO INSTANCE")
                 break
 
             line.clipped = False
@@ -482,7 +479,6 @@ class window_c:
 
     def reclipLines( self ):
         if len(self.lines) == 0:
-            print( "LINES LEN = 0")
             return
         for line in self.lines:
             if line.clipped:
@@ -563,8 +559,6 @@ class window_c:
             
             if line.instance == None:
                 print( "FAILED TO ADD LINE" )
-            if line.clipped:
-                print( "line was clipped:", line.clipped)
             self.lines.append(line)
         except Exception as e:
             print( "Exception", e )
