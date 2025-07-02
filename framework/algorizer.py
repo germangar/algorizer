@@ -1,5 +1,4 @@
 import numpy as np
-# import numpy.typing as npt
 from typing import Optional
 import asyncio
 import ccxt.pro as ccxt
@@ -14,7 +13,7 @@ from .candle import candle_c
 from .nameseries import series_c
 from . import calcseries as calc
 from .calcseries import generatedSeries_c # just for making lives easier
-from .server import start_window_server, push_row_update, push_tick_update, push_marker_update, push_remove_marker_update
+from .server import start_window_server, push_row_update, push_tick_update
 from . import active
 
 
@@ -67,18 +66,19 @@ class plot_c:
 
 
 class marker_c:
-    def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = 'c7c7c7', chart_name:str = None ):
+    def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = '#c7c7c7', chart_name:str = None ):
         # MARKER_POSITION = Literal['above', 'below', 'inside']
         # MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']
-        self.id = datetime.now().timestamp() * 1e6
+        self.id = id(self)
         self.timestamp = timestamp
         self.text = text
         self.position = position
         self.shape = shape
         self.color = color
         self.panel = chart_name
-        self.chart = None
-        self.marker = None
+
+    def remove(self):
+        active.timeframe.stream.removeMarker(self)
 
     def descriptor(self):
         return {
@@ -683,7 +683,7 @@ class stream_c:
 
         if timestamp == None:
             timestamp = self.timeframes[self.timeframeFetch].timestamp
-        marker = marker_c( text, timestamp, location, shape, color, chart_name )
+        marker = marker_c( text, int(timestamp), location, shape, color, chart_name )
 
         if len(self.markers) and marker.timestamp < self.markers[-1].timestamp: # we need to insert back in time
             insertion_index = bisect.bisect_left( [m.timestamp for m in self.markers], marker.timestamp )
@@ -691,22 +691,12 @@ class stream_c:
         else:
             self.markers.append( marker )
 
-        if not self.initializing:
-            push_marker_update( marker )
         return marker
     
     def removeMarker( self, marker:marker_c ):
         if marker != None and isinstance(marker, marker_c):
-            if not self.initializing:
-                push_remove_marker_update( marker )
             self.markers.remove( marker )
-    
-    def getMarkersList( self )->list:
-        di = []
-        for m in self.markers:
-            di.append( m.descriptor() )
-        return di
-    
+
     def createWindow(self, timeframeStr):
         """Create and show a window for the given timeframe"""
         # TODO: add validation of the timeframe

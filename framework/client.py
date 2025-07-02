@@ -217,7 +217,7 @@ class window_c:
         tasks.registerTask('clocks', self.update_clocks)
 
         self.createPlots(df)
-        self.createMarkers()
+        self.addMarkers( descriptor['markers'].get("added") )
 
         
 
@@ -260,7 +260,7 @@ class window_c:
 
     def createMarker( self, m ):
         marker = marker_c(
-                id = m.get('id'),
+                id = int(m.get('id')),
                 timestamp = int(m.get('timestamp')),
                 position = m.get('position'),
                 shape = m.get('shape'),
@@ -289,17 +289,21 @@ class window_c:
         
         self.markers.append( marker )
     
-    def createMarkers(self):
-        markersList = self.descriptor['markers']
-
-        lenMarkers = len(markersList)
-        if lenMarkers > 500:
-            print( f"* Warning: Very high marker count {len(markersList)}. The chart will take a long time to open")
-        elif lenMarkers > 250:
-            print( f"Hold on. High marker count [{len(markersList)}]")
-
-        for m in markersList:
-            self.createMarker(m)
+    def removeMarker( self, msg ):
+        id = int(msg.get('id'))
+        timestamp = int(msg.get('timestamp'))
+        for marker in reversed(self.markers):
+            if marker.timestamp < timestamp:
+                break
+            if marker.id != id:
+                continue
+            if marker.instance != None:
+                assert(marker.panel != None)
+                chart = self.panels[marker.panel]['chart']
+                assert(chart.remove_marker(marker.instance) == None)
+                marker.instance = None
+                self.markers.remove(marker)
+                break
             
     def addMarker( self, msg ):
         
@@ -318,7 +322,7 @@ class window_c:
         # we're screwed. We need to remove the most recent markers and put them back.
         try:
             marker = marker_c(
-                id = msg.get('id'),
+                id = int(msg.get('id')),
                 timestamp = marker_timestamp,
                 position = msg.get('position'),
                 shape = msg.get('shape'),
@@ -331,6 +335,7 @@ class window_c:
             insertion_index = bisect.bisect_left( [m.timestamp for m in self.markers], marker.timestamp )
 
             # now we need to remove all the ones above the index from the chart and add them again
+            # we are only removing them from the chart, but we keep them in the list to restore them
             for index in range(len(self.markers) - 1, insertion_index - 1, -1):
                 cm = self.markers[index]
                 if cm.instance == None: 
@@ -340,7 +345,7 @@ class window_c:
                 chart = self.panels[cm.panel]['chart']
                 assert(chart.remove_marker(cm.instance) == None)
                 cm.instance = None
-
+                
             # add the new one
             marker.instance = chart.marker( time = pd.to_datetime( marker.timestamp, unit='ms' ),
                 position = marker.position,
@@ -362,7 +367,29 @@ class window_c:
 
         except Exception as e:
             print( "Deleting markers failed with:", e )
-    
+
+    def addMarkers( self, addlist ):
+        if addlist is None or len(addlist) == 0:
+            return
+        
+        if len(self.markers) == 0: # we don't need to worry about sorting
+            if len(addlist) > 500:
+                print( f"* Warning: Very high marker count {len(addlist)}. The chart will take a long time to open")
+            elif len(addlist) > 250:
+                print( f"Hold on. High marker count [{len(addlist)}]")
+            for m in addlist:
+                self.createMarker(m)
+            return
+        
+        # in here we have a delta so we have to add them one by one so they fix the sorting problems
+        for m in addlist:
+            self.addMarker(m)
+
+    def removeMarkers( self, removelist ):
+        if removelist is None or len(removelist) == 0:
+            return
+        for m in removelist:
+            self.removeMarker(m)
 
 
     def newTick(self, msg):
@@ -442,6 +469,10 @@ class window_c:
                     plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
         except Exception as e:
             raise ValueError( f"Failed to update a plot because: {e}")
+        
+        # markers delta update
+        self.removeMarkers( msg['markers'].get("removed") ) 
+        self.addMarkers( msg['markers'].get("added") ) 
 
         # finally add the opening of the realtime candle
         self.newTick( msg.get('tick') )

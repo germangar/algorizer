@@ -14,13 +14,10 @@ from . import active
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# BIG HUGE FIXME: THese should be grabbing the timeframe requested by the client
+# BIG HUGE FIXME: The plots should be grabbing the timeframe requested by the client
 def getPlotsList()->dict:
     timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
     return timeframe.plotsList()
-
-def getMarkersList()->list:
-    return active.timeframe.stream.getMarkersList()
 
 debug = False
 
@@ -44,6 +41,41 @@ class client_t:
         self.status = CLIENT_DISCONNECTED
         self.last_successful_send = 0.0
         self.timeframeStr = ""
+
+        self.last_markers_dict:dict = {}
+        self.last_markers:list = []
+        self.last_lines:list = []
+
+
+    def prepareMarkersUpdate( self, new_markers ):
+        # Convert old and new markers to dictionaries
+        # old_dict = {marker.id: marker for marker in old_markers}
+        old_dict = self.last_markers_dict
+        new_dict = {marker.id: marker for marker in new_markers}
+
+        # Find added and removed marker IDs using set operations
+        old_ids = set(old_dict.keys())
+        new_ids = set(new_dict.keys())
+
+        added_ids = new_ids - old_ids
+        removed_ids = old_ids - new_ids
+
+        # Generate lists of added and removed markers and sort them by timestamp
+        # Parenthesize the generator expressions
+        added = sorted((new_dict[id] for id in added_ids), key=lambda m: m.timestamp)
+        removed = sorted((old_dict[id] for id in removed_ids), key=lambda m: m.timestamp)
+
+        # Build delta with descriptors
+        delta = {
+            "added": [marker.descriptor() for marker in added],
+            "removed": [marker.descriptor() for marker in removed]
+        }
+
+        self.last_markers_dict = new_dict
+        return delta
+
+        ############################################################################
+
         
     def update_last_send(self):
         """Update the last successful send timestamp"""
@@ -106,7 +138,7 @@ def create_data_descriptor(dataset, timeframeStr: str, columns):
         "columns": columns,
         "dtypes": {col: "float64" for col in columns},
         "plots": getPlotsList(),
-        "markers": getMarkersList()
+        "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ) # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
     }
     return json.dumps(message)
     
@@ -143,28 +175,6 @@ async def send_dataframe(cmd_socket, timeframe):
         print(f"Error sending DataFrame: {e}")
         return False
 
-
-def push_marker_update(marker) -> str:
-    """A new marker was created"""
-    if client.status != CLIENT_LISTENING or client.timeframeStr != active.timeframe.timeframeStr:
-        return
-    
-    message = {
-        "type": "marker",
-        "action": "add",
-        "data": marker.descriptor()
-    }
-    
-    asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
-
-
-def push_remove_marker_update(marker) -> str:
-    if client.status != CLIENT_LISTENING or client.timeframeStr != active.timeframe.timeframeStr:
-        return
-    """A new marker was created"""
-    return
-
-
 def push_tick_update(timeframe) -> str:
     """Create a JSON message for tick/realtime updates"""
     message = {
@@ -185,6 +195,7 @@ def push_row_update(timeframe):
         "timeframe": timeframe.timeframeStr,
         "columns": timeframe.columnsList(),
         "data": row,
+        "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ),
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
     asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
