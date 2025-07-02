@@ -107,6 +107,7 @@ class window_c:
         self.plots:list[plot_c] = []
         self.markers:list = []
         self.lines:list = []
+        self.lines_clipped:list = []
         self.showRealTimeCandle = True
         self.numpanels = 0
         self.lastCandle:candle_c = None
@@ -322,8 +323,8 @@ class window_c:
                 chart = self.panels[marker.panel]['chart']
                 assert(chart.remove_marker(marker.instance) == None)
                 marker.instance = None
-                self.markers.remove(marker)
-                break
+            self.markers.remove(marker)
+            break
             
     def addMarker( self, msg ):
         
@@ -411,78 +412,93 @@ class window_c:
         for m in removelist:
             self.removeMarker(m)
 
-    def reclipLine( self, id ):
+    @staticmethod
+    def clip_line_left(x1, y1, x2, y2, x_boundary):
+        if x1 < x_boundary:
+            if x1 != x2:  # Handle vertical lines
+                slope = (y2 - y1) / float(x2 - x1)
+                new_y1 = y1 + slope * (x_boundary - x1)
+                return (x_boundary, new_y1, True)  # Clipped
+        return (x1, y1, False)
+    
+    @staticmethod
+    def clip_line_right(x1, y1, x2, y2, x_boundary):
+        if x2 > x_boundary:
+            if x1 != x2:  # Handle vertical lines
+                slope = (y2 - y1) / float(x2 - x1)
+                new_y2 = y1 + slope * (x_boundary - x1)
+                return (x_boundary, new_y2, True)
+        return (x2, y2, False)  # No clipping needed
+
+    def reclipLine( self, line ):
+        if not line.clipped:
+            # this should be a ValueError
+            return
+
+        if line.x1 >= self.barindex: # all of it is out of range, but will show up eventually
+            self.lines_clipped.append(line)
+            return
+
+        line.clipped = False
+        try:
+            if line.instance != None:
+                line.instance.delete()
+        except Exception as e:
+            print("LINE DIDN'T DELETE", e)
+        
+        line.instance = None
+
+        x1 = line.x1
+        y1 = line.y1
+        x2 = line.x2
+        y2 = line.y2
+
+        # clip the lines when they go out of bounds
+        x1, y1, c = self.clip_line_left(x1, y1, x2, y2, 0)
+        x2, y2, line.clipped = self.clip_line_right(x1, y1, x2, y2, self.barindex)
+            
+        chart:Chart = self.panels[line.panel]['chart']
+
+        # convert the indexes to timestamps
+        timeframeMsec = int( self.descriptor['timeframemsec'] )
+        time1 = self.timestamp - (( self.barindex - x1 ) * timeframeMsec)
+        time2 = self.timestamp - (( self.barindex - x2 ) * timeframeMsec)
+        line.instance = chart.trend_line( 
+            pd.to_datetime( time1, unit='ms' ), 
+            y1, 
+            pd.to_datetime( time2, unit='ms' ), 
+            y2, 
+            round = False, 
+            line_color=line.color, 
+            width=line.width )
+        
+        if line.clipped == True:
+            self.lines_clipped.append(line)
+
+
+    def reclipLines( self ):
+        if len(self.lines_clipped) == 0:
+            return
+        clippedList = list(self.lines_clipped)
+        self.lines_clipped = []
+        for line in clippedList:
+            self.reclipLine(line)
+
+    def removeLine( self, id ):
         for line in reversed(self.lines):
             if line.id != id:
                 continue
-            if not line.clipped:
-                break
-            if line.instance == None:
-                break
-
-            line.clipped = False
-            try:
+            if line.instance != None:
                 line.instance.delete()
-            except Exception as e:
-                print("LINE DIDN'T DELETE", e)
-            
             line.instance = None
-
-            x1 = line.x1
-            y1 = line.y1
-            x2 = line.x2
-            y2 = line.y2
-
-            # clip the lines when they go out of bounds
-            # FIXME: I shouldn't modify the objects but only
-            # the values that go into the chart itself.
-            if x1 < 0:
-                if line.x2 != line.x1:
-                    # Calculate y at x_boundary
-                    slope = (line.y2 - line.y1) / float(x2 - x1)
-                    y1 = y1 + slope * (0 - x1)
-                    x1 = 0
-                else:
-                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
-                    return
-
-            if line.x2 > self.barindex:
-                if line.x2 != line.y2:
-                    x_boundary = self.barindex
-                    slope = (line.y2 - line.y1) / float(line.x2 - line.x1)
-                    y2 = line.y1 + slope * (x_boundary - line.x1)
-                    x2 = self.barindex
-                    line.clipped = True
-                else:
-                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
-                    return
-                
-            chart:Chart = self.panels[line.panel]['chart']
-
-            # convert the indexes to timestamps
-            timeframeMsec = int( self.descriptor['timeframemsec'] )
-            time1 = self.timestamp - (( self.barindex - x1 ) * timeframeMsec)
-            time2 = self.timestamp - (( self.barindex - x2 ) * timeframeMsec)
-            line.instance = chart.trend_line( 
-                pd.to_datetime( time1, unit='ms' ), 
-                y1, 
-                pd.to_datetime( time2, unit='ms' ), 
-                y2, 
-                round = False, 
-                line_color=line.color, 
-                width=line.width )
-            
-            if line.clipped == False:
-                pass # remove it from the list of clipped lines
-
+            self.lines.remove(line)
             break
 
-    def reclipLines( self ):
-        if len(self.lines) == 0:
+    def removeLines( self, removelist ):
+        if removelist is None or len(removelist) == 0:
             return
-        for line in self.lines:
-            if line.clipped:
-                self.reclipLine(line.id)
+        for line in removelist:
+            self.removeLine(line.id)
 
 
     def addLine( self, msg ):
@@ -513,29 +529,16 @@ class window_c:
             x2 = line.x2
             y2 = line.y2
 
-            # clip the lines when they go out of bounds
-            # FIXME: I shouldn't modify the objects but only
-            # the values that go into the chart itself.
-            if x1 < 0:
-                if line.x2 != line.x1:
-                    # Calculate y at x_boundary
-                    slope = (line.y2 - line.y1) / float(x2 - x1)
-                    y1 = y1 + slope * (0 - x1)
-                    x1 = 0
-                else:
-                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
-                    return
+            if x1 >= self.barindex: # all of it is out of range, but will show up eventually
+                line.clipped = True
+                self.lines.append(line)
+                return
+            
+            if x2 < 0: # This like will never be visible
+                return
 
-            if line.x2 > self.barindex:
-                if line.x2 != line.y2:
-                    x_boundary = self.barindex
-                    slope = (line.y2 - line.y1) / float(line.x2 - line.x1)
-                    y2 = line.y1 + slope * (x_boundary - line.x1)
-                    x2 = self.barindex
-                    line.clipped = True
-                else:
-                    print( f"Vertical line [{line.x1}] is out of range. Won't be updated")
-                    return
+            x1, y1, c = self.clip_line_left(x1, y1, x2, y2, 0)
+            x2, y2, line.clipped = self.clip_line_right(x1, y1, x2, y2, self.barindex)
 
             if line.panel not in self.panels.keys():
                 line.panel = 'main'
@@ -554,12 +557,12 @@ class window_c:
                 round = False, 
                 line_color=line.color, 
                 width=line.width )
-            
-            
-            
+
             if line.instance == None:
                 print( "FAILED TO ADD LINE" )
             self.lines.append(line)
+            if line.clipped:
+                self.lines_clipped.append(line)
         except Exception as e:
             print( "Exception", e )
 
@@ -655,6 +658,7 @@ class window_c:
         self.removeMarkers( msg['markers'].get("removed") ) 
         self.addMarkers( msg['markers'].get("added") ) 
 
+        self.removeLines( msg['lines'].get("removed") )
         self.reclipLines()
         self.addLines( msg['lines'].get("added") )
 
