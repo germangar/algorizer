@@ -218,6 +218,7 @@ def push_row_update(timeframe):
         "columns": timeframe.columnsList(),
         "data": row,
         "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ),
+        "lines": client.prepareLinesUpdate( active.timeframe.stream.lines ),
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
     asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
