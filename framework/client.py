@@ -436,8 +436,9 @@ class window_c:
             return
 
         if line.x1 >= self.barindex: # all of it is out of range, but will show up eventually
-            self.lines_clipped.append(line)
-            return
+            if not( line.x1 == line.x2 and line.x1 == self.barindex ): # if it's pure vertical it can show up
+                self.lines_clipped.append(line)
+                return
 
         line.clipped = False
         try:
@@ -530,9 +531,10 @@ class window_c:
             y2 = line.y2
 
             if x1 >= self.barindex: # all of it is out of range, but will show up eventually
-                line.clipped = True
-                self.lines.append(line)
-                return
+                if not( x1 == x2 and x1 == self.barindex ):
+                    line.clipped = True
+                    self.lines.append(line)
+                    return
             
             if x2 < 0: # This like will never be visible
                 return
