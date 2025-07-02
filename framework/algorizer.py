@@ -746,6 +746,9 @@ def createMarker( text, location:str = 'below', shape:str = 'circle', color:str 
         MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
     return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name ) or None
 
+def createLine( x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, chart_name:str = 'main' )->line_c:
+        return active.timeframe.stream.createLine( x1, y1, x2, y2, color, width, chart_name )
+
 def getRealtimeCandle()->candle_c:
     return active.timeframe.realtimeCandle
 
