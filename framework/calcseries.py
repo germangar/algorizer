@@ -42,15 +42,23 @@ def _rolling_window_apply_optimized(arr: np.ndarray, window: int, func) -> np.nd
         arr = np.asarray(arr, dtype=np.float64)
     
     n = len(arr)
-    if window < 1 or window > n:
+    if window < 1:
+        return np.full_like(arr, np.nan)
+    
+    if n == 0:
+        return np.array([], dtype=np.float64)
+
+    if window > n:
         return np.full_like(arr, np.nan)
 
     windows = sliding_window_view(arr, window_shape=window)
-    applied_values = func(windows) 
     
-    result = np.concatenate((np.full(window - 1, np.nan), applied_values))
-    
-    return result
+    try:
+        applied_values = func(windows, axis=-1)
+    except TypeError:
+        applied_values = np.array([func(w) for w in windows], dtype=np.float64)
+        
+    return np.concatenate((np.full(window - 1, np.nan, dtype=np.float64), applied_values))
 
 
 
@@ -156,7 +164,7 @@ def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset:
     if talib_available:
         return talib.MAX(source, period)
     source = np.asarray(source, dtype=np.float64)
-    return _rolling_window_apply_optimized(source, period, lambda x: np.max(x, axis=1))
+    return _rolling_window_apply_optimized(source, period, lambda x: np.max(x))
 
 def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
@@ -165,7 +173,7 @@ def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: 
     if talib_available:
         return talib.MIN(source, period)
     source = np.asarray(source, dtype=np.float64)
-    return _rolling_window_apply_optimized(source, period, lambda x: np.min(x, axis=1))
+    return _rolling_window_apply_optimized(source, period, lambda x: np.min(x))
 
 # _highestbars250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -173,7 +181,7 @@ def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, data
     #     return talib.MAXINDEX(source, period)
     source = np.asarray(source, dtype=np.float64)
 
-    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmax(x, axis=1))
+    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmax(x))
 
 # _lowestbars250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -181,7 +189,7 @@ def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, datas
     #     return talib.MININDEX(source, period)
     source = np.asarray(source, dtype=np.float64)
 
-    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmin(x, axis=1))
+    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmin(x))
 
 # _falling250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -556,37 +564,42 @@ def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.
     return cfo
 
 # _cmo250. Elapsed time: 0.01 seconds
-def _generatedseries_calculate_cmo(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
-        return talib.CMO( source, period )
+def _generatedseries_calculate_cmo(source: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param) -> np.ndarray:
+    # if talib_available:
+    #     return talib.CMO( source, period ) # It returns a different result
+    
+    src = np.asarray(source, dtype=np.float64)
+    length = int(period) # Ensure length is an integer
 
-    source = np.asarray(source, dtype=np.float64)
-    n = len(source)
+    n = len(src)
+    if n == 0:
+        return np.array([], dtype=np.float64)
 
-    if period < 1 or period > n:
-        return np.full_like(source, np.nan)
+    # 1. Calculate momentum (momm = src - src[1])
+    # np.diff returns an array of length N-1. Prepend a NaN to align with the original series length.
+    momm = np.concatenate(([np.nan], np.diff(src)))
 
-    # Calculate price changes (diff). Prepend a NaN.
-    changes = np.concatenate(([np.nan], np.diff(source)))
+    # 2. Calculate m1 (positive momentum) and m2 (absolute negative momentum)
+    m1 = np.maximum(momm, 0.0)
+    m2 = np.maximum(-momm, 0.0) # Using -momm to get the positive value of negative changes
 
-    # Separate positive and negative changes
-    sum_up_values = np.where(changes > 0, changes, 0.0)
-    sum_down_values = np.where(changes < 0, np.abs(changes), 0.0)
-    # CORRECTED LINES: Wrap np.sum(x, axis=1) in a lambda function
-    rolling_sum_up = _rolling_window_apply_optimized(np.nan_to_num(sum_up_values, nan=0.0), period, lambda x: np.sum(x, axis=1))
-    rolling_sum_down = _rolling_window_apply_optimized(np.nan_to_num(sum_down_values, nan=0.0), period, lambda x: np.sum(x, axis=1))
-    sum_total = rolling_sum_up + rolling_sum_down
+    # 3. Calculate rolling sums sm1 and sm2 over 'length' periods
+    # _rolling_window_apply_optimized handles NaN padding at the start.
+    sm1 = _rolling_window_apply_optimized(m1, length, lambda x, axis: np.nansum(x, axis=axis))
+    sm2 = _rolling_window_apply_optimized(m2, length, lambda x, axis: np.nansum(x, axis=axis))
 
-    # Calculate CMO
-    cmo = np.full_like(source, np.nan)
-    non_zero_total_idx = np.where(sum_total != 0)
+    # 4. Calculate Chande Momentum Oscillator: 100 * (sm1 - sm2) / (sm1 + sm2)
+    denominator = sm1 + sm2
+    
+    # Use np.where to handle division by zero or where denominator is NaN:
+    # If denominator is 0.0 or NaN, the result for that point will be NaN.
+    cmo_series = np.where(
+        (denominator == 0.0) | np.isnan(denominator), # Check for zero OR NaN in denominator
+        np.nan, # Result is NaN if denominator is zero or NaN
+        100.0 * (sm1 - sm2) / denominator # Otherwise, perform the calculation
+    )
 
-    # Apply CMO formula: 100 * ((Sum_Up - Sum_Down) / (Sum_Up + Sum_Down))
-    cmo[non_zero_total_idx] = 100 * ((rolling_sum_up[non_zero_total_idx] - rolling_sum_down[non_zero_total_idx]) / sum_total[non_zero_total_idx])
-    zero_total_idx = np.where(sum_total == 0)
-    cmo[zero_total_idx] = np.where(~np.isnan(sum_total[zero_total_idx]), 0.0, np.nan)
-
-    return cmo
+    return cmo_series
 
 #
 def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -1066,8 +1079,8 @@ def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, da
 
     # Calculate Highest High (HH) and Lowest Low (LL) over the `k_period`
     # `_rolling_window_apply_optimized` will produce an array of length `current_input_len`
-    hh_values = _rolling_window_apply_optimized(high_values_slice, period, lambda x: np.max(x, axis=1))
-    ll_values = _rolling_window_apply_optimized(low_values_slice, period, lambda x: np.min(x, axis=1))
+    hh_values = _rolling_window_apply_optimized(high_values_slice, period, lambda x: np.max(x))
+    ll_values = _rolling_window_apply_optimized(low_values_slice, period, lambda x: np.min(x))
 
     # Initialize the %K array with NaNs, matching the `source_close` length
     k_line = np.full_like(source_close, np.nan)
@@ -2149,9 +2162,9 @@ def CFO( source:series_c|generatedSeries_c, period:int, timeframe = None )->gene
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'cfo', _ensure_object_array(source), period, _generatedseries_calculate_cfo )
 
-def CMO(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
+def CMO(source: series_c|generatedSeries_c, period: int = 9, timeframe=None) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
-    return timeframe.calcGeneratedSeries('cmo', _ensure_object_array(source), period, _generatedseries_calculate_cmo, always_reset= True)
+    return timeframe.calcGeneratedSeries('cmo', _ensure_object_array(source), period, _generatedseries_calculate_cmo)
 
 def FWMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
     timeframe = timeframe or active.timeframe
@@ -2204,22 +2217,7 @@ def OBV( timeframe=None ) -> generatedSeries_c:
     # period=2 because obv reads the previous value of close. It can not be anything else.
     return timeframe.calcGeneratedSeries( 'obv', timeframe.registeredSeries['close'], 2, _generatedseries_calculate_obv )
 
-
-# --- Laguerre Oscillator Factory Function ---
 def LAGUERRE(source: Union[str, series_c, generatedSeries_c], gamma: float = 0.7, timeframe=None)->generatedSeries_c:
-    """
-    Laguerre Oscillator.
-
-    Args:
-        source: The input price series (e.g., close). Can be a string (column name),
-                a series_c object, or a generatedSeries_c object.
-        gamma (float): The smoothing factor for the Laguerre filter (typically between 0 and 1).
-                       Default is 0.7.
-        timeframe: The timeframe context (defaults to active.timeframe).
-
-    Returns:
-        generatedSeries_c: An instance of the generatedSeries_c managing the Laguerre data.
-    """
     timeframe = timeframe or active.timeframe
     return timeframe.calcGeneratedSeries( 'lagerre', _ensure_object_array(source), 1, _generatedseries_calculate_laguerre, gamma, always_reset=True )
 
