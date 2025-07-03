@@ -266,6 +266,7 @@ if __name__ == '__main__':
 
     # Execute this call only if you want to check the chart. It's not neccesary to run the strategy.
     # You can also open the chart using the command 'chart' in the console.
+    # opening the chart is often way slower than calculating the strategy results. Don't look at me. Blame lightweight-charts.
     stream.createWindow( '1h' )
 
     # Execute this call only if you want the strategy to keep running in realtime.
