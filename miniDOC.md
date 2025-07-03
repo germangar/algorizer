@@ -58,7 +58,7 @@ stream = stream_c(
     symbol,             # e.g. 'BTC/USDT:USDT'
     exchangeID,         # e.g. 'bitget'
     timeframeList,      # e.g. ['4h', '1h']
-    callbacks,          # List of closeCandle callback functions, one per timeframe
+    callbacks,          # e.g. [closeCanle_4h, closeCandle_1h] List of closeCandle callback functions, one per timeframe
     event_callback,     # Optional: event handler function
     max_amount=35000,   # How many historical candles to fetch
     cache_only=False    # Use only cached data
