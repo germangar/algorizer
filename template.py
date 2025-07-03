@@ -1,6 +1,6 @@
 from framework import calc, trade
 from framework import stream_c, timeframe_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
-from framework import plot, histogram, requestValue, createMarker, createLine
+from framework import plot, histogram, requestValue, createMarker, removeMarker, createLine, removeLine
 
 
 def event( stream:stream_c, event:str, param, numparams ):

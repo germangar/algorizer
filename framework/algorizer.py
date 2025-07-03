@@ -3,7 +3,6 @@ from typing import Optional
 import asyncio
 import ccxt.pro as ccxt
 import time
-from datetime import datetime
 
 from .constants import c
 from . import tasks
@@ -11,7 +10,6 @@ from . import tools
 from .fetcher import ohlcvs_c
 from .candle import candle_c
 from .nameseries import series_c
-from . import calcseries as calc
 from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update
 from . import active
@@ -21,7 +19,7 @@ verbose = False
 
 
 class plot_c:
-    def __init__( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
+    def __init__( self, source:float|int|series_c|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
         '''name, color, style, width
         color: str = 'rgba(200, 200, 200, 0.6)',
         style: LINE_STYLE = 'solid', width: int = 2,
@@ -101,6 +99,10 @@ class line_c:
         self.color = color
         self.width = width
         self.panel = chart_name
+
+    def remove(self):
+        active.timeframe.stream.removeLine(self)
+
     def descriptor(self):
         return vars(self)
 
@@ -720,7 +722,7 @@ class stream_c:
         self.lines.append( line )
         return line
     
-    def deleteLine( self, line:line_c ):
+    def removeLine( self, line:line_c ):
         if line:
             self.lines.remove(line)
 
@@ -751,8 +753,14 @@ def createMarker( text, location:str = 'below', shape:str = 'circle', color:str 
         MARKER_SHAPE = Literal['arrow_up', 'arrow_down', 'circle', 'square']'''
     return active.timeframe.stream.createMarker( text, location, shape, color, timestamp, chart_name ) or None
 
+def removeMarker( marker:marker_c ):
+    active.timeframe.stream.removeMarker(marker)
+
 def createLine( x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, chart_name:str = 'main' )->line_c:
         return active.timeframe.stream.createLine( x1, y1, x2, y2, color, width, chart_name )
+
+def removeLine( marker:marker_c ):
+    active.timeframe.stream.removeLine(marker)
 
 def getRealtimeCandle()->candle_c:
     return active.timeframe.realtimeCandle
