@@ -252,7 +252,7 @@ if __name__ == '__main__':
     stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['4h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
 
     # Create subpanels to plot the oscilators.
-    # with and height are values between 0 amd 1, representing the percentage of the
+    # width and height are values between 0 amd 1, representing the percentage of the
     # screen the subpanel will take. The order of creation will determine which one
     # is above or below.
     stream.registerPanel('macd', 1.0, 0.1, show_timescale=False ) # usually you only want the one at the bottom to show the timescale
