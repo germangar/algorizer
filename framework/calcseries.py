@@ -1204,6 +1204,107 @@ def _generatedseries_calculate_obv(source: np.ndarray, period: int, dataset: np.
         return np.full(length, np.nan, dtype=np.float64)
     
 
+import numpy as np
+from typing import Union, Any, Optional
+
+# Ensure these are correctly imported in your calcseries.py:
+from .nameseries import series_c
+from .constants import c
+from . import active
+from . import tools
+
+# ... (your existing _generatedseries_calculate_ functions) ...
+
+# --- Laguerre Oscillator Calculation ---
+def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param: float) -> np.ndarray:
+    """
+    Calculates the Laguerre Oscillator.
+
+    Args:
+        source (np.ndarray): The input price series (e.g., close prices).
+        period (int): A dummy period, not directly used in Laguerre calculation,
+                      but kept for consistent signature.
+        dataset (np.ndarray): The full 2D dataset (timeframe.dataset).
+                              Not directly used for Laguerre calculation but required by signature.
+        cindex (int): The column index of the output series in the dataset.
+                      Not directly used in this calculation, but required by signature.
+        param (float): The 'gamma' factor for the Laguerre filter (0 to 1).
+
+    Returns:
+        np.ndarray: The calculated Laguerre Oscillator series (0 to 1).
+    """
+    price = np.asarray(source, dtype=np.float64)
+    gamma = float(param) # The gamma factor is passed as 'param'
+    n = len(price)
+
+    if n == 0:
+        return np.array([], dtype=np.float64)
+
+    # Initialize Laguerre filter components
+    L0 = np.full(n, np.nan, dtype=np.float64)
+    L1 = np.full(n, np.nan, dtype=np.float64)
+    L2 = np.full(n, np.nan, dtype=np.float64)
+    L3 = np.full(n, np.nan, dtype=np.float64)
+    
+    laguerre_oscillator = np.full(n, np.nan, dtype=np.float64)
+
+    # Find the first valid price to start calculation
+    first_valid_idx = np.where(~np.isnan(price))[0]
+    if len(first_valid_idx) == 0:
+        return laguerre_oscillator # All NaNs
+
+    start_idx = first_valid_idx[0]
+
+    # Initialize L0, L1, L2, L3 at the first valid point
+    L0[start_idx] = (1 - gamma) * price[start_idx]
+    L1[start_idx] = -gamma * L0[start_idx] + L0[start_idx] # L0_prev is 0 here
+    L2[start_idx] = -gamma * L1[start_idx] + L1[start_idx] # L1_prev is 0 here
+    L3[start_idx] = -gamma * L2[start_idx] + L2[start_idx] # L2_prev is 0 here
+
+    # Calculate for subsequent bars
+    for i in range(start_idx + 1, n):
+        if np.isnan(price[i]):
+            # If current price is NaN, propagate NaNs for L0-L3 and Laguerre
+            L0[i] = np.nan
+            L1[i] = np.nan
+            L2[i] = np.nan
+            L3[i] = np.nan
+        else:
+            # Calculate L0
+            L0[i] = (1 - gamma) * price[i] + gamma * L0[i-1] if not np.isnan(L0[i-1]) else (1 - gamma) * price[i]
+
+            # Calculate L1, L2, L3
+            L1[i] = -gamma * L0[i] + L0[i-1] + gamma * L1[i-1] if not np.isnan(L0[i-1]) and not np.isnan(L1[i-1]) else np.nan
+            L2[i] = -gamma * L1[i] + L1[i-1] + gamma * L2[i-1] if not np.isnan(L1[i-1]) and not np.isnan(L2[i-1]) else np.nan
+            L3[i] = -gamma * L2[i] + L2[i-1] + gamma * L3[i-1] if not np.isnan(L2[i-1]) and not np.isnan(L3[i-1]) else np.nan
+
+            # Handle cases where previous L values might be NaN (e.g., at the very start)
+            # If any previous L is NaN, the current L should also be NaN.
+            # The conditional assignments above already handle this, but explicit check for final calculation.
+            if np.isnan(L0[i]) or np.isnan(L1[i]) or np.isnan(L2[i]) or np.isnan(L3[i]):
+                laguerre_oscillator[i] = np.nan
+                continue
+
+            # Calculate CU and CD
+            CU = 0.0
+            CD = 0.0
+
+            if L0[i] > L1[i]: CU += (L0[i] - L1[i])
+            else: CD += (L1[i] - L0[i])
+
+            if L1[i] > L2[i]: CU += (L1[i] - L2[i])
+            else: CD += (L2[i] - L1[i])
+            
+            if L2[i] > L3[i]: CU += (L2[i] - L3[i])
+            else: CD += (L3[i] - L2[i])
+            
+            # Calculate Laguerre Oscillator
+            if (CU + CD) == 0:
+                laguerre_oscillator[i] = 0.0 # Or 0.5, or NaN, depending on specific convention for zero range
+            else:
+                laguerre_oscillator[i] = CU / (CU + CD)
+
+    return laguerre_oscillator
 
 
 
@@ -2102,6 +2203,25 @@ def OBV( timeframe=None ) -> generatedSeries_c:
     timeframe = timeframe or active.timeframe
     # period=2 because obv reads the previous value of close. It can not be anything else.
     return timeframe.calcGeneratedSeries( 'obv', timeframe.registeredSeries['close'], 2, _generatedseries_calculate_obv )
+
+
+# --- Laguerre Oscillator Factory Function ---
+def LAGUERRE(source: Union[str, series_c, generatedSeries_c], gamma: float = 0.7, timeframe=None)->generatedSeries_c:
+    """
+    Laguerre Oscillator.
+
+    Args:
+        source: The input price series (e.g., close). Can be a string (column name),
+                a series_c object, or a generatedSeries_c object.
+        gamma (float): The smoothing factor for the Laguerre filter (typically between 0 and 1).
+                       Default is 0.7.
+        timeframe: The timeframe context (defaults to active.timeframe).
+
+    Returns:
+        generatedSeries_c: An instance of the generatedSeries_c managing the Laguerre data.
+    """
+    timeframe = timeframe or active.timeframe
+    return timeframe.calcGeneratedSeries( 'lagerre', _ensure_object_array(source), 1, _generatedseries_calculate_laguerre, gamma, always_reset=True )
 
 
 # # #
