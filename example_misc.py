@@ -152,8 +152,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
 
     
     # same thing using methods
-    buySignal = rsi14 > 50.0 and BBlower.crossingDown(close) and invRSI < 20
-    sellSignal = rsi14 < 50.0 and BBupper.crossingUp(close) and invRSI > 80
+    buySignal = rsi14[barindex] > 50.0 and BBlower.crossingDown(close) and invRSI < 20
+    sellSignal = rsi14[barindex] < 50.0 and BBupper.crossingUp(close) and invRSI > 80
 
     # accesing positions and making orders
     shortpos = trade.getActivePosition(c.SHORT)
@@ -166,14 +166,11 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
         if longpos:
             lastorderindex = longpos.get_order_by_direction(c.LONG)['barindex']
             offset = barindex - lastorderindex
-            if close[barindex] > longpos.priceAvg :
-                offset = 0
         if offset > 40:
             trade.order( 'buy', c.LONG )
 
     if longpos:
-        if longpos.get_unrealized_pnl_percentage() > 100 and longpos.collateral >= trade.strategy.order_size * 1.9:
-            # print("REDUCING")
+        if longpos.get_unrealized_pnl_percentage() > 75 and longpos.collateral >= trade.strategy.order_size * 1.9:
             trade.order( 'sell', c.LONG )
 
     if sellSignal:
@@ -183,18 +180,12 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
         if shortpos:
             lastorderindex = shortpos.get_order_by_direction(c.SHORT)['barindex']
             offset = barindex - lastorderindex
-            if close[barindex] < shortpos.priceAvg:
-                offset = 0
         if offset > 40:
             trade.order( 'sell', c.SHORT )
 
     if shortpos:
-        if shortpos.get_unrealized_pnl_percentage() > 100 and shortpos.collateral >= trade.strategy.order_size * 1.9:
-            # print("REDUCING")
+        if shortpos.get_unrealized_pnl_percentage() > 75 and shortpos.collateral >= trade.strategy.order_size * 1.9:
             trade.order( 'buy', c.SHORT )
-
-
-    
 
     
 
@@ -236,18 +227,19 @@ if __name__ == '__main__':
     #   PERP: Bybit, kucoin, okx, binance, htx, poloniexfutures
     #   SPOT: gate, kucoin, okx, binance, probit, upbit
     #
-    # - timeframes list:
+    # - timeframes list: <--- IMPORTANT
     #   It's a list of timeframes you want to run. The order in the list will determine the order of execution of
     #   their 'closeCandle' function callbacks. If you want to read data from a bigger timeframe you should 
     #   add the bigger one before in the list.
     #   The smallest timeframe will be used for fetching the price updates from the exchange.
     #   
-    # - Callbacks list:
+    # - Callbacks list: <--- IMPORTANT
     #   The 'closeCandle' functions that will be called when each timeframe closes a candle.
     #   These are where the heart of your algo resides.
     #
     # - event_callback: 
     #   Funtion to be called when an event happens that the user could interpret.
+    #   The tick event is called when a price update happens (realtime candle)
     #
     # - max_amount:
     #   Amount of history candles to fetch and backtest. These candles refer to the last
@@ -257,7 +249,7 @@ if __name__ == '__main__':
     #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['4h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 100000 )
+    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['4h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
 
     # Create subpanels to plot the oscilators.
     # with and height are values between 0 amd 1, representing the percentage of the
