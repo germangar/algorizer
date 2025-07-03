@@ -95,6 +95,7 @@ class line_c:
     y2:int
     color:str
     width:int
+    style:str
     panel:str
     clipped:bool
     instance:object
@@ -471,7 +472,8 @@ class window_c:
             y2, 
             round = False, 
             line_color=line.color, 
-            width=line.width )
+            width=line.width,
+            style=line.style )
         
         if line.clipped == True:
             self.lines_clipped.append(line)
@@ -512,10 +514,13 @@ class window_c:
                 y2 = float( msg.get('y2') ),
                 color = msg.get('color'),
                 width = int( msg.get('width') ),
+                style = msg.get('style'),
                 panel = msg.get('panel'),
                 clipped = False,
                 instance = None
             )
+
+            
 
             if line.x1 > line.x2: # keep x1 and x2 always chronologically aligned
                 x1 = line.x1
@@ -558,7 +563,8 @@ class window_c:
                 y2, 
                 round = False, 
                 line_color=line.color, 
-                width=line.width )
+                width=line.width,
+                style= line.style )
 
             if line.instance == None:
                 print( "FAILED TO ADD LINE" )

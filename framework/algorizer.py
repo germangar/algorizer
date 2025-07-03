@@ -82,7 +82,7 @@ class marker_c:
         return vars(self)
     
 class line_c:
-    def __init__( self, x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, chart_name:str = 'main' ):
+    def __init__( self, x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, style = 'solid', chart_name:str = 'main' ):
         if isinstance( x1, (generatedSeries_c, series_c, np.ndarray ) ):
             x1 = x1[active.timeframe.barindex]
         if isinstance( y1, (generatedSeries_c, series_c, np.ndarray ) ):
@@ -98,6 +98,7 @@ class line_c:
         self.y2 = y2
         self.color = color
         self.width = width
+        self.style = style
         self.panel = chart_name
 
     def remove(self):
@@ -191,7 +192,6 @@ class timeframe_c:
         is_fetch = self.timeframeStr == self.stream.timeframeFetch
 
         for newrow in rows:
-            # print( newrow )
             newrow_timestamp = int( newrow[0] )
             newrow_open = newrow[1]
             newrow_high = newrow[2]
@@ -355,9 +355,6 @@ class timeframe_c:
 
 
     def calcGeneratedSeries( self, type:str, source: np.ndarray|generatedSeries_c, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
-        # if isinstance( source, generatedSeries_c ):
-        #     source = source.series()
-
         name = tools.generatedSeriesNameFormat( type, source, period )
 
         gse = self.generatedSeries.get( name )
@@ -503,8 +500,6 @@ class stream_c:
         self.mintick = 0.0
         self.cache_only = cache_only
         self.event_callback = event_callback
-        if event_callback == None:
-            self.event_callback = globals().get('event')
 
         self.markers:list[marker_c] = []
         self.lines:list[line_c] = []
@@ -585,15 +580,11 @@ class stream_c:
             
             candles = []
 
-
         # we skipped the last row at initializing each timeframe
-        # dataframe to parse as an update now becasse the last candle is not closed
-        # self.parseCandleUpdateMulti( ohlcvDF.iloc[-1:] )
-        # row_2d = ohlcv_np[row_index:row_index+1, :]
+        # so we can parse it now as an update because the last candle
+        # we received is almost certainly not closed yet
         self.parseCandleUpdateMulti( ohlcvNP[-1:, :] )
-
         del ohlcvNP
-
 
         #################################################
 
@@ -601,7 +592,7 @@ class stream_c:
 
         #################################################
 
-        # connect to ccxt.pro (FIXME? This is probably redundant with the fetcher)
+        # connect to ccxt.pro (FIXME? This should probably reside in the fetcher)
         try:
             self.exchange = getattr(ccxt, exchangeID)({
                     "options": {'defaultType': 'swap', 'adjustForTimeDifference' : True},
@@ -612,7 +603,6 @@ class stream_c:
  
 
     def run(self, backtest_only = False ):
-        # We're done. Start fetching in real time
         self.isRunning = True
         tasks.registerTask( 'cli', cli_task, self )
         if not backtest_only and not self.cache_only : tasks.registerTask( 'fetch', self.fetchCandleUpdates )
@@ -636,11 +626,9 @@ class stream_c:
                 continue
                 
             # extract the data
-
             if( len(response) > maxRows ):
                 response = response[len(response)-maxRows:]
 
-            #pprint( response )
             if( len(response) ):
                 self.parseCandleUpdateMulti( np.array( response, dtype=np.float64 ) )
             
@@ -717,8 +705,9 @@ class stream_c:
         if marker != None and isinstance(marker, marker_c):
             self.markers.remove( marker )
     
-    def createLine( self, x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, chart_name:str = 'main' )->line_c:
-        line = line_c( x1, y1, x2, y2, color, width, chart_name )
+    def createLine( self, x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, style = 'solid', chart_name:str = 'main' )->line_c:
+        '''LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']'''
+        line = line_c( x1, y1, x2, y2, color, width, style, chart_name )
         self.lines.append( line )
         return line
     
@@ -756,8 +745,9 @@ def createMarker( text, location:str = 'below', shape:str = 'circle', color:str 
 def removeMarker( marker:marker_c ):
     active.timeframe.stream.removeMarker(marker)
 
-def createLine( x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, chart_name:str = 'main' )->line_c:
-        return active.timeframe.stream.createLine( x1, y1, x2, y2, color, width, chart_name )
+def createLine( x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, style = 'solid', chart_name:str = 'main' )->line_c:
+    '''LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']'''
+    return active.timeframe.stream.createLine( x1, y1, x2, y2, color, width, style, chart_name )
 
 def removeLine( marker:marker_c ):
     active.timeframe.stream.removeLine(marker)
