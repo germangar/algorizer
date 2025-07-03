@@ -61,14 +61,8 @@ def event( stream:stream_c, event:str, param, numparams ):
 # 
 
 
-# The tick callback funtion will be called for every price update. The candle will not be closed.
-def tick( realtimeCandle:candle_c ):
-    pass
-
-
 # User defined closeCandle callbacks. They are called when a candle of the given frametime has closed.
 # You can define one for each timeframe, or not. They can be set to None. It's up to you.
-
 
 rsiSlow = None
 def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
