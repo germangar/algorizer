@@ -9,12 +9,10 @@ def event( stream:stream_c, event:str, param, numparams ):
         candle : a cancle_c containing the OHLCV values of the latest price.
         realtime : boolean. True for realtime, false for backtesting.
         '''
-        assert( isinstance(param, tuple) and len(param) == numparams)
         candle, realtime = param
         if not realtime : return
 
     elif event == "cli_command":
-        assert( isinstance(param, tuple) and len(param) == numparams)
         cmd, args = param
         if cmd == 'echo': # command will always be lower case
             print( 'Echo ', args )
@@ -31,7 +29,6 @@ def event( stream:stream_c, event:str, param, numparams ):
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
         import requests
-        assert( isinstance(param, tuple) and len(param) == numparams)
         order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage = param
 
         # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
@@ -47,6 +44,7 @@ def event( stream:stream_c, event:str, param, numparams ):
 
 
 def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
+    barindex = timeframe.barindex
     calc.SMA(close, 200).plot()
     calc.RSI(close, 14).plot('rsi_subpanel')
 
