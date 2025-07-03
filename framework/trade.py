@@ -26,6 +26,7 @@ class strategy_c:
         self.positions = []
         self.total_profit_loss = 0.0 # Cumulative PnL
         self.initial_liquidity = initial_liquidity
+        self.liquidity = initial_liquidity
         self.total_winning_positions = 0
         self.total_losing_positions = 0
         # Long/short stats
@@ -53,10 +54,10 @@ class strategy_c:
             raise ValueError(f"Invalid currency_mode: {currency_mode}. Must be 'USD' or 'BASE'.")
 
         # Validate parameters based on currency_mode
-        if self.currency_mode == 'USD' and self.max_position_size > self.initial_liquidity:
+        if self.currency_mode == 'USD' and self.max_position_size > self.liquidity:
             # max_position_size is a per-position cap
-            if self.max_position_size > self.initial_liquidity:
-                raise ValueError(f"max_position_size ({self.max_position_size}) cannot be greater than initial_liquidity ({self.initial_liquidity}) when currency_mode is 'USD', as it represents a capital limit per position.")
+            if self.max_position_size > self.liquidity:
+                raise ValueError(f"max_position_size ({self.max_position_size}) cannot be greater than initial_liquidity ({self.liquidity}) when currency_mode is 'USD', as it represents a capital limit per position.")
 
         if self.order_size <= 0:
             raise ValueError("order_size must be a positive value.")
@@ -77,6 +78,7 @@ class strategy_c:
         # Record the timestamp of the first order of the entire strategy
         if self.first_order_timestamp is None:
             self.first_order_timestamp = getCandle(active.barindex).timestamp
+            self.liquidity = self.initial_liquidity
 
         # Add the initial order to history, including its leverage
         pos.order_history.append({
@@ -163,7 +165,7 @@ class strategy_c:
                 cost_per_base_unit = EPSILON # Set to a small non-zero value
 
             # Clamp incoming order quantity based on max_position_size (USD collateral limit)
-            available_liquidity = self.initial_liquidity
+            available_liquidity = self.liquidity
             max_cap = min(self.max_position_size, available_liquidity)
             if current_active_pos is None:
                 # No active position, so max allowed collateral is min(max_position_size, initial_liquidity)
@@ -409,12 +411,12 @@ class strategy_c:
 
 
         # Print header
-        print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Acct PnL %':<12} {'Liquidated':<12}")
+        print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Avg+ PnL':<12} {'Avg- PnL':<12} {'Liquidated':<12}")
         # Print values
-        print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {pnl_percentage_vs_liquidity:<12.2f} {self.total_liquidated_positions:<12}")
+        print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {avg_winning_pnl:<12.2f} {avg_losing_pnl:<12.2f} {self.total_liquidated_positions:<12}")
         print("------------------------------")
-        if self.initial_liquidity > 1:
-            print(f"Final Account Liquidity: {self.initial_liquidity:.2f} USD")
+        if self.liquidity > 1:
+            print(f"Final Account Liquidity: {self.liquidity:.2f} USD ({pnl_percentage_vs_liquidity:.2f}% PnL)"     )
         else:
             print("Your account has been terminated.")
 
@@ -829,7 +831,7 @@ class position_c:
 
             # Update account liquidity with realized PnL (ensure float type and correct attribute)
             if hasattr(self.strategy_instance, 'initial_liquidity') and self.profit is not None:
-                self.strategy_instance.initial_liquidity = float(self.strategy_instance.initial_liquidity) + float(self.profit)
+                self.strategy_instance.liquidity = float(self.strategy_instance.liquidity) + float(self.profit)
 
             # Marker for liquidation or normal close
             if liquidation_reason is not None:

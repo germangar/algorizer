@@ -54,9 +54,10 @@ def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, 
 if __name__ == '__main__':
 
     # configure the strategy before creating the stream
-    trade.strategy.verbose = False
+    # the backtest will happen at stream initialization
     trade.strategy.hedged = False
-    trade.strategy.currency_mode = 'USD'
+    trade.strategy.currency_mode = 'USD' # 'BASE' for base currency mode
+    trade.strategy.initial_liquidity = 10000
     trade.strategy.order_size = 1000
     trade.strategy.max_position_size = 2000
     trade.strategy.leverage_long = 1
@@ -68,7 +69,7 @@ if __name__ == '__main__':
 
     stream.createWindow( '1h' )
 
-    # trade.print_strategy_stats()
+    # trade.print_strategy_stats() # prints every order
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 
