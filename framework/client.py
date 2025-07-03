@@ -6,11 +6,7 @@ import json
 import pandas as pd
 import numpy as np
 import bisect
-
-# from . import tasks
-# from .constants import c
-# from .candle import candle_c
-
+from typing import Optional, Any
 
 # REPLACE ALL IMPORTS WITH THESE:
 # import sys
@@ -21,15 +17,6 @@ sys.path.append(str(Path(__file__).parent.parent))  # Add project root to path
 from framework import tasks
 from framework.constants import c
 from framework.candle import candle_c
-
-# KEEP YOUR EXISTING ARGUMENT PARSER AND CODE
-
-
-
-
-
-
-
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -58,9 +45,6 @@ debug = False
 ############################ CHART WINDOW ################################
 from lightweight_charts import Chart
 # from lightweight_charts_esistjosh import Chart
-from typing import Optional, Any
-
-
 
 from dataclasses import dataclass
 @dataclass
@@ -240,8 +224,6 @@ class window_c:
         self.addMarkers( descriptor['markers'].get("added") )
         self.addLines( descriptor['lines'].get("added") )
 
-        
-        
 
         tasks.registerTask('window', chart.show_async)
 
@@ -280,6 +262,7 @@ class window_c:
 
             self.plots.append( plot )
 
+
     def createMarker( self, m ):
         marker = marker_c(
                 id = int(m.get('id')),
@@ -311,6 +294,7 @@ class window_c:
         
         self.markers.append( marker )
     
+
     def removeMarker( self, msg ):
         id = int(msg.get('id'))
         timestamp = int(msg.get('timestamp'))
@@ -327,6 +311,7 @@ class window_c:
             self.markers.remove(marker)
             break
             
+
     def addMarker( self, msg ):
         
         if len(self.markers) == 0:
@@ -390,6 +375,7 @@ class window_c:
         except Exception as e:
             print( "Deleting markers failed with:", e )
 
+
     def addMarkers( self, addlist ):
         if addlist is None or len(addlist) == 0:
             return
@@ -407,11 +393,13 @@ class window_c:
         for m in addlist:
             self.addMarker(m)
 
+
     def removeMarkers( self, removelist ):
         if removelist is None or len(removelist) == 0:
             return
         for m in removelist:
             self.removeMarker(m)
+
 
     @staticmethod
     def clip_line_left(x1, y1, x2, y2, x_boundary):
@@ -430,6 +418,7 @@ class window_c:
                 new_y2 = y1 + slope * (x_boundary - x1)
                 return (x_boundary, new_y2, True)
         return (x2, y2, False)  # No clipping needed
+
 
     def reclipLine( self, line ):
         if not line.clipped:
@@ -487,6 +476,7 @@ class window_c:
         for line in clippedList:
             self.reclipLine(line)
 
+
     def removeLine( self, id ):
         for line in reversed(self.lines):
             if line.id != id:
@@ -496,6 +486,7 @@ class window_c:
             line.instance = None
             self.lines.remove(line)
             break
+
 
     def removeLines( self, removelist ):
         if removelist is None or len(removelist) == 0:
@@ -519,8 +510,6 @@ class window_c:
                 clipped = False,
                 instance = None
             )
-
-            
 
             if line.x1 > line.x2: # keep x1 and x2 always chronologically aligned
                 x1 = line.x1
@@ -613,6 +602,7 @@ class window_c:
             chart = self.panels[n]['chart']
             chart.update( series )
 
+
     def newRow(self, msg):
         row = msg.get('data')
         row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP]) # fix type
@@ -677,6 +667,7 @@ class window_c:
     def isAlive(self)->bool:
         chart:Chart = self.panels['main']['chart']
         return chart.is_alive
+
 
     # There is no reason for this to be a method other than grouping all the window stuff together
     def get_screen_resolution(self):
@@ -803,7 +794,6 @@ async def send_command(socket, command: str, params: str = ""):
                 return data
                 
             elif data['type'] == 'data_descriptor':
-                print(f"Receiving DataFrame data...")
                 status = CLIENT_LOADING
                 descriptor = data
                 
@@ -834,7 +824,7 @@ async def send_command(socket, command: str, params: str = ""):
                     if 'timestamp' in df.columns:
                         df['timestamp'] = df['timestamp'].astype(np.int64)
                     
-                    print("DataFrame received")
+                    print("Opening chart")
                     if debug : print(f"DataFrame shape: {df.shape}")
                     ### fall through ###
                 except Exception as e:
@@ -862,7 +852,7 @@ async def listen_for_updates(context):
     socket.connect(f"tcp://127.0.0.1:{pub_port}")  # Modified line
     socket.setsockopt_string(zmq.SUBSCRIBE, "")
     
-    print("listening...")
+    if debug : print("listening...")
     
     try:
         while True:
@@ -933,9 +923,6 @@ async def run_client():
             if status == CLIENT_LISTENING:
                 await send_command(cmd_socket, "ack", "") # keepalive
                 await asyncio.sleep(10)
-
-            # await send_command(cmd_socket, "print", "ack")
-            # await asyncio.sleep(2)
 
     except asyncio.CancelledError:
         print("Client task cancelled")

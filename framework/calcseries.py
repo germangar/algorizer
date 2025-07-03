@@ -1323,17 +1323,9 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
 
 
 
-
 class generatedSeries_c:
-    def __init__(self, type: str, source: np.ndarray, period: int, func=None, param=None, always_reset: bool = False, timeframe=None):
-        """
-        Faithful conversion for numpy-based storage.
-        source: 1D numpy array (column slice of timeframe.dataset)
-        """
+    def __init__(self, type: str, source: np.ndarray, period: int, func=None, param=None, always_reset: bool = False):
         # Find the column index and name for the passed source array
-        if timeframe is None:
-            raise SystemError(f"Generated Series has no assigned timeframe [unknown]")
-
         if not isinstance( source, series_c ):
             raise ValueError( "Source must be 'series_c' type" )
 
@@ -1343,11 +1335,9 @@ class generatedSeries_c:
         self.period = period if period is not None else len(source)
         self.param = param
         self.func = func
-        self.timeframe = timeframe
+        self.timeframe = active.timeframe
         self.lastUpdatedTimestamp = 0
         self.alwaysReset = always_reset
-        self.__current_cache = np.nan # will update on demand when calling iloc. Don't use from here.
-        self.__cached_barindex = -1
 
         if self.func is None:
             raise SystemError(f"Generated Series without a func [{self.name}]")
@@ -1358,6 +1348,7 @@ class generatedSeries_c:
 
     def initialize( self, source: series_c ):
         assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
+        assert self.timeframe == active.timeframe
         if len(source) >= self.period and (self.name not in self.timeframe.registeredSeries.keys() or self.alwaysReset):
             timeframe = self.timeframe
             if timeframe.backtesting and not timeframe.jumpstart:
@@ -1392,8 +1383,9 @@ class generatedSeries_c:
             return
         
         assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
+        assert self.timeframe == active.timeframe
         
-        tf = self.timeframe
+        timeframe = self.timeframe
 
         # if non existent or needs reset, initialize
         if self.alwaysReset or self.lastUpdatedTimestamp == 0:
@@ -1401,18 +1393,18 @@ class generatedSeries_c:
             return
 
         # has this row already been updated?
-        if self.lastUpdatedTimestamp >= tf.timestamp:
+        if self.lastUpdatedTimestamp >= timeframe.timestamp:
             return
 
         # slice the required block for current calculation
-        barindex = tf.barindex
+        barindex = timeframe.barindex
         period_slice = source[-self.period:]
         # func should return a 1D array or scalar; we want the most recent value
-        newval = self.func(period_slice, self.period, tf.dataset, self.column_index, self.param)
+        newval = self.func(period_slice, self.period, timeframe.dataset, self.column_index, self.param)
         if isinstance(newval, (np.ndarray, series_c, list, tuple)):
             newval = newval[-1]
-        tf.dataset[barindex, self.column_index] = newval
-        self.lastUpdatedTimestamp = tf.timestamp
+        timeframe.dataset[barindex, self.column_index] = newval
+        self.lastUpdatedTimestamp = timeframe.timestamp
 
     def iloc( self, index = -1 ):
         # return self.__getitem__(index)
@@ -1713,9 +1705,8 @@ def _ensure_object_array( data: series_c|generatedSeries_c )-> series_c:
 
 
 
-def addSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-
+def addSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
         name = f"add_{colA.index}_{colB}"
@@ -1727,8 +1718,8 @@ def addSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSer
 
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_add_series, colB )
 
-def subtractSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def subtractSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1741,8 +1732,8 @@ def subtractSeries(colA: str | generatedSeries_c | series_c, colB: str | generat
         
     return timeframe.calcGeneratedSeries( name, colA, 1, _generatedseries_calculate_subtract_series, colB )
 
-def multiplySeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def multiplySeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1755,8 +1746,8 @@ def multiplySeries(colA: str | generatedSeries_c | series_c, colB: str | generat
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_multiply_series, colB)
 
-def divideSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def divideSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1769,8 +1760,8 @@ def divideSeries(colA: str | generatedSeries_c | series_c, colB: str | generated
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_divide_series, colB)
 
-def powerSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def powerSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1783,8 +1774,8 @@ def powerSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedS
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_power_series, colB)
 
-def minSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def minSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1797,8 +1788,8 @@ def minSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSer
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, colB)
 
-def maxSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def maxSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1811,8 +1802,8 @@ def maxSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSer
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, colB)
 
-def equalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def equalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1825,8 +1816,8 @@ def equalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedS
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_equal_series, colB)
 
-def notequalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def notequalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1839,8 +1830,8 @@ def notequalSeries(colA: str | generatedSeries_c | series_c, colB: str | generat
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_notequal_series, colB)
 
-def greaterSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def greaterSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1853,8 +1844,8 @@ def greaterSeries(colA: str | generatedSeries_c | series_c, colB: str | generate
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greater_series, colB)
 
-def greaterOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def greaterOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1867,8 +1858,8 @@ def greaterOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | g
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greaterorequal_series, colB)
 
-def lessSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def lessSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1881,8 +1872,8 @@ def lessSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSe
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_less_series, colB)
 
-def lessOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def lessOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
@@ -1895,8 +1886,8 @@ def lessOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | gene
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_lessequal_series, colB)
 
-def notSeries(source: str | generatedSeries_c | series_c, timeframe=None) ->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def notSeries(source: str | generatedSeries_c | series_c) ->generatedSeries_c:
+    timeframe = active.timeframe
 
     source = timeframe.seriesFromMultiObject( source )
     name = f"not_{source.index}"
@@ -1907,107 +1898,107 @@ def notSeries(source: str | generatedSeries_c | series_c, timeframe=None) ->gene
 #
 
 
-def addScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def addScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """
     Factory function for scalar + series.
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"add_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_add_series, scalar )
 
-def subtractScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def subtractScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """
     Factory function for scalar - series.
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"sub_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_subtract_series, scalar)
 
-def multiplyScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def multiplyScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """
     Factory function for scalar * series.
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"mul_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_multiply_series, scalar)
 
-def divideScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def divideScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """
     Factory function for scalar / series.
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"div_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_divide_series, scalar)
 
-def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """
     Factory function for scalar ** series.
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"pow_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_power_series, scalar)
 
-def minScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def minScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """
     Factory function for min(scalar, series).
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"min_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_min_series, scalar)
 
-def maxScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def maxScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """
     Factory function for max(scalar, series).
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"max_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_max_series, scalar)
 
-def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """Factory for scalar == series."""
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"eq_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_equal_series, scalar)
 
-def notEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def notEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """Factory for scalar != series."""
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"neq_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_notequal_series, scalar)
 
-def greaterScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def greaterScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """Factory for scalar > series."""
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"gt_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greater_series, scalar)
 
-def greaterOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def greaterOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """Factory for scalar >= series."""
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"ge_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greaterorequal_series, scalar)
 
-def lessScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def lessScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """Factory for scalar < series."""
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"lt_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_less_series, scalar)
 
-def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c, timeframe=None) -> generatedSeries_c:
+def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
     """Factory for scalar <= series."""
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
     name = f"le_{scalar}_{series.index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_lessequal_series, scalar)
@@ -2016,54 +2007,53 @@ def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | s
 
 ###################### ANALITIC TOOLS #################################
 
-def highest(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def highest(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('highest', _ensure_object_array(source), period, _generatedseries_calculate_highest)
 
-def lowest(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def lowest(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('lowest', _ensure_object_array(source), period, _generatedseries_calculate_lowest)
 
-def highestbars(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def highestbars(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('highestbars', _ensure_object_array(source), period, _generatedseries_calculate_highestbars)
 
-def lowestbars(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def lowestbars(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('lowestbars', _ensure_object_array(source), period, _generatedseries_calculate_lowestbars)
 
-def falling( source: series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def falling( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'falling', _ensure_object_array(source), period, _generatedseries_calculate_falling )
 
-def rising( source: series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def rising( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rising', _ensure_object_array(source), period, _generatedseries_calculate_rising )
 
-def barsSinceSeries(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
+def barsSinceSeries(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
     import inspect
     # Get caller info by going up 2 levels in the stack
     caller_frame = inspect.currentframe().f_back
     frame_info = inspect.getframeinfo(caller_frame)
     caller_id = f"{frame_info.function[:5]}{frame_info.lineno}"
-
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('barsSince'+caller_id, _ensure_object_array(source), period, _generatedseries_calculate_barssince)
 
-def indexWhenTrueSeries(source: series_c|generatedSeries_c, period: int = None, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def indexWhenTrueSeries(source: series_c|generatedSeries_c, period: int = None) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('indexwhentrue_series', _ensure_object_array(source), period, _generatedseries_calculate_indexwhentrue)
 
-def indexWhenFalseSeries(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def indexWhenFalseSeries(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('indexwhenfalse_series', _ensure_object_array(source), period, _generatedseries_calculate_indexwhenfalse)
 
-def barsWhileTrueSeries(source: series_c|generatedSeries_c, period: int = None, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def barsWhileTrueSeries(source: series_c|generatedSeries_c, period: int = None) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('barsWhileTrue', _ensure_object_array(source), period, _generatedseries_calculate_barswhiletrue)
 
-def barsWhileFalseSeries(source: series_c|generatedSeries_c, period: int = None, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def barsWhileFalseSeries(source: series_c|generatedSeries_c, period: int = None) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('barsWhileFalse', _ensure_object_array(source), period, _generatedseries_calculate_barswhilefalse)
 
 
@@ -2071,31 +2061,31 @@ def barsWhileFalseSeries(source: series_c|generatedSeries_c, period: int = None,
 
 ########################## INDICATORS #################################
 
-def SMA( source: series_c|generatedSeries_c, period: int, timeframe=None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def SMA( source: series_c|generatedSeries_c, period: int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('sma', _ensure_object_array(source), period, _generatedseries_calculate_sma)
 
-def EMA( source: series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def EMA( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "ema", _ensure_object_array(source), period, _generatedseries_calculate_ema, always_reset=True )
 
-def DEMA( source: series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def DEMA( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "dema", _ensure_object_array(source), period, _generatedseries_calculate_dema, always_reset=True )
 
-def RMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def RMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rma', _ensure_object_array(source), period, _generatedseries_calculate_rma, always_reset=True )
 
-def WMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def WMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "wma", _ensure_object_array(source), period, _generatedseries_calculate_wma )
 
-def HMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
+def HMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
     """Hull Moving Average implementation using multiple calculation steps
     HMA = WMA(2*WMA(n/2) - WMA(n), sqrt(n))
     """
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
 
     source = _ensure_object_array(source)
     
@@ -2113,112 +2103,112 @@ def HMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->gene
     sqrt_period = int(np.sqrt(period))
     return timeframe.calcGeneratedSeries( "hma", raw_hma.series(), sqrt_period, _generatedseries_calculate_wma )
 
-def STDEV( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def STDEV( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev )
 
-def DEV( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def DEV( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'dev', _ensure_object_array(source), period, _generatedseries_calculate_dev )
 
-def WILLR( period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def WILLR( period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     source = timeframe.registeredSeries['close']
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
-def TR( period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
-    source = timeframe.registeredSeries['close'] # pass through the checks
+def TR( period:int )->generatedSeries_c:
+    timeframe = active.timeframe
+    source = timeframe.registeredSeries['close']
     return timeframe.calcGeneratedSeries( 'tr', source, period, _generatedseries_calculate_tr )
 
-def ATR( period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def ATR( period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     source = timeframe.registeredSeries['close']
     return timeframe.calcGeneratedSeries( 'atr', source, period, _generatedseries_calculate_atr )
 
-def SLOPE( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def SLOPE( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'slope', _ensure_object_array(source), period, _generatedseries_calculate_slope )
 
-def VHMA(source: series_c|generatedSeries_c, period: int, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def VHMA(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('vhma', _ensure_object_array(source), period, _generatedseries_calculate_vhma, always_reset= True)
 
-def BIAS( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def BIAS( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bias', _ensure_object_array(source), period, _generatedseries_calculate_bias )
 
-def LINREG( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def LINREG( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "linreg", _ensure_object_array(source), period, _generatedseries_calculate_linreg )
 
-def CCI(period: int = 20, timeframe=None) -> generatedSeries_c:
+def CCI(period: int = 20) -> generatedSeries_c:
     if not isinstance(period, int ):
         raise ValueError( "CCI requires only a period argument" )
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('cci', timeframe.registeredSeries['close'], period, _generatedseries_calculate_cci, always_reset= True)
 
-def CFO( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def CFO( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cfo', _ensure_object_array(source), period, _generatedseries_calculate_cfo )
 
-def CMO(source: series_c|generatedSeries_c, period: int = 9, timeframe=None) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def CMO(source: series_c|generatedSeries_c, period: int = 9) -> generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('cmo', _ensure_object_array(source), period, _generatedseries_calculate_cmo)
 
-def FWMA( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def FWMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'fwma', _ensure_object_array(source), period, _generatedseries_calculate_fwma )
 
-def RSI( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def RSI( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rsi', _ensure_object_array(source), period, _generatedseries_calculate_rsi, always_reset=True )
 
-def IFTrsi( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def IFTrsi( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     rsi = timeframe.calcGeneratedSeries( 'rsi', _ensure_object_array(source), period, _generatedseries_calculate_rsi, always_reset=True )
     return timeframe.calcGeneratedSeries( 'iftrsi', rsi.series(), period, _generatedseries_calculate_inverse_fisher_rsi )
 
-def Fisher( period:int, signal:float=None, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
-    timeframe = timeframe or active.timeframe
+def Fisher( period:int, signal:float=None )->tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = active.timeframe
     fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.registeredSeries['close'], period, _generatedseries_calculate_fisher )
     sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.registeredSeries['close'], period, _generatedseries_calculate_fisher_signal, signal )
     return fish, sig
 
-def AO( fast: int = 5, slow: int = 34, timeframe = None ) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def AO( fast: int = 5, slow: int = 34 ) -> generatedSeries_c:
+    timeframe = active.timeframe
     param = (fast, slow)
     return timeframe.calcGeneratedSeries('ao', timeframe.registeredSeries['close'], max(fast,slow), _generatedseries_calculate_ao, param)
 
-def BR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
-    timeframe = timeframe or active.timeframe
+def BR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'br', timeframe.registeredSeries['close'], period, _generatedseries_calculate_br )
 
-def AR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
-    timeframe = timeframe or active.timeframe
+def AR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'ar', timeframe.registeredSeries['close'], period, _generatedseries_calculate_ar )
 
-def BRAR( period:int, timeframe = None )->tuple[generatedSeries_c, generatedSeries_c]:
-    timeframe = timeframe or active.timeframe
+def BRAR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = active.timeframe
     br = BR(period, timeframe)
     ar = AR(period, timeframe)
     return br, ar
 
-def CG( source:series_c|generatedSeries_c, period:int, timeframe = None )->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def CG( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', _ensure_object_array(source), period, _generatedseries_calculate_cg )
 
-def STOCHk( source: series_c|generatedSeries_c, period:int, timeframe=None )-> tuple[generatedSeries_c, generatedSeries_c]:
-    timeframe = timeframe or active.timeframe
+def STOCHk( source: series_c|generatedSeries_c, period:int )-> tuple[generatedSeries_c, generatedSeries_c]:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "stochk", _ensure_object_array(source), period, _generatedseries_calculate_stoch_k )
 
 def OBV( timeframe=None ) -> generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+    timeframe = active.timeframe
     # period=2 because obv reads the previous value of close. It can not be anything else.
     return timeframe.calcGeneratedSeries( 'obv', timeframe.registeredSeries['close'], 2, _generatedseries_calculate_obv )
 
-def LAGUERRE(source: Union[str, series_c, generatedSeries_c], gamma: float = 0.7, timeframe=None)->generatedSeries_c:
-    timeframe = timeframe or active.timeframe
+def LAGUERRE(source: Union[str, series_c, generatedSeries_c], gamma: float = 0.7)->generatedSeries_c:
+    timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'lagerre', _ensure_object_array(source), 1, _generatedseries_calculate_laguerre, gamma, always_reset=True )
 
 
@@ -2227,7 +2217,7 @@ def LAGUERRE(source: Union[str, series_c, generatedSeries_c], gamma: float = 0.7
 # # #
 
 
-def Stochastic(source: series_c|generatedSeries_c, k_period: int = 14, d_period: int = 3, timeframe=None)-> tuple[generatedSeries_c, generatedSeries_c]:
+def Stochastic(source: series_c|generatedSeries_c, k_period: int = 14, d_period: int = 3)-> tuple[generatedSeries_c, generatedSeries_c]:
     """
     Calculates the Stochastic Oscillator (%K and %D lines).
 
@@ -2242,8 +2232,6 @@ def Stochastic(source: series_c|generatedSeries_c, k_period: int = 14, d_period:
         Tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the %K line
         and the %D line as generatedSeries_c objects.
     """
-    timeframe = timeframe or active.timeframe
-
     # Create the %K line generatedSeries_c
     k_line_series = STOCHk(source, k_period)
 
@@ -2252,7 +2240,7 @@ def Stochastic(source: series_c|generatedSeries_c, k_period: int = 14, d_period:
     return k_line_series, d_line_series
 
 
-def BollingerBands( source:series_c|generatedSeries_c, period:int, mult:float = 2.0, timeframe=None )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+def BollingerBands( source:series_c|generatedSeries_c, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the Bollinger Bands (basis, upper, lower) for the given source series and period.
 
@@ -2263,17 +2251,14 @@ def BollingerBands( source:series_c|generatedSeries_c, period:int, mult:float = 
     Returns:
         Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
     """
-    timeframe = timeframe or active.timeframe
     BBbasis = SMA(source, period)
     stdev = STDEV(source, period)
     BBupper = BBbasis + (stdev * mult)
     BBlower = BBbasis - (stdev * mult)
-    # BBupper = active.timeframe.calcGeneratedSeries( 'bbu', source, period, _generatedseries_calculate_bbupper, mult )
-    # BBlower = active.timeframe.calcGeneratedSeries( 'bbl', source, period, _generatedseries_calculate_bblower, mult )
     return BBbasis, BBupper, BBlower
 
 
-def MACD( source:series_c|generatedSeries_c, fast: int = 12, slow: int = 26, signal: int = 9, timeframe=None) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+def MACD( source:series_c|generatedSeries_c, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the MACD line, Signal line, and Histogram for given source and periods.
     Args:
@@ -2285,16 +2270,15 @@ def MACD( source:series_c|generatedSeries_c, fast: int = 12, slow: int = 26, sig
     Returns:
         Tuple of (MACD line, Signal line, Histogram) as generatedSeries_c objects.
     """
-    timeframe = timeframe or active.timeframe
     # Calculate the fast and slow EMAs
-    fast_ema = EMA(source, fast, timeframe)
-    slow_ema = EMA(source, slow, timeframe)
+    fast_ema = EMA(source, fast)
+    slow_ema = EMA(source, slow)
 
     # MACD line: difference between fast and slow EMA
     macd_line = fast_ema - slow_ema
 
     # Signal line: EMA of the MACD line
-    signal_line = EMA(macd_line, signal, timeframe)
+    signal_line = EMA(macd_line, signal)
 
     # Histogram: MACD line - Signal line
     hist = macd_line - signal_line

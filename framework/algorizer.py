@@ -359,7 +359,7 @@ class timeframe_c:
 
         gse = self.generatedSeries.get( name )
         if( gse == None ):
-            gse = generatedSeries_c( type, source, period, func, param, always_reset, self )
+            gse = generatedSeries_c( type, source, period, func, param, always_reset )
             self.generatedSeries[name] = gse
 
         # If we are in the jumpstart phase, initialize and update the series immediately.
