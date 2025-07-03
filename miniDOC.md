@@ -373,7 +373,7 @@ This document lists the indicator, analytic, and helper factory functions availa
 ## Special: Pivots
 
 **pivots(high, low, amplitude=1.0, reversal_percent=32.0)**
-- Returns a `pivots_c` object for pivot detection (see pivots_c documentation for usage).
+- Returns a `pivots_c` object for pivot detection (see pivots_c documentation for usage). (Human comment: There is no such documentation ^_^')
 
 ---
 
