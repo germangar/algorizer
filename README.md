@@ -4,7 +4,7 @@ This is a framework for creating/backtesting and running trading algorythms. It 
 It connects to crypto exchanges using the CCXT library and downloads the required historical data. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)). It can run on multiple simultaneous timeframes.
 
 
-The project is in early stages so you'll most likely find a few nuissances. Specially when writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces. However, **fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime should be reliable at this point.**
+The project is still a work in progress so you'll most likely find a few nuissances. Specially when writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces. However, **fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime should be reliable at this point.**
 
 Drawing capabilities are still a work in progress. As of today it's capable of plots, histograms, lines (point to point) and markers (labels), as it's capable of creating subpanels and targetting these to them. Horizontal lines, boxes and tables are still in the to do list.
 
