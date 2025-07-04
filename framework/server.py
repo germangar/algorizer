@@ -80,23 +80,28 @@ class client_state_t:
             # Find added and removed marker IDs using set operations
         added_ids = new_dict.keys() - old_dict.keys()
         removed_ids = old_dict.keys() - new_dict.keys()
-
-        # Generate lists of added and removed markers (unsorted)
         added = [new_dict[id] for id in added_ids]
         removed = [old_dict[id] for id in removed_ids]
 
-        # Build delta with descriptors
+        # Detect MODIFIED objects (efficiently)
+        common_ids = new_dict.keys() & old_dict.keys()
+        modified = [
+            new_dict[id] for id in common_ids
+            if new_dict[id].descriptor() != old_dict[id].descriptor()
+        ]
+
+        # Build delta
         delta = {
-            "added": [marker.descriptor() for marker in added],
-            "removed": [marker.descriptor() for marker in removed]
+            "added": [m.descriptor() for m in added],
+            "removed": [m.descriptor() for m in removed],
+            "modified": [m.descriptor() for m in modified]
         }
-        from pprint import pprint
 
         self.last_lines_dict = new_dict
         return delta
         ############################################################################
 
-        
+
     def update_last_send(self):
         """Update the last successful send timestamp"""
         self.last_successful_send = asyncio.get_event_loop().time()

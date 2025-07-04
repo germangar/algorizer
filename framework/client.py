@@ -46,6 +46,53 @@ debug = False
 from lightweight_charts import Chart
 # from lightweight_charts_esistjosh import Chart
 
+theme_black = {
+    'background_color':"#000000",
+    'text_color':"#dddddd",
+    'price_scale_color':"#dddddd",
+    'price_scale_border_color':"#5a5a5aff",
+    'bull_color':'#279d82',
+    'bear_color':'#c86164',
+    'candle_bull_color':'#279d82',
+    'candle_bear_color':'#c86164',
+    'wick_bull_color':'#279d82',
+    'wick_bear_color':'#c86164',
+    'candle_border_bull_color':'#279d82',
+    'candle_border_bear_color':'#c86164'
+}
+
+theme_dark = {
+    'background_color':"#121414",
+    'text_color':"#dddddd",
+    'price_scale_color':"#dddddd",
+    'price_scale_border_color':"#5a5a5aff",
+    'bull_color':"#088755",
+    'bear_color':"#AE3853",
+    'candle_bull_color':"#088755",
+    'candle_bear_color':"#AE3853",
+    'wick_bull_color':"#088755",
+    'wick_bear_color':"#AE3853",
+    'candle_border_bull_color':"#088755",
+    'candle_border_bear_color':"#AE3853"
+}
+
+def hx2rgba(hex_color):
+    """Converts a hex color code (with or without alpha) to an RGBA string for CSS."""
+    hex_color = hex_color.lstrip('#')
+    hex_length = len(hex_color)
+    if hex_length not in (6, 8):
+        return None  # Invalid hex code length
+
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    if hex_length == 6:
+        a = 1.0
+    else:
+        a = round(int(hex_color[6:8], 16) / 255, 3)
+
+    return r, g, b, a
+
 from dataclasses import dataclass
 @dataclass
 class plot_c:
@@ -102,23 +149,30 @@ class window_c:
         self.timerOnPriceLabel = False
         self.showRealTimeCandle = True
         self.priceScaleMinimumWidth = 90
+        self.showVolume = False
+        self.showToolbox = False
+        self.fontSize = 14
+        self.fontFamily = 'Monaco'
+        self.loadTheme( theme_dark )
 
         # calculate the panels sizes
         self.panels = config['panels']
+
         # add the main panel
         if self.panels.get('main') == None:
-            # self.panels['main'] = { "type": c.PANEL_HORIZONTAL, "position": "above", "width": 1.0, "height": 1.0 }
             self.panels['main'] = {
                 "position": "above",
                 "width": 1.0,
                 "height": 1.0,
-                "fontsize": 12,
+                "fontsize": self.fontSize,
                 "show_candles": True,
                 "show_timescale": True,
                 "show_labels": True,
                 "show_priceline": True,
                 "show_plotnames": True,
-                "show_volume": False
+                "show_volume": self.showVolume,
+                "background_color": self.backgroundColor,
+                "text_color": self.textColor
             }
 
         # first figure out how much space are going to 
@@ -150,44 +204,73 @@ class window_c:
 
         # to do: figure out how to do the same with widths
 
-
         self.read_config()
 
+
     def writeConfig(self):
+        theme = {
+            'background_color':self.backgroundColor,
+            'text_color':self.textColor,
+            'price_scale_color':self.priceScaleColor,
+            'price_scale_border_color':self.priceScaleBorderColor,
+            'bull_color':self.bullColor,
+            'bear_color':self.bearColor,
+            'candle_bull_color':self.candleBullColor,
+            'candle_bear_color':self.candleBearColor,
+            'wick_bull_color':self.wickBullColor,
+            'wick_bear_color':self.wickBearColor,
+            'candle_border_bull_color':self.candleBorderBullColor,
+            'candle_border_bear_color':self.candleBorderBearColor
+        }
+
         with open('config.json', 'w') as f:
-            configString = '[\n\t{\n'
-            configString += f'\t\t"timer_on_price_label":{str(self.timerOnPriceLabel).lower()},\n'
-            configString += f'\t\t"show_realtime_candle":{str(self.showRealTimeCandle).lower()},\n'
-            configString += f'\t\t"price_scale_minimum_width":{str(self.priceScaleMinimumWidth).lower()}\n'
-            configString += '\t}\n]'
-            
+            configDic = {
+                "timer_on_price_label":self.timerOnPriceLabel,
+                "show_realtime_candle":self.showRealTimeCandle,
+                "price_scale_minimum_width":self.priceScaleMinimumWidth,
+                "theme":theme
+            }
+            configString = json.dumps(configDic, indent='\t')
             f.write( configString )
             f.close()
 
     def read_config(self):
         try:
-            with open('config.json', 'r') as config_file:
+            with open("config.json", "r") as config_file:
                 config = json.load(config_file)
-                config = config[0]
                 config_file.close()
-        except FileNotFoundError:
-            self.writeConfig()
-            print( "Config file created.\n----------------------------")
-            return
 
-        # parse the config file
-        if( config.get('timer_on_price_label') != None ):
-            self.timerOnPriceLabel = bool(config.get('timer_on_price_label'))
-        if( config.get('show_realtime_candle') != None ):
-            self.showRealTimeCandle = bool(config.get('show_realtime_candle'))
-        if( config.get('price_scale_minimum_width') != None ):
-            self.priceScaleMinimumWidth = int(config.get('price_scale_minimum_width'))
+            # parse the config file
+            if( config.get('timer_on_price_label') != None ):
+                self.timerOnPriceLabel = bool(config.get('timer_on_price_label'))
+            if( config.get('show_realtime_candle') != None ):
+                self.showRealTimeCandle = bool(config.get('show_realtime_candle'))
+            if( config.get('price_scale_minimum_width') != None ):
+                self.priceScaleMinimumWidth = int(config.get('price_scale_minimum_width'))
+
+            if( config.get('theme') != None ):
+                self.loadTheme( config['theme'] )
+        except json.JSONDecodeError as e:
+            print("Invalid JSON:", e)
+        except FileNotFoundError:
+            print("Config file not found. Creating new one")
  
         #rewrite the config file
         self.writeConfig()
 
-
-
+    def loadTheme( self, theme ):
+        self.backgroundColor = theme.get('background_color')
+        self.textColor = theme.get('text_color')
+        self.priceScaleColor = theme.get('price_scale_color')
+        self.priceScaleBorderColor = theme.get('price_scale_border_color')
+        self.bullColor = theme.get('bull_color')
+        self.bearColor = theme.get('bear_color')
+        self.candleBullColor = theme.get('candle_bull_color')
+        self.candleBearColor = theme.get('candle_bear_color')
+        self.wickBullColor = theme.get('wick_bull_color')
+        self.wickBearColor = theme.get('wick_bear_color')
+        self.candleBorderBullColor = theme.get('candle_border_bull_color')
+        self.candleBorderBearColor = theme.get('candle_border_bear_color')
 
     def loadChartData(self, descriptor, df):
         if debug : print( "Initializing window" )
@@ -202,23 +285,42 @@ class window_c:
             screen_width, screen_height = self.get_screen_resolution()
             window_width = int(screen_width * 0.65)
             window_height = int(screen_height * 0.65)
-        self.panels["main"]["chart"] = chart = Chart( window_width, window_height, inner_height=self.panels["main"]["height"], inner_width=self.panels["main"]["width"] )
-        chart.layout( font_size=self.panels['main']['fontsize'] )
+        self.panels["main"]["chart"] = chart = Chart( window_width, window_height, inner_height=self.panels["main"]["height"], inner_width=self.panels["main"]["width"], toolbox=self.showToolbox )
+        chart.layout( background_color=self.backgroundColor,
+                    text_color=self.textColor,
+                    font_size=self.panels['main']['fontsize'],
+                    font_family=self.fontFamily )
         if self.numpanels > 0 : 
             chart.time_scale( visible=False, time_visible=False )
 
+        chart.candle_style( up_color=self.candleBullColor,
+                           down_color=self.candleBearColor,
+                           wick_up_color=self.wickBullColor,
+                           wick_down_color=self.wickBearColor,
+                           border_up_color=self.candleBorderBullColor,
+                           border_down_color=self.candleBorderBearColor )
 
-        chart.price_scale(minimum_width=self.priceScaleMinimumWidth) # FIXME: try to autoscale it
+        chart.price_scale(minimum_width=self.priceScaleMinimumWidth,   # FIXME: try to autoscale it
+                          border_visible=True, 
+                          border_color=self.priceScaleBorderColor, 
+                          text_color=self.priceScaleColor, 
+                          entire_text_only=False, 
+                          ticks_visible=True,
+                          visible=True )
 
         self.legend = f"{self.config['symbol']}"
-        chart.legend( visible=False, ohlc=False, percent=False, font_size=self.panels['main']['fontsize']+2, text=self.legend )
+        chart.legend( visible=False, ohlc=False, percent=False, font_size=self.panels['main']['fontsize']+2, text=self.legend, color=self.textColor )
 
         volume_alpha = 0.8 if self.panels["main"]["show_volume"] else 0.0
+        r,g,b,a = hx2rgba( self.bullColor )
+        upcolor = f'rgba({r},{g},{b},{volume_alpha})'
+        r,g,b,a = hx2rgba( self.bearColor )
+        downcolor = f'rgba({r},{g},{b},{volume_alpha})'
         chart.volume_config(
             scale_margin_top = 0.8, 
-            scale_margin_bottom = 0.0, 
-            up_color=f'rgba(83,141,131,{volume_alpha})', 
-            down_color=f'rgba(200,127,130,{volume_alpha})')
+            scale_margin_bottom = 0.0,
+            up_color=upcolor, 
+            down_color=downcolor)
         
         # buttons
         self.initTopbar( chart )
@@ -238,15 +340,25 @@ class window_c:
             if n == 'main': continue
             panel = self.panels[n]
             panel["chart"] = subchart = chart.create_subchart( panel["position"], width = panel["width"], height = panel["height"], sync=chart.id )
-            subchart.layout( font_size=panel["fontsize"] )
+            backgroundColor = self.backgroundColor
+            textColor = self.textColor
+            if panel.get('background_color'):
+                backgroundColor = panel.get('background_color')
+            if panel.get('text_color'):
+                textColor = panel.get('text_color')
+            subchart.layout( background_color=backgroundColor, text_color=textColor, font_size=panel["fontsize"], font_family=self.fontFamily )
             allow_line_names = panel["show_plotnames"]
-            subchart.legend( visible=False, ohlc=False, percent=False, lines = allow_line_names, font_size=14, text=n ) # lines info crash the script when enabled
+            subchart.legend( visible=False, ohlc=False, percent=False, lines = allow_line_names, font_size=14, color=textColor, text=n ) # lines info crash the script when enabled
             subchart.crosshair( horz_visible=False )
             subchart.time_scale( visible=panel["show_timescale"], time_visible=panel["show_timescale"] )
             subchart.price_line( label_visible=panel["show_labels"], line_visible=panel["show_priceline"] )
             # subchart.precision( self.bottompanel_precision )
             # subchart.price_scale(minimum_width=price_column_width)
-            subchart.price_scale(minimum_width=self.priceScaleMinimumWidth) # FIXME: try to autoscale it
+            subchart.price_scale(minimum_width= self.priceScaleMinimumWidth,
+                                 border_visible= True,
+                                 border_color= self.priceScaleBorderColor,
+                                 text_color=self.priceScaleColor
+                                 ) # FIXME: try to autoscale it
             subchart.set(time_df)
             if not panel["show_candles"]:
                 subchart.hide_data()
@@ -737,29 +849,39 @@ class window_c:
     def initTopbar(self, chart:Chart):
         try:
             chart.topbar.textbox("header", f'{ self.config["symbol"] } - { self.descriptor["timeframe"] }', align= 'left')
-            chart.topbar.button('legendswtich', '∇', func=self.button_legend_press, align= 'left')
-            chart.topbar.menu( "hal", ("hol", "hil", "hal"), "hil") 
+            chart.topbar.button('legendswtich', '∇', align= 'left', func=self.button_legend_press)
+            chart.topbar.menu( "Theme", ("dark", "black"), "dark", func= self.menu_theme) 
             #chart.topbar.switcher( 'thisthat', ("this", "that"), "that" )
             # ^—–▽▼▭∆∇∨∧⋀⋁⋎⋏⩔⩡Λ
 
 
-            chart.topbar.button('timerswtich', 'Timer on price ▢', func=self.button_timerlabel_press, align= 'right')
+            chart.topbar.button('timerswtich', 'Timer on price', align= 'right', toggle=True, func=self.button_timerlabel_press)
             chart.topbar.textbox("timer", "--:--", align= 'right')
             
         except Exception as e:
             print( f'{e}')
+
+    def menu_theme( self, chart:Chart ):
+        print ( "Theme written to config." )
+        if chart.topbar['Theme'].value == 'black':
+            self.loadTheme( theme_black )
+            self.writeConfig()
+        elif chart.topbar['Theme'].value == 'dark':
+            self.loadTheme( theme_dark )
+            self.writeConfig()
     
     async def button_timerlabel_press(self, chart):
         try:
             # 'Timer on price ▢■▭▬▮▯▩▧▦▣■□▢▥□▣'
-            timeron = 'Timer on price ▣'
-            timeroff = 'Timer on price ▢'
-            if chart.topbar['timerswtich'].value == timeron:
-                chart.topbar['timerswtich'].set(timeroff)
-                self.timerOnPriceLabel = False
-            elif chart.topbar['timerswtich'].value == timeroff:
-                chart.topbar['timerswtich'].set(timeron)
-                self.timerOnPriceLabel = True
+            # timeron = 'Timer on price ▣'
+            # timeroff = 'Timer on price ▢'
+            # if chart.topbar['timerswtich'].value == timeron:
+            #     chart.topbar['timerswtich'].set(timeroff)
+            #     self.timerOnPriceLabel = False
+            # elif chart.topbar['timerswtich'].value == timeroff:
+            #     chart.topbar['timerswtich'].set(timeron)
+            #     self.timerOnPriceLabel = True
+            self.timerOnPriceLabel = not self.timerOnPriceLabel
             
         except Exception as e:
             print( f'Exception {e}')

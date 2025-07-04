@@ -250,7 +250,7 @@ if __name__ == '__main__':
     # screen the subpanel will take. The order of creation will determine which one
     # is above or below.
     stream.registerPanel('macd', 1.0, 0.1, show_timescale=False ) # usually you only want the one at the bottom to show the timescale
-    stream.registerPanel('rsi', 1.0, 0.2 )
+    stream.registerPanel('rsi', 1.0, 0.2, background_color="#292a2cac" )
 
     # Some options to print the results. The first one prints all orders so it's disabled for being spammy
     # trade.print_strategy_stats()

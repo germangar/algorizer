@@ -660,7 +660,7 @@ class stream_c:
         self.event_callback( self, "broker_event", (order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage), 8 )
 
     
-    def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False ):
+    def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False, background_color= None, text_color= None ):
         """width and height are percentages of the window in 0/1 scale"""
         # to do: ensure the name isn't in use
         if name == None or not isinstance(name, str):
@@ -679,7 +679,9 @@ class stream_c:
             "show_labels": show_labels,
             "show_priceline": show_priceline,
             "show_plotnames": show_plotnames,
-            "show_volume": show_volume
+            "show_volume": show_volume,
+            "background_color": background_color,
+            "text_color": text_color
         }
         self.registeredPanels[name] = panel
 
@@ -788,7 +790,6 @@ async def cli_task(stream: 'stream_c'): # Added type hint for clarity
         args = parts[1] if len(parts) > 1 else '' # Get args if they exist
 
         if command == 'chart':
-            print('opening chart')
             timeframeName =  stream.timeframeFetch
             if( args and tools.validateTimeframeName( args ) ):
                 timeframeName = args
