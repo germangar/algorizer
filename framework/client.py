@@ -93,13 +93,15 @@ class window_c:
         self.markers:list = []
         self.lines:list = []
         self.lines_clipped:list = []
-        self.showRealTimeCandle = True
         self.numpanels = 0
         self.lastCandle:candle_c = None
-        self.timerOnPriceLabel = False
-        self.priceScaleMinimumWidth = 90
         self.barindex = -1
         self.timestamp = 0
+
+        # config (client)
+        self.timerOnPriceLabel = False
+        self.showRealTimeCandle = True
+        self.priceScaleMinimumWidth = 90
 
         # calculate the panels sizes
         self.panels = config['panels']
@@ -147,6 +149,43 @@ class window_c:
         self.panels['main']['height'] = 1.0 - (fullheightbottom + fullheighttop)
 
         # to do: figure out how to do the same with widths
+
+
+        self.read_config()
+
+    def writeConfig(self):
+            with open('config.json', 'w') as f:
+                configString = '[\n\t{\n'
+                configString += '\t\t"timer_on_price_label":'+str(self.timerOnPriceLabel)+',\n'
+                configString += '\t\t"show_realtime_candle":'+str(self.showRealTimeCandle)+',\n'
+                configString += '\t\t"price_scale_minimum_width":'+str(self.priceScaleMinimumWidth)+',\n'
+                configString += '\t}\n]'
+                
+                f.write( configString )
+                f.close()
+
+    def read_config(self):
+        try:
+            with open('config.json', 'r') as config_file:
+                config = json.load(config_file)
+                config = config[0]
+                config_file.close()
+        except FileNotFoundError:
+            self.writeConfig()
+            print( "Config file created.\n----------------------------")
+        else:
+            # parse the config file
+            if( config.get('timer_on_price_label') != None ):
+                self.timerOnPriceLabel = int(config.get('timer_on_price_label'))
+            if( config.get('show_realtime_candle') != None ):
+                self.showRealTimeCandle = int(config.get('show_realtime_candle'))
+            if( config.get('price_scale_minimum_width') != None ):
+                self.priceScaleMinimumWidth = int(config.get('price_scale_minimum_width'))
+                
+            #rewrite the config file
+            self.writeConfig()
+
+
 
 
     def loadChartData(self, descriptor, df):
