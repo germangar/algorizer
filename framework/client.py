@@ -850,7 +850,7 @@ class window_c:
         try:
             chart.topbar.textbox("header", f'{ self.config["symbol"] } - { self.descriptor["timeframe"] }', align= 'left')
             chart.topbar.button('legendswtich', '∇', align= 'left', func=self.button_legend_press)
-            chart.topbar.menu( "Theme", ("dark", "black"), "dark", func= self.menu_theme) 
+            chart.topbar.menu( "Theme", ("Theme", "Dark", "Black"), "Theme", func= self.menu_theme) 
             #chart.topbar.switcher( 'thisthat', ("this", "that"), "that" )
             # ^—–▽▼▭∆∇∨∧⋀⋁⋎⋏⩔⩡Λ
 
@@ -862,13 +862,16 @@ class window_c:
             print( f'{e}')
 
     def menu_theme( self, chart:Chart ):
-        print ( "Theme written to config." )
-        if chart.topbar['Theme'].value == 'black':
+        
+        if chart.topbar['Theme'].value == 'Black':
             self.loadTheme( theme_black )
             self.writeConfig()
-        elif chart.topbar['Theme'].value == 'dark':
+            
+        elif chart.topbar['Theme'].value == 'Dark':
             self.loadTheme( theme_dark )
             self.writeConfig()
+        print ( f"{chart.topbar['Theme'].value} theme written to config. It will show next time the chart is opened" )
+        chart.topbar['Theme'].value = 'Theme'
     
     async def button_timerlabel_press(self, chart):
         try:
