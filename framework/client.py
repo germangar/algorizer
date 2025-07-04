@@ -154,15 +154,15 @@ class window_c:
         self.read_config()
 
     def writeConfig(self):
-            with open('config.json', 'w') as f:
-                configString = '[\n\t{\n'
-                configString += f'\t\t"timer_on_price_label":{str(self.timerOnPriceLabel).lower()},\n'
-                configString += f'\t\t"show_realtime_candle":{str(self.showRealTimeCandle).lower()},\n'
-                configString += f'\t\t"price_scale_minimum_width":{str(self.priceScaleMinimumWidth).lower()},\n'
-                configString += '\t}\n]'
-                
-                f.write( configString )
-                f.close()
+        with open('config.json', 'w') as f:
+            configString = '[\n\t{\n'
+            configString += f'\t\t"timer_on_price_label":{str(self.timerOnPriceLabel).lower()},\n'
+            configString += f'\t\t"show_realtime_candle":{str(self.showRealTimeCandle).lower()},\n'
+            configString += f'\t\t"price_scale_minimum_width":{str(self.priceScaleMinimumWidth).lower()}\n'
+            configString += '\t}\n]'
+            
+            f.write( configString )
+            f.close()
 
     def read_config(self):
         try:
@@ -173,17 +173,18 @@ class window_c:
         except FileNotFoundError:
             self.writeConfig()
             print( "Config file created.\n----------------------------")
-        else:
-            # parse the config file
-            if( config.get('timer_on_price_label') != None ):
-                self.timerOnPriceLabel = bool(config.get('timer_on_price_label'))
-            if( config.get('show_realtime_candle') != None ):
-                self.showRealTimeCandle = bool(config.get('show_realtime_candle'))
-            if( config.get('price_scale_minimum_width') != None ):
-                self.priceScaleMinimumWidth = int(config.get('price_scale_minimum_width'))
-                
-            #rewrite the config file
-            self.writeConfig()
+            return
+
+        # parse the config file
+        if( config.get('timer_on_price_label') != None ):
+            self.timerOnPriceLabel = bool(config.get('timer_on_price_label'))
+        if( config.get('show_realtime_candle') != None ):
+            self.showRealTimeCandle = bool(config.get('show_realtime_candle'))
+        if( config.get('price_scale_minimum_width') != None ):
+            self.priceScaleMinimumWidth = int(config.get('price_scale_minimum_width'))
+ 
+        #rewrite the config file
+        self.writeConfig()
 
 
 
