@@ -137,14 +137,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     histo.histogram( 'macd', "#4A545D" )
     macd_line.plot( 'macd', color = "#AB1212", width=2 ) # The macd panel was created by us. See below
     signal_line.plot( 'macd', color = "#1BC573" )
-    # print( signal_line.current() )
 
-    
-    # trading logic 
-    # buySignal = calc.crossingUp( close, BBlower ) and invRSI < 30
-    # sellSignal = calc.crossingDown( close, BBupper ) and invRSI > 70
-
-    
     # same thing using methods
     buySignal = rsi14[barindex] > 50.0 and BBlower.crossingDown(close) and invRSI < 20
     sellSignal = rsi14[barindex] < 50.0 and BBupper.crossingUp(close) and invRSI > 80
