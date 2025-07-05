@@ -219,11 +219,11 @@ def push_row_update(timeframe):
     message = {
         "type": "row",
         "timeframe": timeframe.timeframeStr,
-        "barindex": active.timeframe.barindex,
+        "barindex": timeframe.barindex,
         "columns": timeframe.columnsList(),
         "data": row,
-        "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ),
-        "lines": client.prepareLinesUpdate( active.timeframe.stream.lines ),
+        "markers": client.prepareMarkersUpdate( timeframe.stream.markers ),
+        "lines": client.prepareLinesUpdate( timeframe.stream.lines ),
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
     asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )

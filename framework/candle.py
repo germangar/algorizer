@@ -27,7 +27,7 @@ class candle_c:
 
     def updateFromSource(self, source):
         if source and isinstance(source, list):
-            self.timestamp = source[0]
+            self.timestamp = int(source[0])
             self.open = source[1]
             self.high = source[2]
             self.low = source[3]

@@ -100,6 +100,19 @@ class line_c:
         self.width = width
         self.style = style
         self.panel = chart_name
+        if( x1 > active.barindex ):
+            self.start_timestamp = active.timeframe.timestamp + (( x1 - active.barindex ) * active.timeframe.timeframeMsec)
+        elif x1 < 0:
+            self.start_timestamp = active.timeframe.dataset[0, c.DF_TIMESTAMP] + (x1 * active.timeframe.timeframeMsec)
+        else:
+            self.start_timestamp = active.timeframe.dataset[x1, c.DF_TIMESTAMP]
+
+        if( x2 > active.barindex ):
+            self.end_timestamp = active.timeframe.timestamp + (( x2 - active.barindex ) * active.timeframe.timeframeMsec)
+        elif x2 < 0:
+            self.end_timestamp = active.timeframe.dataset[0, c.DF_TIMESTAMP] + (x2 * active.timeframe.timeframeMsec)
+        else:
+            self.end_timestamp = active.timeframe.dataset[x2, c.DF_TIMESTAMP]
 
     def remove(self):
         active.timeframe.stream.removeLine(self)

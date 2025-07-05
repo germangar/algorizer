@@ -144,6 +144,7 @@ class window_c:
         self.lastCandle:candle_c = None
         self.barindex = -1
         self.timestamp = 0
+        self.basetimestamp = 0
 
         # config (client)
         self.timerOnPriceLabel = False
@@ -277,7 +278,8 @@ class window_c:
 
         self.descriptor = descriptor
         self.barindex = len(df) - 1
-        self.timestamp = df['timestamp'].iat[self.barindex]
+        self.timestamp = int(df['timestamp'].iloc[-1])
+        self.basetimestamp = int(df['timestamp'].iloc[0])
 
         window_width = 1024
         window_height = 768
@@ -572,13 +574,13 @@ class window_c:
         return (x2, y2, False)  # No clipping needed
 
 
-    def reclipLine( self, line ):
+    def reclipLine( self, line:line_c ):
         if not line.clipped:
             # this should be a ValueError
             return
 
-        if line.x1 >= self.barindex: # all of it is out of range, but will show up eventually
-            if not( line.x1 == line.x2 and line.x1 == self.barindex ): # if it's pure vertical it can show up
+        if line.x1 >= self.timestamp: # all of it is out of range, but will show up eventually
+            if not( line.x1 == line.x2 and line.x1 == self.timestamp ): # if it's pure vertical it can show up
                 self.lines_clipped.append(line)
                 return
 
@@ -597,19 +599,15 @@ class window_c:
         y2 = line.y2
 
         # clip the lines when they go out of bounds
-        x1, y1, c = self.clip_line_left(x1, y1, x2, y2, 0)
-        x2, y2, line.clipped = self.clip_line_right(x1, y1, x2, y2, self.barindex)
+        x1, y1, c = self.clip_line_left(x1, y1, x2, y2, self.basetimestamp)
+        x2, y2, line.clipped = self.clip_line_right(x1, y1, x2, y2, self.timestamp)
             
         chart:Chart = self.panels[line.panel]['chart']
 
-        # convert the indexes to timestamps
-        timeframeMsec = int( self.descriptor['timeframemsec'] )
-        time1 = self.timestamp - (( self.barindex - x1 ) * timeframeMsec)
-        time2 = self.timestamp - (( self.barindex - x2 ) * timeframeMsec)
         line.instance = chart.trend_line( 
-            pd.to_datetime( time1, unit='ms' ), 
+            pd.to_datetime( int(x1), unit='ms' ), 
             y1, 
-            pd.to_datetime( time2, unit='ms' ), 
+            pd.to_datetime( int(x2), unit='ms' ), 
             y2, 
             round = False, 
             line_color=line.color, 
@@ -651,9 +649,9 @@ class window_c:
         try:
             line = line_c(
                 id = int( msg.get('id') ),
-                x1 = int( msg.get('x1') ),
+                x1 = int(msg.get('start_timestamp')),
                 y1 = float( msg.get('y1') ),
-                x2 = int( msg.get('x2') ),
+                x2 = int(msg.get('end_timestamp')),
                 y2 = float( msg.get('y2') ),
                 color = msg.get('color'),
                 width = int( msg.get('width') ),
@@ -676,8 +674,8 @@ class window_c:
             x2 = line.x2
             y2 = line.y2
 
-            if x1 >= self.barindex: # all of it is out of range, but will show up eventually
-                if not( x1 == x2 and x1 == self.barindex ):
+            if x1 >= self.timestamp: # all of it is out of range, but will show up eventually
+                if not( x1 == x2 and x1 == self.timestamp ):
                     line.clipped = True
                     self.lines.append(line)
                     return
@@ -685,22 +683,18 @@ class window_c:
             if x2 < 0: # This like will never be visible
                 return
 
-            x1, y1, c = self.clip_line_left(x1, y1, x2, y2, 0)
-            x2, y2, line.clipped = self.clip_line_right(x1, y1, x2, y2, self.barindex)
+            x1, y1, c = self.clip_line_left(x1, y1, x2, y2, self.basetimestamp)
+            x2, y2, line.clipped = self.clip_line_right(x1, y1, x2, y2, self.timestamp)
 
             if line.panel not in self.panels.keys():
                 line.panel = 'main'
 
             chart:Chart = self.panels[line.panel]['chart']
 
-            # convert the indexes to timestamps
-            timeframeMsec = int( self.descriptor['timeframemsec'] )
-            time1 = self.timestamp - (( self.barindex - x1 ) * timeframeMsec)
-            time2 = self.timestamp - (( self.barindex - x2 ) * timeframeMsec)
             line.instance = chart.trend_line( 
-                pd.to_datetime( time1, unit='ms' ), 
+                pd.to_datetime( int(x1), unit='ms' ), 
                 y1, 
-                pd.to_datetime( time2, unit='ms' ), 
+                pd.to_datetime( int(x2), unit='ms' ), 
                 y2, 
                 round = False, 
                 line_color=line.color, 
@@ -720,7 +714,7 @@ class window_c:
     def addLines( self, addlist ):
         if addlist is None or len(addlist) == 0:
             return
-        
+
         for line in addlist:
             self.addLine( line )
 
