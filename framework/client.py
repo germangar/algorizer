@@ -626,6 +626,29 @@ class window_c:
         for line in clippedList:
             self.reclipLine(line)
 
+    def updateLines( self, updatelist ):
+        if updatelist is None or len(updatelist) == 0:
+            return
+        
+        for linedesc in updatelist:
+            id = int( linedesc.get('id') )
+            for line in reversed(self.lines):
+                if line.id == id:
+                    line.id = int( linedesc.get('id') )
+                    line.x1 = int(linedesc.get('x1'))
+                    line.y1 = float( linedesc.get('y1') )
+                    line.x2 = int(linedesc.get('x2'))
+                    line.y2 = float( linedesc.get('y2') )
+                    line.color = linedesc.get('color')
+                    line.width = int( linedesc.get('width') )
+                    line.style = linedesc.get('style')
+
+                    # mark for clipping so the reclipping code updates it into the chart
+                    line.clipped = True
+                    if line not in self.lines_clipped:
+                        self.lines_clipped.append(line)
+                    break
+
 
     def removeLine( self, id ):
         for line in reversed(self.lines):
@@ -634,6 +657,8 @@ class window_c:
             if line.instance != None:
                 line.instance.delete()
             line.instance = None
+            if line.clipped:
+                self.lines_clipped.remove(line)
             self.lines.remove(line)
             break
 
@@ -649,9 +674,9 @@ class window_c:
         try:
             line = line_c(
                 id = int( msg.get('id') ),
-                x1 = int(msg.get('start_timestamp')),
+                x1 = int(msg.get('x1')),
                 y1 = float( msg.get('y1') ),
-                x2 = int(msg.get('end_timestamp')),
+                x2 = int(msg.get('x2')),
                 y2 = float( msg.get('y2') ),
                 color = msg.get('color'),
                 width = int( msg.get('width') ),
@@ -707,7 +732,7 @@ class window_c:
             if line.clipped:
                 self.lines_clipped.append(line)
         except Exception as e:
-            print( "Exception", e )
+            print( "Exception addLine", e )
 
 
 
@@ -803,6 +828,7 @@ class window_c:
         self.addMarkers( msg['markers'].get("added") ) 
 
         self.removeLines( msg['lines'].get("removed") )
+        self.updateLines( msg['lines'].get("modified") )
         self.reclipLines()
         self.addLines( msg['lines'].get("added") )
 

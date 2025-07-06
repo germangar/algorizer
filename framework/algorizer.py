@@ -100,25 +100,35 @@ class line_c:
         self.width = width
         self.style = style
         self.panel = chart_name
-        if( x1 > active.barindex ):
-            self.start_timestamp = active.timeframe.timestamp + (( x1 - active.barindex ) * active.timeframe.timeframeMsec)
-        elif x1 < 0:
-            self.start_timestamp = active.timeframe.dataset[0, c.DF_TIMESTAMP] + (x1 * active.timeframe.timeframeMsec)
-        else:
-            self.start_timestamp = active.timeframe.dataset[x1, c.DF_TIMESTAMP]
+        self.timeframe:timeframe_c = active.timeframe
 
-        if( x2 > active.barindex ):
-            self.end_timestamp = active.timeframe.timestamp + (( x2 - active.barindex ) * active.timeframe.timeframeMsec)
-        elif x2 < 0:
-            self.end_timestamp = active.timeframe.dataset[0, c.DF_TIMESTAMP] + (x2 * active.timeframe.timeframeMsec)
-        else:
-            self.end_timestamp = active.timeframe.dataset[x2, c.DF_TIMESTAMP]
+    def timestamp(self, index ):
+        timeframe = self.timeframe
+        '''Line coordinates are a special case where we allow the indexes to be bigger than the dataset'''
+        if( index > timeframe.barindex ):
+            return timeframe.timestamp + (( index - timeframe.barindex ) * timeframe.timeframeMsec)
+        elif index < 0:
+            return timeframe.dataset[0, c.DF_TIMESTAMP] + (index * timeframe.timeframeMsec)
+
+        return timeframe.dataset[index, c.DF_TIMESTAMP]
 
     def remove(self):
         active.timeframe.stream.removeLine(self)
 
     def descriptor(self):
-        return vars(self)
+        descriptor = {
+            'id':self.id,
+            'x1':self.timestamp(self.x1),
+            'y1':self.y1,
+            'x2':self.timestamp(self.x2),
+            'y2':self.y2,
+            'color':self.color,
+            'width':self.width,
+            'style':self.style,
+            'panel':self.panel,
+        }
+        return descriptor
+        
 
 class timeframe_c:
     def __init__( self, stream, timeframeStr ):

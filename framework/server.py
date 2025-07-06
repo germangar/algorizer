@@ -72,32 +72,41 @@ class client_state_t:
         self.last_markers_dict = new_dict
         return delta
 
-    def prepareLinesUpdate( self, lines ):
-        # Convert old and new markers to dictionaries
-        old_dict = self.last_lines_dict
+    def prepareLinesUpdate(self, lines):
+        """
+        Calculates the delta between the previous and current state of lines, detecting additions,
+        removals, and modifications (even if only a property like 'color' changes).
+        This version snapshots descriptors to detect mutations.
+        """
+
+        # old_dict maps marker.id to a descriptor snapshot (not to the object itself)
+        old_dict = getattr(self, 'last_lines_dict', {})
+
+        # new_dict maps marker.id to the object
         new_dict = {marker.id: marker for marker in lines}
 
-            # Find added and removed marker IDs using set operations
+        # Find added and removed marker IDs using set operations
         added_ids = new_dict.keys() - old_dict.keys()
         removed_ids = old_dict.keys() - new_dict.keys()
-        added = [new_dict[id] for id in added_ids]
-        removed = [old_dict[id] for id in removed_ids]
+        added = [new_dict[_id] for _id in added_ids]
+        removed = [old_dict[_id] for _id in removed_ids]  # old_dict values are descriptors
 
-        # Detect MODIFIED objects (efficiently)
+        # Detect MODIFIED objects by comparing descriptors (not objects!)
         common_ids = new_dict.keys() & old_dict.keys()
         modified = [
-            new_dict[id] for id in common_ids
-            if new_dict[id].descriptor() != old_dict[id].descriptor()
+            new_dict[_id] for _id in common_ids
+            if new_dict[_id].descriptor() != old_dict[_id]
         ]
 
         # Build delta
         delta = {
             "added": [m.descriptor() for m in added],
-            "removed": [m.descriptor() for m in removed],
+            "removed": [old_dict[_id] for _id in removed_ids],  # Already descriptors
             "modified": [m.descriptor() for m in modified]
         }
 
-        self.last_lines_dict = new_dict
+        # Store descriptor snapshots for next time
+        self.last_lines_dict = {k: v.descriptor().copy() for k, v in new_dict.items()}
         return delta
         ############################################################################
 
