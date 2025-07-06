@@ -1,5 +1,5 @@
 from framework import calc, trade
-from framework import stream_c, timeframe_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
+from framework import stream_c, timeframe_c, marker_c, line_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
 from framework import plot, histogram, requestValue, createMarker, removeMarker, createLine, removeLine
 
 
@@ -60,11 +60,14 @@ def event( stream:stream_c, event:str, param, numparams ):
 # 
 # 
 
+rsiSlow = None
+liquidationLine:line_c = None
+oldLiquidationPrice:float = 0
 
 # User defined closeCandle callbacks. They are called when a candle of the given frametime has closed.
 # You can define one for each timeframe, or not. They can be set to None. It's up to you.
 
-rsiSlow = None
+
 def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
     global rsiSlow
 
@@ -79,6 +82,8 @@ def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, 
 
 
 def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
+    global liquidationLine, oldLiquidationPrice
+
     barindex = timeframe.barindex # for simplicity
 
     # bollinger bands returns 3 generatedSeries
@@ -175,6 +180,22 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
             trade.order( 'buy', c.SHORT )
 
     
+    # draw a line where the liquidation is awaiting
+    if shortpos:
+        if liquidationLine == None or oldLiquidationPrice != shortpos.liquidation_price:
+            liquidationLine = createLine( shortpos.order_history[-1]['barindex'], shortpos.liquidation_price, barindex + 5, shortpos.liquidation_price, color = "#a00000", style='dashed', width=2 )
+            oldLiquidationPrice = shortpos.liquidation_price
+        # keep updating it
+        if barindex >= liquidationLine.x2:
+            liquidationLine.x2 = barindex + 5 # the client side will clip it to barindex but this way we send less updates.
+
+    if longpos: # we are in oneway mode, there can't be the 2 positions at once, so we use the same line object.
+        if liquidationLine == None or oldLiquidationPrice != longpos.liquidation_price:
+            liquidationLine = createLine( longpos.order_history[-1]['barindex'], longpos.liquidation_price, barindex + 5, longpos.liquidation_price, color = "#a00000", style='dashed', width=2 )
+            oldLiquidationPrice = longpos.liquidation_price
+        # keep updating it
+        if barindex >= liquidationLine.x2:
+            liquidationLine.x2 = barindex + 5
 
     
 
