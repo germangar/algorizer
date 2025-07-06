@@ -44,30 +44,6 @@ class client_state_t:
 
         self.last_markers_dict:dict = {}
         self.last_lines_dict:dict = {}
-
-    '''
-    def prepareMarkersUpdate( self, markers ):
-        # Convert old and new markers to dictionaries
-        old_dict = self.last_markers_dict
-        new_dict = {marker.id: marker for marker in markers}
-        old_ids = set(old_dict.keys())
-        new_ids = set(new_dict.keys())
-
-        added_ids = new_ids - old_ids
-        removed_ids = old_ids - new_ids
-
-        # Generate lists of added and removed markers and sort them by timestamp
-        added = sorted((new_dict[id] for id in added_ids), key=lambda m: m.timestamp)
-        removed = sorted((old_dict[id] for id in removed_ids), key=lambda m: m.timestamp)
-
-        # Build delta with descriptors
-        delta = {
-            "added": [marker.descriptor() for marker in added],
-            "removed": [marker.descriptor() for marker in removed]
-        }
-
-        self.last_markers_dict = new_dict
-        return delta'''
     
     def prepareMarkersUpdate(self, markers):
         # Convert old and new markers to dictionaries
