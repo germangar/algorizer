@@ -45,13 +45,11 @@ class client_state_t:
         self.last_markers_dict:dict = {}
         self.last_lines_dict:dict = {}
 
-
+    '''
     def prepareMarkersUpdate( self, markers ):
         # Convert old and new markers to dictionaries
         old_dict = self.last_markers_dict
         new_dict = {marker.id: marker for marker in markers}
-
-        # Find added and removed marker IDs using set operations
         old_ids = set(old_dict.keys())
         new_ids = set(new_dict.keys())
 
@@ -59,7 +57,6 @@ class client_state_t:
         removed_ids = old_ids - new_ids
 
         # Generate lists of added and removed markers and sort them by timestamp
-        # Parenthesize the generator expressions
         added = sorted((new_dict[id] for id in added_ids), key=lambda m: m.timestamp)
         removed = sorted((old_dict[id] for id in removed_ids), key=lambda m: m.timestamp)
 
@@ -70,8 +67,41 @@ class client_state_t:
         }
 
         self.last_markers_dict = new_dict
-        return delta
+        return delta'''
+    
+    def prepareMarkersUpdate(self, markers):
+        # Convert old and new markers to dictionaries
+        old_dict = self.last_markers_dict  # old_dict maps marker.id to a descriptor snapshot (dict)
+        new_dict = {marker.id: marker for marker in markers}
+        old_ids = set(old_dict.keys())
+        new_ids = set(new_dict.keys())
 
+        added_ids = new_ids - old_ids
+        removed_ids = old_ids - new_ids
+
+        # Generate lists of added and removed markers and sort them by timestamp
+        added = sorted((new_dict[_id] for _id in added_ids), key=lambda m: m.timestamp)
+        removed = sorted((old_dict[_id] for _id in removed_ids), key=lambda m: m['timestamp'])
+
+        # Detect modified markers by comparing descriptors
+        common_ids = old_ids & new_ids
+        modified = [
+            new_dict[_id] for _id in common_ids
+            if new_dict[_id].descriptor() != old_dict[_id]
+        ]
+
+        # Build delta with descriptors
+        delta = {
+            "added": [marker.descriptor() for marker in added],
+            "removed": [marker for marker in removed],  # already descriptors
+            "modified": [marker.descriptor() for marker in modified]
+        }
+
+        # Store descriptor snapshots for next time
+        self.last_markers_dict = {k: v.descriptor().copy() for k, v in new_dict.items()}
+        return delta
+    
+    
     def prepareLinesUpdate(self, lines):
         """
         Calculates the delta between the previous and current state of lines, detecting additions,

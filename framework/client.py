@@ -530,6 +530,15 @@ class window_c:
             print( "Deleting markers failed with:", e )
 
 
+    def modifyMarkers( self, modifiedList ):
+        if modifiedList is None or len(modifiedList) == 0:
+            return
+        # we can't be surgical. We have to go brute force to avoid the sorting problems
+        for m in modifiedList:
+            self.removeMarker(m)
+            self.addMarker(m)
+
+
     def addMarkers( self, addlist ):
         if addlist is None or len(addlist) == 0:
             return
@@ -825,6 +834,7 @@ class window_c:
         
         # markers delta update
         self.removeMarkers( msg['markers'].get("removed") ) 
+        self.modifyMarkers( msg['markers'].get("modified") )
         self.addMarkers( msg['markers'].get("added") ) 
 
         self.removeLines( msg['lines'].get("removed") )
