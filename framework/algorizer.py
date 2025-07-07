@@ -558,6 +558,8 @@ class stream_c:
         self.markets = fetcher.getMarkets()
         self.precision = fetcher.getPrecision()
         self.mintick = fetcher.getMintick()
+        self.fee_maker = self.markets[self.symbol].get('maker') if self.markets[self.symbol].get('maker') is not None else 0.0
+        self.fee_taker = self.markets[self.symbol].get('taker') if self.markets[self.symbol].get('taker') is not None else 0.0
 
         # hack thefor kucoin. It expects contracts and their contracts are units. That doesn't work for us
         if exchangeID == "kucoinfutures":
@@ -788,6 +790,9 @@ def getMintick()->float:
 
 def getPrecision()->float:
     return active.timeframe.stream.precision
+
+def getFees()->tuple[float,float]:
+    return active.timeframe.stream.fee_maker, active.timeframe.stream.fee_taker
 
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''

@@ -4,7 +4,7 @@
 from datetime import datetime, timezone
 
 from .candle import candle_c
-from .algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle, getMintick, getPrecision
+from .algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle, getMintick, getPrecision, getFees
 from .constants import c
 from . import active # Corrected: Import active to get active.barindex
 
@@ -617,46 +617,44 @@ class position_c:
 
     def update(self, op_type: int, price: float, quantity: float, leverage: int):
         """
-        Add order to history, update state, handle markers.
+        Add order to history, update state, handle markers. Includes fee calculation.
         """
-        # Store the state before the update for marker logic
         previous_active = self.active
-        previous_type = self.type # Store previous type
-        previous_size = self.size # Size in base units
-
-        # Initialize PnL for this order
+        previous_type = self.type
+        previous_size = self.size
         pnl_q = 0.0
         pnl_pct = 0.0
-
+        fee = 0.0
+        # Always use taker fee for all executions
+        _, taker_fee = getFees()
+        notional = abs(quantity) * price
+        fee = notional * taker_fee
         # Calculate PnL if this order reduces the position size
-        # PnL for partial closes uses the *position's* overall leverage (self.leverage)
         if previous_active and op_type != self.type and quantity > EPSILON:
-            # This order is opposing the current position type, thus reducing it
-            reduced_quantity = min(quantity, previous_size) # The quantity being reduced (in base units)
+            reduced_quantity = min(quantity, previous_size)
             if self.type == c.LONG:
                 pnl_q = (price - self.priceAvg) * reduced_quantity * self.leverage
             elif self.type == c.SHORT:
                 pnl_q = (self.priceAvg - price) * reduced_quantity * self.leverage
-            
-            # Capital involved is in quote currency
             capital_involved = self.priceAvg * reduced_quantity
             if capital_involved > EPSILON:
                 pnl_pct = (pnl_q / capital_involved) * 100
             else:
-                pnl_pct = 0.0 # Avoid division by zero if capital involved is zero
-            
-            # Add this order's realized PnL to the position's cumulative realized PnL
+                pnl_pct = 0.0
+            # Subtract fee from realized PnL
+            pnl_q -= fee
+            # Add this order's realized PnL (after fee) to the position's cumulative realized PnL
             self.realized_pnl_quantity += pnl_q
-
-        # Record the order in history with PnL and its specific leverage
+        # Record the order in history with fee and realized PnL
         self.order_history.append({
             'type': op_type,
-            'price': price, # Price in quote currency
-            'quantity': quantity, # Quantity in base units
+            'price': price,
+            'quantity': quantity,
             'barindex': active.barindex,
             'pnl_quantity': pnl_q,
             'pnl_percentage': pnl_pct,
-            'leverage': leverage # Store leverage for this specific order
+            'leverage': leverage,
+            'fee': fee
         })
 
         # The position's overall leverage (self.leverage) is set only by the opening order
@@ -734,73 +732,60 @@ class position_c:
 
     def close(self, price: float, liquidation_reason: str = None):
         """
-        Close position, realize PnL, update stats, handle markers.
+        Close position, realize PnL, update stats, handle markers. Includes fee calculation.
         """
         if not self.active:
             return
-
-        closing_quantity = self.size # This is in base units
-        closing_op_type = c.SHORT if self.type == c.LONG else c.LONG # Use the position's current type to determine closing order type
-
-        # Store previous state for PnL calculation on the closing order
+        closing_quantity = self.size
+        closing_op_type = c.SHORT if self.type == c.LONG else c.LONG
         previous_avg_price = self.priceAvg
-        previous_leverage = self.leverage # Use the position's effective leverage for calculation
+        previous_leverage = self.leverage
         previous_position_type = self.type
-
-        # Add the closing order to history, including its leverage
+        # Always use taker fee for all executions
+        _, taker_fee = getFees()
+        notional = abs(closing_quantity) * price
+        fee = notional * taker_fee
         self.order_history.append({
             'type': closing_op_type,
-            'price': price, # Price in quote currency
-            'quantity': closing_quantity, # Quantity in base units
+            'price': price,
+            'quantity': closing_quantity,
             'barindex': active.barindex,
             'pnl_quantity': 0.0, # Will be updated after full PnL calculation
-            'pnl_percentage': 0.0, # Will be updated after full PnL calculation
-            'leverage': previous_leverage # Store leverage for this specific closing order
+            'pnl_percentage': 0.0,
+            'leverage': previous_leverage,
+            'fee': fee
         })
-
-        # Recalculate metrics based on the updated history
         self._recalculate_current_position_state()
-
-        # If the position is now effectively closed (size is 0), calculate total PnL for this position object
         if abs(self.size) < EPSILON:
-            # Add verbose logging for PnL calculation
             if self.strategy_instance.verbose or not isInitializing():
                 print(f"DEBUG CLOSING PNL: prev_type={previous_position_type}, prev_avg_price={previous_avg_price:.6f}, close_price={price:.6f}, closing_qty={closing_quantity:.6f}, leverage={previous_leverage}")
                 if previous_position_type == c.LONG:
                     print(f"DEBUG LONG PNL CALC: ({price:.6f} - {previous_avg_price:.6f}) * {closing_quantity:.6f} * {previous_leverage}")
                 elif previous_position_type == c.SHORT:
                     print(f"DEBUG SHORT PNL CALC: ({previous_avg_price:.6f} - {price:.6f}) * {closing_quantity:.6f} * {previous_leverage}")
-
             final_close_pnl_q = 0.0
             if previous_position_type == c.LONG:
                 final_close_pnl_q = (price - previous_avg_price) * closing_quantity * previous_leverage
             elif previous_position_type == c.SHORT:
                 final_close_pnl_q = (previous_avg_price - price) * closing_quantity * previous_leverage
-            
-            # Capital involved is in quote currency
             final_close_capital_involved = previous_avg_price * closing_quantity
             final_close_pnl_pct = 0.0
             if final_close_capital_involved > EPSILON:
                 final_close_pnl_pct = (final_close_pnl_q / final_close_capital_involved) * 100
             else:
                 final_close_pnl_pct = 0.0
-            
-            # Update the last order in history with its PnL
+            # Subtract fee from realized PnL
+            final_close_pnl_q -= fee
             self.order_history[-1]['pnl_quantity'] = final_close_pnl_q
             self.order_history[-1]['pnl_percentage'] = final_close_pnl_pct
-
-            # Add the PnL from the final closing order to the cumulative realized PnL
+            self.order_history[-1]['fee'] = fee
             self.realized_pnl_quantity += final_close_pnl_q
-            
-            self.profit = self.realized_pnl_quantity # Total position PnL is the cumulative realized PnL
-            
-            # Calculate final percentage PnL for the entire position
+            self.profit = self.realized_pnl_quantity
             total_entry_capital_for_position = 0.0
             for order_data in self.order_history:
                 if order_data['pnl_quantity'] >= -EPSILON and order_data['pnl_quantity'] <= EPSILON:
                     order_leverage = order_data.get('leverage', 1.0)
                     total_entry_capital_for_position += order_data['price'] * order_data['quantity'] * order_leverage
-            
             self.realized_pnl_percentage = (self.profit / total_entry_capital_for_position) * 100 if total_entry_capital_for_position != 0 else 0.0
 
             # Update strategy-level counters for winning/losing positions
