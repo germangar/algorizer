@@ -540,12 +540,17 @@ class position_c:
     def _recalculate_current_position_state(self):
         """
         Update size, avg price, collateral from order history.
+        Average entry price is only updated on position increases (not reductions).
         """
+        # Track net position and value for avg price calculation
         net_long_quantity = 0.0
-        net_long_value = 0.0 # Value in quote currency
+        net_long_value = 0.0
         net_short_quantity = 0.0
-        net_short_value = 0.0 # Value in quote currency
-
+        net_short_value = 0.0
+        previous_size = getattr(self, 'size', 0.0)
+        previous_priceAvg = getattr(self, 'priceAvg', 0.0)
+        previous_type = getattr(self, 'type', 0)
+        # Calculate net position and value
         for order_data in self.order_history:
             if order_data['type'] == c.LONG:
                 net_long_quantity += order_data['quantity']
@@ -553,41 +558,66 @@ class position_c:
             elif order_data['type'] == c.SHORT:
                 net_short_quantity += order_data['quantity']
                 net_short_value += order_data['price'] * order_data['quantity']
-
-        # Determine the net position in base units
         net_quantity = net_long_quantity - net_short_quantity
-        net_value = net_long_value - net_short_value # Sum of value in quote currency
-
-        if net_quantity > EPSILON: # Use EPSILON for comparison
-            self.type = c.LONG
-            self.size = net_quantity
-            self.priceAvg = net_value / net_quantity
-        elif net_quantity < -EPSILON: # Use EPSILON for comparison
-            self.type = c.SHORT
-            self.size = abs(net_quantity) # Size is always positive (in base units)
-            self.priceAvg = abs(net_value / net_quantity) # Average price for short (in quote currency)
-        else: # net_quantity is effectively zero, position is flat
+        net_value = net_long_value - net_short_value
+        # Determine if position is increasing or decreasing
+        if abs(net_quantity) > EPSILON:
+            new_type = c.LONG if net_quantity > 0 else c.SHORT
+            new_size = abs(net_quantity)
+            # Only update avg price if increasing in same direction
+            if previous_type == new_type and new_size > previous_size + EPSILON:
+                # Increase: recalc avg price using only the new add
+                add_qty = new_size - previous_size
+                add_value = 0.0
+                qty_left = add_qty
+                for order_data in reversed(self.order_history):
+                    if order_data['type'] == new_type:
+                        take_qty = min(order_data['quantity'], qty_left)
+                        add_value += order_data['price'] * take_qty
+                        qty_left -= take_qty
+                        if qty_left <= EPSILON:
+                            break
+                total_qty = previous_size + (new_size - previous_size)
+                self.priceAvg = (previous_priceAvg * previous_size + add_value) / total_qty if total_qty > EPSILON else 0.0
+            elif previous_type != new_type:
+                # Reversal: set avg price to new entry
+                self.priceAvg = abs(net_value / net_quantity)
+            else:
+                # Reduction or no change: keep avg price
+                self.priceAvg = previous_priceAvg
+            self.type = new_type
+            self.size = new_size
+        else:
             self.size = 0.0
             self.priceAvg = 0.0
-            # self.type retains its last non-zero value, or remains 0 if no orders yet.
-            # self.active will be set to False by the close method.
-
-        # Calculate collateral based on the current (recalculated) state
-        # This uses the position's overall leverage (self.leverage)
-        if abs(self.size) > EPSILON: # Only if there's an active position size
+        # Collateral is always current size * avg price
+        if abs(self.size) > EPSILON:
             self.collateral = self.priceAvg * self.size
         else:
             self.collateral = 0.0
         self._update_liquidation_price()
 
     def _update_liquidation_price(self):
+        """
+        Calculate the true liquidation price, accounting for realized PnL and fees.
+        The liquidation price is the price at which (realized + unrealized PnL) == -collateral.
+        If not possible (e.g. size=0 or leverage=1), set to 0.0.
+        """
         if self.leverage == 1 or self.size == 0:
             self.liquidation_price = 0.0
             return
+        # For LONG: (realized_pnl + (liq_price - priceAvg) * size * leverage) == -collateral
+        # For SHORT: (realized_pnl + (priceAvg - liq_price) * size * leverage) == -collateral
         if self.type == c.LONG:
-            self.liquidation_price = self.priceAvg * (1 - 1.0 / self.leverage)
+            try:
+                self.liquidation_price = self.priceAvg - (self.collateral + self.realized_pnl_quantity) / (self.size * self.leverage)
+            except ZeroDivisionError:
+                self.liquidation_price = 0.0
         elif self.type == c.SHORT:
-            self.liquidation_price = self.priceAvg * (1 + 1.0 / self.leverage)
+            try:
+                self.liquidation_price = self.priceAvg + (self.collateral + self.realized_pnl_quantity) / (self.size * self.leverage)
+            except ZeroDivisionError:
+                self.liquidation_price = 0.0
         else:
             self.liquidation_price = 0.0
 
@@ -705,25 +735,23 @@ class position_c:
 
     def check_liquidation_and_close(self, current_price: float, realtime: bool = True):
         """
-        Liquidate and close if loss equals collateral.
+        Liquidate and close if current price crosses the calculated liquidation price.
+        Only position-level collateral and PnL are considered (not account liquidity).
         """
         if not self.active or self.size < EPSILON or self.leverage <= 1:
             return
         self._update_liquidation_price()
-        # Calculate current leveraged PnL
+        # For LONG: liquidation if current_price <= liquidation_price
+        # For SHORT: liquidation if current_price >= liquidation_price
         if self.type == c.LONG:
-            pnl = (current_price - self.priceAvg) * self.size * self.leverage
-            collateral = self.priceAvg * self.size
-            if pnl <= -collateral + EPSILON:
+            if current_price <= self.liquidation_price + EPSILON:
                 self.was_liquidated = True
                 close_price = current_price if realtime else self.liquidation_price
                 self.close(close_price, liquidation_reason="LIQUIDATION")
                 self.strategy_instance.total_liquidated_positions += 1
                 self.strategy_instance.total_liquidated_long_positions += 1
         elif self.type == c.SHORT:
-            pnl = (self.priceAvg - current_price) * self.size * self.leverage
-            collateral = self.priceAvg * self.size
-            if pnl <= -collateral + EPSILON:
+            if current_price >= self.liquidation_price - EPSILON:
                 self.was_liquidated = True
                 close_price = current_price if realtime else self.liquidation_price
                 self.close(close_price, liquidation_reason="LIQUIDATION")

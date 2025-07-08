@@ -748,7 +748,7 @@ class stream_c:
             print( f"{timeframeStr} is not a valid timeframe name" )
             return
         if timeframeStr not in self.timeframes.keys():
-            print( f"Available timeframes: {self.timeframes.keys()}" )
+            print( f"Available timeframes: {list(self.timeframes.keys())}" )
             return
         start_window_server( timeframeStr )
 
