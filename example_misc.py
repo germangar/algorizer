@@ -153,31 +153,39 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
 
     if buySignal:
         if shortpos is not None:
-            trade.close(c.SHORT)
+            trade.close( c.SHORT )
         offset = 50
         if longpos:
             lastorderindex = longpos.get_order_by_direction(c.LONG)['barindex']
             offset = barindex - lastorderindex
+            if longpos.priceAvg < close[barindex]:
+                offset = 0
         if offset > 40:
             trade.order( 'buy', c.LONG )
 
     if longpos:
         if longpos.get_unrealized_pnl_percentage() > 75 and longpos.collateral >= trade.strategy.order_size * 1.9:
             trade.order( 'sell', c.LONG )
+        elif longpos.get_unrealized_pnl_percentage() > 200:
+            trade.close( c.LONG )
 
     if sellSignal:
         if longpos is not None:
-            trade.close(c.LONG)
+            trade.close( c.LONG )
         offset = 50
         if shortpos:
             lastorderindex = shortpos.get_order_by_direction(c.SHORT)['barindex']
             offset = barindex - lastorderindex
+            if shortpos.priceAvg > close[barindex]:
+                offset = 0
         if offset > 40:
             trade.order( 'sell', c.SHORT )
 
     if shortpos:
         if shortpos.get_unrealized_pnl_percentage() > 75 and shortpos.collateral >= trade.strategy.order_size * 1.9:
             trade.order( 'buy', c.SHORT )
+        elif shortpos.get_unrealized_pnl_percentage() > 200:
+            trade.close( c.SHORT )
 
     
     # draw a line where the liquidation is awaiting
@@ -257,7 +265,7 @@ if __name__ == '__main__':
     #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['4h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
+    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['8h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
 
     # Create subpanels to plot the oscilators.
     # width and height are values between 0 amd 1, representing the percentage of the
@@ -275,7 +283,7 @@ if __name__ == '__main__':
     # Execute this call only if you want to check the chart. It's not neccesary to run the strategy.
     # You can also open the chart using the command 'chart' in the console.
     # opening the chart is often way slower than calculating the strategy results. Don't look at me. Blame lightweight-charts.
-    stream.createWindow( '1h' )
+    stream.createWindow( '8h' )
 
     # Execute this call only if you want the strategy to keep running in realtime.
     # It's not neccesary if you only want a backtest.
