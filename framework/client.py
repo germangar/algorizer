@@ -31,11 +31,13 @@ DEFAULT_PUB_PORT = 5556
 # Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, help='Command port number (pub port will be port+1)')
+parser.add_argument('--timeframe', type=str, help='Timeframe to request (optional)')
 args = parser.parse_args()
 
 # Set ports
 cmd_port = args.port if args.port is not None else DEFAULT_CMD_PORT
 pub_port = cmd_port + 1 if args.port is not None else DEFAULT_PUB_PORT
+timeframe_request = args.timeframe  # None if not provided
 
 debug = False
 
@@ -991,6 +993,8 @@ async def send_command(socket, command: str, params: str = ""):
             elif data['type'] == 'data_descriptor':
                 status = CLIENT_LOADING
                 descriptor = data
+
+                print("Loading chart", descriptor['timeframe'] )
                 
                 # Send acknowledgment that we're ready for the data
                 await socket.send_string("ready")
@@ -1019,7 +1023,6 @@ async def send_command(socket, command: str, params: str = ""):
                     if 'timestamp' in df.columns:
                         df['timestamp'] = df['timestamp'].astype(np.int64)
                     
-                    print("Opening chart")
                     if debug : print(f"DataFrame shape: {df.shape}")
                     ### fall through ###
                 except Exception as e:
@@ -1082,7 +1085,7 @@ async def listen_for_updates(context):
         socket.close()
 
 async def run_client():
-    global status
+    global status, timeframe_request
     # ZeroMQ Context
     context = zmq.asyncio.Context()
 
@@ -1098,12 +1101,14 @@ async def run_client():
 
         while True:
             if status == CLIENT_DISCONNECTED:
-                await send_command(cmd_socket, "connect", "")
+                await send_command( cmd_socket, "connect", "" )
                 await asyncio.sleep(0.25)
                 continue
 
             if status == CLIENT_CONNECTED:
-                await send_command(cmd_socket, "dataframe", "")
+                if debug : print( "sending connect request for timeframe", timeframe_request )
+                await send_command(cmd_socket, "dataframe", timeframe_request if timeframe_request is not None else "" )
+                timeframe_request = None
                 await asyncio.sleep(0.25)
                 continue
 

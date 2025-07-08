@@ -14,11 +14,6 @@ from . import active
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# BIG HUGE FIXME: The plots should be grabbing the timeframe requested by the client
-def getPlotsList()->dict:
-    timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
-    return timeframe.plotsList()
-
 debug = False
 
 # Global queue for updates
@@ -40,7 +35,7 @@ class client_state_t:
     def __init__(self):
         self.status = CLIENT_DISCONNECTED
         self.last_successful_send = 0.0
-        self.timeframeStr = ""
+        self.streaming_timeframe = None
 
         self.last_markers_dict:dict = {}
         self.last_lines_dict:dict = {}
@@ -165,21 +160,22 @@ def prepare_dataframe_for_sending(dataset):
     return np.asarray(dataset, dtype=np.float64)
 
 
-def create_data_descriptor(dataset, timeframeStr: str, columns):
+def create_data_descriptor( dataset, timeframe ):
     """
     Create a descriptor message for the dataset that will be sent.
     """
+    columns = timeframe.columnsList()
     message = {
         "type": "data_descriptor",
         "datatype": "dataframe",
-        "timeframe": timeframeStr,
-        "timeframemsec": tools.timeframeMsec(timeframeStr),
+        "timeframe": timeframe.timeframeStr,
+        "timeframemsec": tools.timeframeMsec(timeframe.timeframeStr),
         "rows": len(dataset),
         "columns": columns,
         "dtypes": {col: "float64" for col in columns},
-        "plots": getPlotsList(),
-        "markers": client.prepareMarkersUpdate( active.timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
-        "lines": client.prepareLinesUpdate( active.timeframe.stream.lines ) # same as above
+        "plots": timeframe.plotsList(),
+        "markers": client.prepareMarkersUpdate( timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
+        "lines": client.prepareLinesUpdate( timeframe.stream.lines ) # same as above
     }
     return json.dumps(message)
     
@@ -188,18 +184,19 @@ async def send_dataframe(cmd_socket, timeframe):
     """
     Send the dataset (NumPy 2D array of float64) to client with proper descriptor and data handling.
     """
-
+    assert(timeframe != None)
+    if timeframe != client.streaming_timeframe:
+        # Execute a reset?
+        pass
     dataset = timeframe.dataset
-    columns = timeframe.columnsList()
-    timeframe_str = timeframe.timeframeStr
-    client.timeframeStr = timeframe_str
+    client.streaming_timeframe = timeframe
 
     try:
         # Prepare the dataset for sending
         arr = prepare_dataframe_for_sending(dataset)
 
         # Send descriptor
-        descriptor = create_data_descriptor(dataset, timeframe_str, columns)
+        descriptor = create_data_descriptor( dataset, timeframe )
         await cmd_socket.send_string(descriptor)
 
         # Wait for acknowledgment
@@ -226,7 +223,7 @@ def push_tick_update(timeframe) -> str:
 
 
 def push_row_update(timeframe):
-    if client.status != CLIENT_LISTENING or client.timeframeStr != active.timeframe.timeframeStr:
+    if client.status != CLIENT_LISTENING or client.streaming_timeframe != active.timeframe.timeframeStr:
         return
     row = timeframe.dataset[-1].tolist()
     row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP])
@@ -324,9 +321,12 @@ async def proccess_message(msg: str, cmd_socket):
 
         elif command == 'dataframe':
             client.status = CLIENT_LOADING
+            timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
+            if tools.validateTimeframeName( msg ) and msg in active.timeframe.stream.timeframes.keys():
+                timeframe = active.timeframe.stream.timeframes[msg]
 
             # Send DataFrame to client
-            success = await send_dataframe(cmd_socket, active.timeframe)
+            success = await send_dataframe(cmd_socket, timeframe)
             if not success:
                 return create_command_response("error sending dataframe")
             
@@ -343,7 +343,7 @@ async def proccess_message(msg: str, cmd_socket):
     client.update_last_send()
     return response if response else create_command_response("unknown command")
 
-def launch_client_window(cmd_port):
+def launch_client_window( cmd_port, timeframeName:str = None ):
     """Launch client.py - SIMPLE VERSION THAT JUST WORKS"""
     import sys
     from subprocess import Popen
@@ -353,11 +353,14 @@ def launch_client_window(cmd_port):
     client_path = str(Path(__file__).parent / "client.py")
     
     # Launch with Python path set properly
-    process = Popen([
+    cmd = [
         sys.executable,
         client_path,
         "--port", str(cmd_port)
-    ])
+    ]
+    if timeframeName is not None:
+        cmd.extend( ["--timeframe", str(timeframeName)] )
+    process = Popen(cmd)
     return process
 
 
@@ -404,7 +407,7 @@ def start_window_server(timeframeName = None):
     # If server is running, use its ports
     if server_cmd_port is not None:
         if debug : print(f"Launching client for existing server on port {server_cmd_port}")
-        return launch_client_window(server_cmd_port) is not None
+        return launch_client_window(server_cmd_port, timeframeName) is not None
 
     # Server not running yet, start it with new ports
     try:
@@ -416,7 +419,7 @@ def start_window_server(timeframeName = None):
         return False
 
     # Launch client window
-    client_process = launch_client_window(cmd_port)
+    client_process = launch_client_window(cmd_port, timeframeName)
     if not client_process:
         print("Failed to launch client window")
         return False
