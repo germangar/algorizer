@@ -80,6 +80,12 @@ class strategy_c:
             self.first_order_timestamp = getCandle(active.barindex).timestamp
             self.liquidity = self.initial_liquidity
 
+        # Calculate fee for the order
+        _, taker_fee = getFees()
+        notional = abs(quantity) * price
+        fee = notional * taker_fee
+        collateral_change = price * quantity
+
         # Add the initial order to history, including its leverage
         pos.order_history.append({
             'type': pos_type,
@@ -88,7 +94,9 @@ class strategy_c:
             'barindex': active.barindex,
             'pnl_quantity': 0.0,
             'pnl_percentage': 0.0,
-            'leverage': leverage # Store leverage for this specific order
+            'leverage': leverage,
+            'fee': fee,
+            'collateral_change': collateral_change
         })
         
         # Recalculate metrics based on this first order
@@ -605,25 +613,7 @@ class position_c:
             self.collateral = self.calculate_collateral_from_history()
         else:
             self.collateral = 0.0
-        # Update per-order collateral and fee in order_history
-        running_size = 0.0
-        running_type = 0
-        for i, order_data in enumerate(self.order_history):
-            # Collateral change: for increases, collateral added = price * quantity
-            # For reductions, collateral removed = -priceAvg * reduced_quantity
-            collateral_change = 0.0
-            if i == 0:
-                running_type = order_data['type']
-            if order_data['type'] == running_type:
-                # Increase
-                collateral_change = order_data['price'] * order_data['quantity']
-                running_size += order_data['quantity']
-            else:
-                # Reduction
-                collateral_change = -previous_priceAvg * order_data['quantity']
-                running_size -= order_data['quantity']
-            order_data['collateral_change'] = collateral_change
-            # Fee is already set in update/close
+
         self._update_liquidation_price()
 
     def _update_liquidation_price(self):
@@ -810,6 +800,7 @@ class position_c:
         _, taker_fee = getFees()
         notional = abs(closing_quantity) * price
         fee = notional * taker_fee
+        collateral_change = -self.priceAvg * closing_quantity
         self.order_history.append({
             'type': closing_op_type,
             'price': price,
@@ -818,7 +809,8 @@ class position_c:
             'pnl_quantity': 0.0, # Will be updated after full PnL calculation
             'pnl_percentage': 0.0,
             'leverage': previous_leverage,
-            'fee': fee
+            'fee': fee,
+            'collateral_change': collateral_change
         })
         self._recalculate_current_position_state()
         if abs(self.size) < EPSILON:
