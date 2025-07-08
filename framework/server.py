@@ -223,7 +223,7 @@ def push_tick_update(timeframe) -> str:
 
 
 def push_row_update(timeframe):
-    if client.status != CLIENT_LISTENING or client.streaming_timeframe != active.timeframe.timeframeStr:
+    if client.status != CLIENT_LISTENING or client.streaming_timeframe != active.timeframe:
         return
     row = timeframe.dataset[-1].tolist()
     row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP])
