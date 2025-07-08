@@ -164,6 +164,8 @@ def create_data_descriptor( dataset, timeframe ):
     """
     Create a descriptor message for the dataset that will be sent.
     """
+    client.last_lines_dict = {}  # reset the last_lines_dict for each timeframe
+    client.last_markers_dict = {}  # reset the last_markers_dict for each timeframe
     columns = timeframe.columnsList()
     message = {
         "type": "data_descriptor",
