@@ -53,6 +53,7 @@ theme_black = {
     'text_color':"#dddddd",
     'price_scale_color':"#dddddd",
     'price_scale_border_color':"#5a5a5aff",
+    'grid_color': "#30303386",
     'bull_color':'#279d82',
     'bear_color':'#c86164',
     'candle_bull_color':'#279d82',
@@ -68,6 +69,7 @@ theme_dark = {
     'text_color':"#dddddd",
     'price_scale_color':"#dddddd",
     'price_scale_border_color':"#5a5a5aff",
+    'grid_color': "#30303386",
     'bull_color':"#088755",
     'bear_color':"#AE3853",
     'candle_bull_color':"#088755",
@@ -77,6 +79,36 @@ theme_dark = {
     'candle_border_bull_color':"#088755",
     'candle_border_bear_color':"#AE3853"
 }
+
+theme_light = {
+    'background_color':"#dddddfff",
+    'text_color':"#2D2D2D",
+    'price_scale_color':"#2F3031",
+    'price_scale_border_color':"#686869ff",
+    'grid_color': "#9C9DA08C",
+    'bull_color':"#039974",
+    'bear_color':"#D44667",
+    'candle_bull_color':"#039974",
+    'candle_bear_color':"#D44667",
+    'wick_bull_color':"#039974",
+    'wick_bear_color':"#D44667",
+    'candle_border_bull_color':"#039974",
+    'candle_border_bear_color':"#D44667"
+}
+
+        # self.backgroundColor = "#dddddfff" # "#d5d7daff"
+        # self.textColor = "#2D2D2D"
+        # self.priceScaleColor = "#2F3031"
+        # self.priceScaleBorderColor = "#686869ff"
+        # self.gridColor = "#9C9DA08C"
+        # self.bullColor = "#039974"
+        # self.bearColor = "#D44667"
+        # self.candleBullColor = self.bullColor
+        # self.candleBearColor = self.bearColor
+        # self.wickBullColor = self.bullColor
+        # self.wickBearColor = self.bearColor
+        # self.candleBorderBullColor = self.bullColor
+        # self.candleBorderBearColor = self.bearColor
 
 def hx2rgba(hex_color):
     """Converts a hex color code (with or without alpha) to an RGBA string for CSS."""
@@ -209,6 +241,20 @@ class window_c:
 
         self.read_config()
 
+        # self.backgroundColor = "#dddddfff" # "#d5d7daff"
+        # self.textColor = "#2D2D2D"
+        # self.priceScaleColor = "#2F3031"
+        # self.priceScaleBorderColor = "#686869ff"
+        # self.gridColor = "#9C9DA08C"
+        # self.bullColor = "#039974"
+        # self.bearColor = "#D44667"
+        # self.candleBullColor = self.bullColor
+        # self.candleBearColor = self.bearColor
+        # self.wickBullColor = self.bullColor
+        # self.wickBearColor = self.bearColor
+        # self.candleBorderBullColor = self.bullColor
+        # self.candleBorderBearColor = self.bearColor
+        
 
     def writeConfig(self):
         theme = {
@@ -216,6 +262,7 @@ class window_c:
             'text_color':self.textColor,
             'price_scale_color':self.priceScaleColor,
             'price_scale_border_color':self.priceScaleBorderColor,
+            'grid_color': self.gridColor,
             'bull_color':self.bullColor,
             'bear_color':self.bearColor,
             'candle_bull_color':self.candleBullColor,
@@ -266,6 +313,7 @@ class window_c:
         self.textColor = theme.get('text_color')
         self.priceScaleColor = theme.get('price_scale_color')
         self.priceScaleBorderColor = theme.get('price_scale_border_color')
+        self.gridColor = theme.get('grid_color')
         self.bullColor = theme.get('bull_color')
         self.bearColor = theme.get('bear_color')
         self.candleBullColor = theme.get('candle_bull_color')
@@ -303,6 +351,10 @@ class window_c:
                            wick_down_color=self.wickBearColor,
                            border_up_color=self.candleBorderBullColor,
                            border_down_color=self.candleBorderBearColor )
+        
+        # grid(vert_enabled: bool, horz_enabled: bool, color: COLOR, style: LINE_STYLE
+        if self.gridColor is not None:
+            chart.grid( color = self.gridColor )
 
         chart.price_scale(minimum_width=self.priceScaleMinimumWidth,   # FIXME: try to autoscale it
                           border_visible=True, 
@@ -882,7 +934,7 @@ class window_c:
         try:
             chart.topbar.textbox("header", f'{ self.config["symbol"] } - { self.descriptor["timeframe"] }', align= 'left')
             chart.topbar.button('legendswtich', '∇', align= 'left', func=self.button_legend_press)
-            chart.topbar.menu( "Theme", ("Theme", "Dark", "Black"), "Theme", func= self.menu_theme) 
+            chart.topbar.menu( "Theme", ("Theme", "Black", "Dark", 'Light'), "Theme", func= self.menu_theme) 
             #chart.topbar.switcher( 'thisthat', ("this", "that"), "that" )
             # ^—–▽▼▭∆∇∨∧⋀⋁⋎⋏⩔⩡Λ
 
@@ -902,6 +954,11 @@ class window_c:
         elif chart.topbar['Theme'].value == 'Dark':
             self.loadTheme( theme_dark )
             self.writeConfig()
+
+        elif chart.topbar['Theme'].value == 'Light':
+            self.loadTheme( theme_light )
+            self.writeConfig()
+            
         print ( f"{chart.topbar['Theme'].value} theme written to config. It will show next time the chart is opened" )
         chart.topbar['Theme'].value = 'Theme'
     
