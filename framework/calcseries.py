@@ -1426,12 +1426,10 @@ class generatedSeries_c:
     iat = iloc # alias for the same method
     value = iloc # alias for the same method
     
-    
     def current( self ):
         '''returns the last value in the series'''
         return self.__getitem__(-1)
     
-
     def series(self):
         try:
             series = self.timeframe.registeredSeries[self.name]
@@ -1458,10 +1456,18 @@ class generatedSeries_c:
     def __len__(self):
         return len(self.timeframe.dataset[:, self.column_index])
     
+    def _lenError(self, other):
+        if isinstance(other, generatedSeries_c):
+            if self.timeframe != other.timeframe:
+                raise ValueError( f"Can't operate on series from different timeframes. {self.name} [{self.timeframe.timeframeStr}] - {other.name} [{other.timeframe.timeframeStr}]" )
+        raise ValueError( f"Can't operate on series of different lengths. {self.name} != {other.name}" )
+    
     def __add__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return addSeries(self, other)
-        raise ValueError("WTF def __add__(self, other)")
+        raise ValueError( f"Can't add type {type(other)} to generatedSeries_c)" )
 
     def __radd__(self, other):
         if isinstance(other, (float, int)):
@@ -1470,8 +1476,10 @@ class generatedSeries_c:
 
     def __sub__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return subtractSeries(self, other)
-        raise ValueError("WTF def __sub__(self, other)")
+        raise ValueError( f"Can't subtract type {type(other)} to generatedSeries_c)" )
 
     def __rsub__(self, other):
         if isinstance(other, (float, int)):
@@ -1480,8 +1488,10 @@ class generatedSeries_c:
 
     def __mul__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return multiplySeries(self, other)
-        raise ValueError("WTF def __mul__(self, other)")
+        raise ValueError( f"Can't multiply type {type(other)} to generatedSeries_c)" )
 
     def __rmul__(self, other):
         if isinstance(other, (float, int)):
@@ -1490,8 +1500,10 @@ class generatedSeries_c:
 
     def __truediv__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return divideSeries(self, other)
-        raise ValueError("WTF def __truediv__(self, other)")
+        raise ValueError( f"Can't divide type {type(other)} to generatedSeries_c)" )
 
     def __rtruediv__(self, other):
         if isinstance(other, (float, int)):
@@ -1503,6 +1515,8 @@ class generatedSeries_c:
 
     def __lt__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return lessSeries(self, other)
         raise ValueError("Unsupported operand type for <")
     
@@ -1513,6 +1527,8 @@ class generatedSeries_c:
 
     def __le__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return lessOrEqualSeries(self, other)
         raise ValueError("Unsupported operand type for <=")
     
@@ -1523,6 +1539,8 @@ class generatedSeries_c:
 
     def __gt__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return greaterSeries(self, other)
         raise ValueError("Unsupported operand type for >")
     
@@ -1533,6 +1551,8 @@ class generatedSeries_c:
 
     def __ge__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return greaterOrEqualSeries(self, other)
         raise ValueError("Unsupported operand type for >=")
     
@@ -1543,6 +1563,8 @@ class generatedSeries_c:
 
     def __eq__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return equalSeries(self, other)
         return NotImplemented
     
@@ -1553,6 +1575,8 @@ class generatedSeries_c:
 
     def __ne__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other)
             return notequalSeries(self, other)
         return NotImplemented
 
