@@ -1351,9 +1351,7 @@ class generatedSeries_c:
         assert self.timeframe == active.timeframe
         if len(source) >= self.period and (self.name not in self.timeframe.registeredSeries.keys() or self.alwaysReset):
             timeframe = self.timeframe
-            if timeframe.backtesting and not timeframe.jumpstart:
-                raise SystemError(f"[{self.name}] tried to initialize as backtesting")
-            
+
             barindex = len(source) - 1
             start_time = time.time()
 
@@ -1380,6 +1378,8 @@ class generatedSeries_c:
 
     def update( self, source:series_c ):
         if self.timeframe.backtesting:
+            if self.lastUpdatedTimestamp == 0:
+                self.initialize(source)
             return
         
         assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
