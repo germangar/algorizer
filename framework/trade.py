@@ -237,7 +237,7 @@ class strategy_c:
                             print(f"Position was fully closed. Remaining quantity ({actual_quantity_to_process_base_units - pos_size_to_close:.2f} base units) was not used to open a new position.")
 
 
-        # NEW: Call broker_event after order/position update
+        # Call broker_event after order/position update
         if not isInitializing() and affected_pos is not None:
             final_position_type_for_broker_event = 0
             final_position_size_base_for_broker_event = 0.0
@@ -538,7 +538,7 @@ class position_c:
         self.profit = 0.0        # Total realized PnL for this position when it closes (final value, in quote currency)
         self.realized_pnl_quantity = 0.0 # Cumulative realized PnL in quantity (in quote currency)
         self.realized_pnl_percentage = 0.0 # Cumulative realized PnL in percentage for this position (final value)
-        self.order_history = []  # Stores {'type': c.LONG/c.SHORT, 'price': float, 'quantity': float, 'barindex': int, 'pnl_quantity': float, 'pnl_percentage': float, 'leverage': int}
+        self.order_history = []  # Stores {'type': c.LONG/c.SHORT, 'price': float, 'quantity': float, 'barindex': int, 'pnl_quantity': float, 'pnl_percentage': float, 'leverage': int, 'fees':float, 'collateral_change': float}
         self.max_size_held = 0.0 # Variable to track maximum size held during the position's lifetime (in base units)
         self.collateral = 0.0 # Tracks the USD collateral (cost basis) currently tied up in the open position
         self.close_timestamp = None # NEW: Store timestamp when position is closed
@@ -554,6 +554,46 @@ class position_c:
             # Only sum up to the current position size (active orders)
             collateral += order_data.get('collateral_change', 0.0)
         return collateral
+    
+    def calculate_pnl(self, current_price: float, quantity: float = None) -> tuple[float, float]:
+        """Calculate PnL in quantity and percentage."""
+        if quantity is None:
+            quantity = self.size
+        
+        if quantity < EPSILON:
+            return 0.0, 0.0
+        
+        pnl_q = 0.0
+        if self.type == c.LONG:
+            pnl_q = (current_price - self.priceAvg) * quantity * self.leverage
+        elif self.type == c.SHORT:
+            pnl_q = (self.priceAvg - current_price) * quantity * self.leverage
+        
+        pnl_pct = (pnl_q / self.collateral) * 100 if self.collateral > EPSILON else 0.0
+        return pnl_q, pnl_pct
+    
+    def calculate_fee(self, price: float, quantity: float) -> float:
+        """Calculate fee for a given order."""
+        _, taker_fee = getFees()
+        return abs(quantity) * price * taker_fee
+    
+    def add_order_to_history(self, op_type: int, price: float, quantity: float, leverage: int, pnl_q: float = 0.0, pnl_pct: float = 0.0):
+        _, taker_fee = getFees()
+        notional = abs(quantity) * price
+        fee = notional * taker_fee
+        collateral_change = price * quantity if op_type == self.type else -self.priceAvg * quantity
+        
+        self.order_history.append({
+            'type': op_type,
+            'price': price,
+            'quantity': quantity,
+            'barindex': active.barindex,
+            'pnl_quantity': pnl_q,
+            'pnl_percentage': pnl_pct,
+            'leverage': leverage,
+            'fee': fee,
+            'collateral_change': collateral_change
+        })
 
     def _recalculate_current_position_state(self):
         """
@@ -683,24 +723,22 @@ class position_c:
         # Calculate PnL if this order reduces the position size
         if previous_active and op_type != self.type and quantity > EPSILON:
             reduced_quantity = min(quantity, previous_size)
-            if self.type == c.LONG:
-                pnl_q = (price - self.priceAvg) * reduced_quantity * self.leverage
-            elif self.type == c.SHORT:
-                pnl_q = (self.priceAvg - price) * reduced_quantity * self.leverage
-            capital_involved = self.priceAvg * reduced_quantity
-            if capital_involved > EPSILON:
-                pnl_pct = (pnl_q / capital_involved) * 100
-            else:
-                pnl_pct = 0.0
+            pnl_q, pnl_pct = self.calculate_pnl(price, reduced_quantity)
+            
             # Subtract fee from realized PnL
+            fee = self.calculate_fee(price, reduced_quantity)
             pnl_q -= fee
+            
             # Add this order's realized PnL (after fee) to the position's cumulative realized PnL
             self.realized_pnl_quantity += pnl_q
+            
             # Collateral removed on reduction
             collateral_change = -self.priceAvg * reduced_quantity
         else:
             # Position increase (or new position): collateral added
             collateral_change = price * quantity
+            pnl_q, pnl_pct = 0.0, 0.0
+            
         # Record the order in history with fee, realized PnL, and collateral_change
         self.order_history.append({
             'type': op_type,
@@ -934,7 +972,7 @@ class position_c:
 
 class OrderManager:
     """
-    Routes orders and enforces ONEWAY/HEDGE logic.
+    Routes orders and enforces ONEWAY/HEDGE logic. 
     """
     def __init__(self, strategy: strategy_c):
         self.strategy = strategy
