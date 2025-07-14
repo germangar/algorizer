@@ -839,9 +839,8 @@ class window_c:
 
 
     def newRow(self, msg):
-        row = msg.get('data')
+        row = msg.get('row_array')
         row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP]) # fix type
-        assert(row[c.DF_TIMESTAMP] is not None)
         columns = msg.get('columns')
         self.barindex = int( msg.get('barindex') )
         self.timestamp = row[c.DF_TIMESTAMP]
@@ -1129,10 +1128,8 @@ async def listen_for_updates(context):
                     if debug : print( data )
  
                     if data['type'] == 'row':
-
-                        array_data = unpack_arrays( data['arrays'] )
-                        data['data'] = array_data.copy() # Replace the raw bytes with the reconstructed NumPy array
-                        del data['arrays']
+                        array_data = unpack_arrays( data['row_array'] )
+                        data['row_array'] = array_data.copy() # Replace the raw bytes with the reconstructed NumPy array
                         window.newRow(data)
 
                     elif data['type'] == 'tick':

@@ -199,7 +199,7 @@ def push_row_update(timeframe):
         "timeframe": timeframe.timeframeStr,
         "barindex": timeframe.barindex,
         "columns": timeframe.columnsList(),
-        "arrays": pack_array(rows),
+        "row_array": pack_array(rows),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ),
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ),
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
@@ -212,7 +212,7 @@ async def queue_update(update):
     if client.status == CLIENT_LISTENING:
         if update_queue.qsize() < MAX_QUEUE_SIZE:
             await update_queue.put(update)
-            if debug : print(f"Added to queue. Queue size: {update_queue.qsize()}")  # Debug
+            if debug : print(f"Added to queue. Queue size: {update_queue.qsize()}")
         else:
             print("Update queue full - dropping update")
 
@@ -240,11 +240,11 @@ async def publish_updates(pub_socket):
                 try:
                     # Wait for an update with a timeout
                     update = await asyncio.wait_for(update_queue.get(), timeout=1.0)
-                    if debug : print(f"Got update from queue. Queue size: {update_queue.qsize()}")  # Debug
+                    if debug : print(f"Got update from queue. Queue size: {update_queue.qsize()}")
 
                     try:
                         await asyncio.wait_for(pub_socket.send(update), timeout=1.0)
-                        if debug : print("Successfully sent update")  # Debug
+                        if debug : print("Successfully sent update")
                         client.update_last_send()  # Mark successful send
 
                     except (asyncio.TimeoutError, zmq.error.Again):
