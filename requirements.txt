@@ -8,6 +8,7 @@ ccxt>=4.4.77
 # Network communication
 pyzmq>=25.0.0
 requests>=2.31.0
+msgpack>=1.0.0
 
 # Charting
 lightweight-charts>=2.1

@@ -1,5 +1,6 @@
 import zmq
 import zmq.asyncio
+import msgpack
 import asyncio
 import sys
 import json
@@ -871,7 +872,6 @@ class window_c:
             # ToDo: The dataframe has changed. We need to reload it
             raise ValueError( "Dataframe columns have changed" )
         
-        
         try:
         # run through the list of plots and issue the updates
             for plot in self.plots:
@@ -1028,46 +1028,52 @@ status = CLIENT_DISCONNECTED
 async def send_command(socket, command: str, params: str = ""):
     global status, window
 
-    """Send a command to the server"""
+    # Send a command to the server
     message = f"{command} {params}".strip()
     await socket.send_string(message)
     if debug : print(f"Sent command: {message}")
-    
-    # Get the reply
-    reply = await socket.recv_string()
 
+    # Get the reply
+    reply = await socket.recv()
+
+    # Process the reply
     try:
-        # Try to parse as JSON
-        data = json.loads(reply)
-        if isinstance(data, dict) and 'type' in data:
+        try:
+            data = msgpack.unpackb(reply, raw=False)
+            if debug : print( "RECEIVED:", data )
+        except Exception as e:
+            print( f"MSGPACK ERROR: {e}" )
+            print( f"DATA: {data}" )
+            raise ValueError( f"MSGPACK ERROR: {e}" )
+    
+        if isinstance(data, dict):
+            if not 'type' in data:
+                raise ValueError( "ERROR [send_command]: received dictionary without a message 'type'." )
+            
             if data['type'] == 'config':
-                if debug:print(f"Received config message for symbol: {data['symbol']}")
+                if debug : print( f"Received config message for symbol: {data['symbol']}" )
                 # create the window container
                 window = window_c(data)
                 status = CLIENT_CONNECTED
-                return data
+                return
                 
             elif data['type'] == 'data_descriptor':
-                status = CLIENT_LOADING
-                descriptor = data
 
-                print("Loading chart", descriptor['timeframe'] )
+                status = CLIENT_LOADING
+                print("Loading chart", data['timeframe'] )
                 
-                # Send acknowledgment that we're ready for the data
-                await socket.send_string("ready")
-                
-                try:
-                    # Get the raw data
-                    raw_data = await socket.recv()
+                # unpack the dataframe
+                if 'data' in data and isinstance(data['data'], bytes):
+                    raw_data = data['data']
+                else:
+                    raise ValueError( "dataframe message doesn't contain raw bytes data." )
                     
-                    # Convert raw bytes back to numpy array
+                try:   
+                    # Convert raw bytes back to numpy array and reshape it to the original structure
                     array_data = np.frombuffer(raw_data, dtype=np.float64)
-                    
-                    # Reshape with explicit size calculation
                     rows = data['rows']
                     cols = len(data['columns'])
                     expected_size = rows * cols
-                    
                     if array_data.size != expected_size:
                         raise ValueError(f"Data size mismatch. Expected {expected_size}, got {array_data.size}")
                     
@@ -1079,27 +1085,34 @@ async def send_command(socket, command: str, params: str = ""):
                     # Handle timestamp column separately
                     if 'timestamp' in df.columns:
                         df['timestamp'] = df['timestamp'].astype(np.int64)
+
+                    # clear the raw data from memory. We won't use it again
+                    # FIXME? Maybe I shouldn't convert it to a dictionary here?
+                    del data['data']
                     
                     if debug : print(f"DataFrame shape: {df.shape}")
+
                     ### fall through ###
+
                 except Exception as e:
                     print(f"Error reconstructing DataFrame: {e}")
                     status = CLIENT_CONNECTED
                     return None
                 
                 # initialize the window with the dataframe and open it
-                window.loadChartData( descriptor, df )
+                window.loadChartData( data, df )
                 status = CLIENT_READY
-                return data
+                return
+        
+        if isinstance(data, str):
+            if debug : print(f"Received unhandled response: {data}")
+            return
 
-    except json.JSONDecodeError:
-        # Not JSON, treat as regular message
-        if reply == "connected":
-            status = CLIENT_CONNECTED
-            print("Connected")
-        else:
-            if debug : print(f"Received reply: {reply}")
-        return reply
+    except Exception as e:
+        raise ValueError( e )
+    
+    raise ValueError( "Unhandled reply type in 'send_command'. Type:", type(data) )
+
 
 async def listen_for_updates(context):
     """Listen for updates from server"""
@@ -1112,29 +1125,34 @@ async def listen_for_updates(context):
     try:
         while True:
             try:
-                if debug : print("Waiting for message...")
-                message = await socket.recv_string()
-                if debug: print("Received updates message")
+                message = await socket.recv()
+                
                 try:
-                    data = json.loads(message)
+                    data = msgpack.unpackb(message, raw=False)
+                    if debug : print( data )
+ 
                     if data['type'] == 'row':
+                        # Check if the message contains raw data
+                        if 'data' in data and isinstance(data['data'], bytes):
+                            row_bytes = data['data']
+                            dtype = np.float64
+                            length = len(row_bytes) // dtype().itemsize
+                            row_bytes = np.frombuffer(row_bytes, dtype=dtype, count=length)
+                            data['data'] = row_bytes.copy() # Replace the raw bytes with the reconstructed NumPy array
+                            del row_bytes
+                        
                         window.newRow(data)
+
                     elif data['type'] == 'tick':
                         window.newTick(data)
-                    elif data['type'] == 'marker':
-                        if data['action'] == 'add':
-                            window.addMarker( data['data'] )
-                        elif data['action'] == 'remove':
-                            pass
-                    
-                except json.JSONDecodeError:
-                    print(f"Error: Received invalid JSON update")
+
+                except Exception as e:
+                    print( f"ERROR listen_for_updates: {e}")
                 
             except Exception as e:
                 print(f"Error in listen_for_updates loop: {e}")
             
-            # Remove or reduce this sleep - it might be causing us to miss messages
-            await asyncio.sleep(0.01)  # Reduced from 0.1 to 0.01
+            await asyncio.sleep(0.01)
     
     except asyncio.CancelledError:
         print("Update listener cancelled")
@@ -1170,12 +1188,12 @@ async def run_client():
                 continue
 
             if status == CLIENT_LOADING:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.05)
 
             if status == CLIENT_READY:
                 status = CLIENT_LISTENING
                 await send_command(cmd_socket, "listening", "")
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(0.1)
 
             if status == CLIENT_LISTENING:
                 await send_command(cmd_socket, "ack", "") # keepalive

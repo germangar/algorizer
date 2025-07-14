@@ -4,6 +4,7 @@ import asyncio
 import sys
 import json
 import numpy as np
+import msgpack
 
 from . import tasks
 from .constants import c
@@ -134,10 +135,6 @@ class client_state_t:
 client = client_state_t()
 
 
-def create_command_response(message: str) -> str:
-    """Create a simple response for command acknowledgment"""
-    return 'ok'
-
 
 def create_config_message() -> str:
     """Create a JSON message for data transmission"""
@@ -148,7 +145,7 @@ def create_config_message() -> str:
         "timeframes": list(stream.timeframes.keys()),
         "panels": stream.registeredPanels
     }
-    return json.dumps(message)
+    return msgpack.packb(message, use_bin_type=True)
 
 
 def prepare_dataframe_for_sending(dataset):
@@ -157,7 +154,7 @@ def prepare_dataframe_for_sending(dataset):
     Returns a float64 NumPy array.
     """
     # Ensure dataset is float64
-    return np.asarray(dataset, dtype=np.float64)
+    return np.asarray(dataset, dtype=np.float64).tobytes()
 
 
 def create_data_descriptor( dataset, timeframe ):
@@ -175,45 +172,39 @@ def create_data_descriptor( dataset, timeframe ):
         "rows": len(dataset),
         "columns": columns,
         "dtypes": {col: "float64" for col in columns},
+        "data": prepare_dataframe_for_sending(dataset),
         "plots": timeframe.plotsList(),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ) # same as above
     }
-    return json.dumps(message)
+
+    return msgpack.packb(message, use_bin_type=True)
     
   
-async def send_dataframe(cmd_socket, timeframe):
-    """
-    Send the dataset (NumPy 2D array of float64) to client with proper descriptor and data handling.
-    """
+def create_dataframe_message( timeframe ):
     assert(timeframe != None)
-    if timeframe != client.streaming_timeframe:
-        # Execute a reset?
-        pass
     dataset = timeframe.dataset
     client.streaming_timeframe = timeframe
 
-    try:
-        # Prepare the dataset for sending
-        arr = prepare_dataframe_for_sending(dataset)
+    client.last_lines_dict = {}  # reset the last_lines_dict for each timeframe
+    client.last_markers_dict = {}  # reset the last_markers_dict for each timeframe
+    columns = timeframe.columnsList()
+    message = {
+        "type": "data_descriptor",
+        "datatype": "dataframe",
+        "timeframe": timeframe.timeframeStr,
+        "timeframemsec": tools.timeframeMsec(timeframe.timeframeStr),
+        "rows": len(dataset),
+        "columns": columns,
+        "dtypes": {col: "float64" for col in columns},
+        "data": prepare_dataframe_for_sending(dataset),
+        "plots": timeframe.plotsList(),
+        "markers": client.prepareMarkersUpdate( timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
+        "lines": client.prepareLinesUpdate( timeframe.stream.lines ) # same as above
+    }
 
-        # Send descriptor
-        descriptor = create_data_descriptor( dataset, timeframe )
-        await cmd_socket.send_string(descriptor)
+    return msgpack.packb(message, use_bin_type=True)
 
-        # Wait for acknowledgment
-        ack = await cmd_socket.recv_string()
-        if ack != "ready":
-            raise ValueError(f"Unexpected acknowledgment: {ack}")
-
-        # Send the raw data (as bytes)
-        await cmd_socket.send(arr.tobytes())
-
-        return True
-
-    except Exception as e:
-        print(f"Error sending DataFrame: {e}")
-        return False
 
 def push_tick_update(timeframe) -> str:
     """Create a JSON message for tick/realtime updates"""
@@ -221,26 +212,25 @@ def push_tick_update(timeframe) -> str:
         "type": "tick",
         "data": timeframe.realtimeCandle.tickData()
     }
-    asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
+    asyncio.get_event_loop().create_task( queue_update( msgpack.packb(message, use_bin_type=True) ) )
 
 
 def push_row_update(timeframe):
     if client.status != CLIENT_LISTENING or client.streaming_timeframe != active.timeframe:
         return
-    row = timeframe.dataset[-1].tolist()
-    row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP])
+    row = timeframe.dataset[-1]
     
     message = {
         "type": "row",
         "timeframe": timeframe.timeframeStr,
         "barindex": timeframe.barindex,
         "columns": timeframe.columnsList(),
-        "data": row,
+        "data": row.tobytes(),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ),
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ),
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
-    asyncio.get_event_loop().create_task( queue_update(json.dumps(message)) )
+    asyncio.get_event_loop().create_task( queue_update( msgpack.packb(message, use_bin_type=True) ) )
 
 
 async def queue_update(update):
@@ -277,10 +267,12 @@ async def publish_updates(pub_socket):
                     # Wait for an update with a timeout
                     update = await asyncio.wait_for(update_queue.get(), timeout=1.0)
                     if debug : print(f"Got update from queue. Queue size: {update_queue.qsize()}")  # Debug
+
                     try:
-                        await asyncio.wait_for(pub_socket.send_string(update), timeout=1.0)
+                        await asyncio.wait_for(pub_socket.send(update), timeout=1.0)
                         if debug : print("Successfully sent update")  # Debug
                         client.update_last_send()  # Mark successful send
+
                     except (asyncio.TimeoutError, zmq.error.Again):
                         if debug : print("Send timed out - requeueing update")
                         # Requeue the update if send failed
@@ -305,45 +297,6 @@ async def publish_updates(pub_socket):
             print(f"Error in publish_updates: {e}")
             await asyncio.sleep(1)
 
-
-async def proccess_message(msg: str, cmd_socket):
-    msg = msg.lstrip()
-    parts = msg.split(maxsplit=1)
-    command = parts[0].lower() if parts else ""
-    msg = parts[1] if len(parts) > 1 else ""
-
-    response = None
-
-    if len(command):
-        client.update_last_send()
-        if command == 'connect':
-            if debug:print('client connected')
-            client.status = CLIENT_CONNECTED
-            response = create_config_message()
-
-        elif command == 'dataframe':
-            client.status = CLIENT_LOADING
-            timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
-            if tools.validateTimeframeName( msg ) and msg in active.timeframe.stream.timeframes.keys():
-                timeframe = active.timeframe.stream.timeframes[msg]
-
-            # Send DataFrame to client
-            success = await send_dataframe(cmd_socket, timeframe)
-            if not success:
-                return create_command_response("error sending dataframe")
-            
-            return None  # We've already handled the complete exchange
-        elif command == 'print':
-            print(msg)
-            response = create_command_response(msg)
-        elif command == 'listening':
-            client.status = CLIENT_LISTENING
-            response = create_command_response(msg)
-        elif command == 'ack': # keep alive
-            response = ''
-
-    client.update_last_send()
-    return response if response else create_command_response("unknown command")
 
 def launch_client_window( cmd_port, timeframeName:str = None ):
     """Launch client.py - SIMPLE VERSION THAT JUST WORKS"""
@@ -462,23 +415,53 @@ async def run_server():
 
         # Main command handling loop
         while True:
-            try:
-                message = await cmd_socket.recv_string()
-                if debug : print(f"Received command: {message}")
+            message = await cmd_socket.recv_string()
+            if debug : print(f"Received command: {message}")
 
-                # Process the command
-                response = await proccess_message(message, cmd_socket)
+            # Process the command
+            msg = message.lstrip()
+            parts = msg.split(maxsplit=1)
+            command = parts[0].lower() if parts else ""
+            msg = parts[1] if len(parts) > 1 else ""
+            response = None
 
-                # Only send response if it wasn't already sent (for DataFrame case)
-                if response is not None:
-                    await cmd_socket.send_string(response)
+            if len(command):
+                #-----------------------
+                if command == 'connect':
+                    if debug:print('client connected')
+                    client.status = CLIENT_CONNECTED
+                    response = create_config_message()
 
-            except Exception as e:
-                print(f"Error processing message: {e}")
-                await cmd_socket.send_string("error")
+                #---------------------------
+                elif command == 'dataframe':
+                    client.status = CLIENT_LOADING
+                    timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
+                    if tools.validateTimeframeName( msg ) and msg in active.timeframe.stream.timeframes.keys():
+                        timeframe = active.timeframe.stream.timeframes[msg]
 
-    except asyncio.CancelledError:
-        print("Server task cancelled")
+                    if timeframe != client.streaming_timeframe:
+                        pass # FIXME: Execute a reset?
+
+                    response = create_dataframe_message( timeframe )
+
+                #---------------------------
+                elif command == 'listening': # the chart is ready. Waiting for realtime updates
+                    client.status = CLIENT_LISTENING
+                    response = 'ok'
+
+                #---------------------
+                elif command == 'ack': # keep alive
+                    response = 'ok'
+
+            if response is not None:
+                if type(response) == str: # we didn't explicitly pack strings
+                    response = msgpack.packb(response, use_bin_type=True)
+
+                client.update_last_send()
+                await cmd_socket.send(response)
+
+    except asyncio.CancelledError as e:
+        print( f"Server task cancelled [{e}]" )
     finally:
         cmd_socket.close()
         pub_socket.close()
