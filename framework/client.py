@@ -1023,7 +1023,18 @@ CLIENT_LISTENING = 4  # the window has already opened the window and is ready to
 status = CLIENT_DISCONNECTED
 
 
-# In client.py, modify the send_command function:
+def unpack_arrays(data_container):
+    # Extract the shape, dtype, and bytes data from the container
+    shape = data_container["shape"]
+    dtype = np.dtype(data_container["dtype"])
+    array_bytes = data_container["data"]
+
+    # Reconstruct the array from the bytes data
+    array = np.frombuffer(array_bytes, dtype=dtype)
+    array = array.reshape(shape)
+
+    return array
+
 
 async def send_command(socket, command: str, params: str = ""):
     global status, window
@@ -1057,29 +1068,15 @@ async def send_command(socket, command: str, params: str = ""):
                 status = CLIENT_CONNECTED
                 return
                 
-            elif data['type'] == 'data_descriptor':
+            elif data['type'] == 'dataframe':
 
                 status = CLIENT_LOADING
                 print("Loading chart", data['timeframe'] )
-                
-                # unpack the dataframe
-                if 'data' in data and isinstance(data['data'], bytes):
-                    raw_data = data['data']
-                else:
-                    raise ValueError( "dataframe message doesn't contain raw bytes data." )
-                    
+ 
                 try:   
-                    # Convert raw bytes back to numpy array and reshape it to the original structure
-                    array_data = np.frombuffer(raw_data, dtype=np.float64)
-                    rows = data['rows']
-                    cols = len(data['columns'])
-                    expected_size = rows * cols
-                    if array_data.size != expected_size:
-                        raise ValueError(f"Data size mismatch. Expected {expected_size}, got {array_data.size}")
+                    array_data = unpack_arrays( data['arrays'] )
                     
-                    array_data = array_data.reshape(rows, cols)
-                    
-                    # Create DataFrame with explicit dtypes
+                    # Create DataFrame
                     df = pd.DataFrame(array_data, columns=data['columns'])
                     
                     # Handle timestamp column separately
@@ -1088,7 +1085,7 @@ async def send_command(socket, command: str, params: str = ""):
 
                     # clear the raw data from memory. We won't use it again
                     # FIXME? Maybe I shouldn't convert it to a dictionary here?
-                    del data['data']
+                    del data['arrays']
                     
                     if debug : print(f"DataFrame shape: {df.shape}")
 
@@ -1132,15 +1129,10 @@ async def listen_for_updates(context):
                     if debug : print( data )
  
                     if data['type'] == 'row':
-                        # Check if the message contains raw data
-                        if 'data' in data and isinstance(data['data'], bytes):
-                            row_bytes = data['data']
-                            dtype = np.float64
-                            length = len(row_bytes) // dtype().itemsize
-                            row_bytes = np.frombuffer(row_bytes, dtype=dtype, count=length)
-                            data['data'] = row_bytes.copy() # Replace the raw bytes with the reconstructed NumPy array
-                            del row_bytes
-                        
+
+                        array_data = unpack_arrays( data['arrays'] )
+                        data['data'] = array_data.copy() # Replace the raw bytes with the reconstructed NumPy array
+                        del data['arrays']
                         window.newRow(data)
 
                     elif data['type'] == 'tick':

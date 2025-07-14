@@ -148,39 +148,16 @@ def create_config_message() -> str:
     return msgpack.packb(message, use_bin_type=True)
 
 
-def prepare_dataframe_for_sending(dataset):
-    """
-    Prepare a 2D NumPy float64 dataset for sending.
-    Returns a float64 NumPy array.
-    """
-    # Ensure dataset is float64
-    return np.asarray(dataset, dtype=np.float64).tobytes()
-
-
-def create_data_descriptor( dataset, timeframe ):
-    """
-    Create a descriptor message for the dataset that will be sent.
-    """
-    client.last_lines_dict = {}  # reset the last_lines_dict for each timeframe
-    client.last_markers_dict = {}  # reset the last_markers_dict for each timeframe
-    columns = timeframe.columnsList()
-    message = {
-        "type": "data_descriptor",
-        "datatype": "dataframe",
-        "timeframe": timeframe.timeframeStr,
-        "timeframemsec": tools.timeframeMsec(timeframe.timeframeStr),
-        "rows": len(dataset),
-        "columns": columns,
-        "dtypes": {col: "float64" for col in columns},
-        "data": prepare_dataframe_for_sending(dataset),
-        "plots": timeframe.plotsList(),
-        "markers": client.prepareMarkersUpdate( timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
-        "lines": client.prepareLinesUpdate( timeframe.stream.lines ) # same as above
+def pack_array(array):
+    # Create a dictionary to hold the bytes data and shape information
+    data_container = {
+        "shape": array.shape,
+        "dtype": str(array.dtype),
+        "data": array.tobytes()
     }
+    return data_container
 
-    return msgpack.packb(message, use_bin_type=True)
-    
-  
+
 def create_dataframe_message( timeframe ):
     assert(timeframe != None)
     dataset = timeframe.dataset
@@ -190,14 +167,11 @@ def create_dataframe_message( timeframe ):
     client.last_markers_dict = {}  # reset the last_markers_dict for each timeframe
     columns = timeframe.columnsList()
     message = {
-        "type": "data_descriptor",
-        "datatype": "dataframe",
+        "type": "dataframe",
         "timeframe": timeframe.timeframeStr,
         "timeframemsec": tools.timeframeMsec(timeframe.timeframeStr),
-        "rows": len(dataset),
         "columns": columns,
-        "dtypes": {col: "float64" for col in columns},
-        "data": prepare_dataframe_for_sending(dataset),
+        "arrays": pack_array(dataset),
         "plots": timeframe.plotsList(),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ) # same as above
@@ -218,14 +192,14 @@ def push_tick_update(timeframe) -> str:
 def push_row_update(timeframe):
     if client.status != CLIENT_LISTENING or client.streaming_timeframe != active.timeframe:
         return
-    row = timeframe.dataset[-1]
+    rows = timeframe.dataset[-1]
     
     message = {
         "type": "row",
         "timeframe": timeframe.timeframeStr,
         "barindex": timeframe.barindex,
         "columns": timeframe.columnsList(),
-        "data": row.tobytes(),
+        "arrays": pack_array(rows),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ),
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ),
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
