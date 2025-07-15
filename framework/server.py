@@ -136,7 +136,7 @@ client = client_state_t()
 
 
 
-def create_config_message() -> str:
+def create_config_message():
     """Create a JSON message for data transmission"""
     stream = active.timeframe.stream
     message = {
@@ -180,7 +180,7 @@ def create_dataframe_message( timeframe ):
     return msgpack.packb(message, use_bin_type=True)
 
 
-def push_tick_update(timeframe) -> str:
+def push_tick_update(timeframe):
     """Create a JSON message for tick/realtime updates"""
     message = {
         "type": "tick",
