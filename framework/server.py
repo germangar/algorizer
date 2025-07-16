@@ -40,6 +40,7 @@ class client_state_t:
 
         self.last_markers_dict:dict = {}
         self.last_lines_dict:dict = {}
+        self.last_plots_list = []
     
     def prepareMarkersUpdate(self, markers):
         # Convert old and new markers to dictionaries
@@ -110,6 +111,66 @@ class client_state_t:
         # Store descriptor snapshots for next time
         self.last_lines_dict = {k: v.descriptor().copy() for k, v in new_dict.items()}
         return delta
+    
+
+    def preparePlotsUpdate(self, timeframe):
+        """
+        Calculates the delta between the previous and current state of plot descriptors,
+        detecting additions, removals, and modifications.
+        """
+        # Retrieve the last known plot descriptors dictionary
+        old_plot_descriptors = getattr(self, 'last_plots_dict', {})
+
+        # Get the current plot descriptors
+        new_plot_descriptors = timeframe.plotsList()
+
+        # Determine added and removed plot names by comparing keys
+        old_keys = set(old_plot_descriptors.keys())
+        new_keys = set(new_plot_descriptors.keys())
+
+        # Added plots are those whose names are in new but not in old
+        added = {name: new_plot_descriptors[name] for name in new_keys - old_keys}
+
+        # Removed plots are those whose names are in old but not in new
+        removed = {name: old_plot_descriptors[name] for name in old_keys - new_keys}
+
+        # Determine modified plots by comparing descriptor values for common keys
+        common_keys = new_keys & old_keys
+        modified = {
+            name: new_plot_descriptors[name] for name in common_keys
+            if old_plot_descriptors[name] != new_plot_descriptors[name]
+        }
+
+        # Update the last known plot descriptors for the next comparison
+        self.last_plots_dict = new_plot_descriptors.copy()
+
+        for name in added.keys():
+            column_array = timeframe.registeredSeries.get(name)
+            if column_array is None: # something went terribly wrong
+                raise ValueError( f"ERROR [{name}] is not a registeredSeries in the dataframe" )
+            # pack the data in the message
+            descriptor = added[name]
+            descriptor['array'] = pack_array( column_array )
+            descriptor['timestamp'] = pack_array( timeframe.dataset[:, c.DF_TIMESTAMP] )
+
+        # Build delta dictionary
+        delta = {
+            "added": added,
+            "removed": removed,
+            "modified": modified
+        }
+
+        return delta
+
+
+
+
+
+
+
+
+
+
         ############################################################################
 
 
@@ -202,6 +263,7 @@ def push_row_update(timeframe):
         "row_array": pack_array(rows),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ),
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ),
+        "plots": client.preparePlotsUpdate( timeframe ),
         "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
     asyncio.get_event_loop().create_task( queue_update( msgpack.packb(message, use_bin_type=True) ) )

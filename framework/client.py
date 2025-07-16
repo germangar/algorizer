@@ -324,13 +324,15 @@ class window_c:
         self.candleBorderBullColor = theme.get('candle_border_bull_color')
         self.candleBorderBearColor = theme.get('candle_border_bear_color')
 
-    def loadChartData(self, descriptor, df):
+    def loadChartData(self, descriptor):
         if debug : print( "Initializing window" )
 
+        arrays = descriptor['arrays']
+
         self.descriptor = descriptor
-        self.barindex = len(df) - 1
-        self.timestamp = int(df['timestamp'].iloc[-1])
-        self.basetimestamp = int(df['timestamp'].iloc[0])
+        self.barindex = arrays.shape[0] - 1
+        self.timestamp = arrays[-1, c.DF_TIMESTAMP]
+        self.basetimestamp = arrays[0, c.DF_TIMESTAMP]
 
         window_width = 1024
         window_height = 768
@@ -383,7 +385,13 @@ class window_c:
         self.initTopbar( chart )
 
         try:
-            time_df = pd.DataFrame( { 'time':pd.to_datetime( df['timestamp'], unit='ms' ), 'open':df['open'], 'high':df['high'], 'low':df['low'], 'close':df['close'], 'volume':df['volume']} )
+            time_df = pd.DataFrame( { 'time':pd.to_datetime( arrays[:,c.DF_TIMESTAMP], unit='ms' ), 
+                                    'open':arrays[:,c.DF_OPEN], 
+                                    'high':arrays[:,c.DF_HIGH], 
+                                    'low':arrays[:,c.DF_LOW], 
+                                    'close':arrays[:,c.DF_CLOSE], 
+                                    'volume':arrays[:,c.DF_VOLUME]} 
+                                    )
         except Exception as e:
             print(f"Error converting timestamp to datetime: {e}")
 
@@ -421,55 +429,64 @@ class window_c:
                 subchart.hide_data()
 
         self.descriptor = descriptor
-        self.columns = df.columns
+        self.columns = descriptor['columns']
 
-        self.lastCandle = candle_c( df.iloc[-1].tolist() ) # create a candle object for the clock
+        self.lastCandle = candle_c( arrays[-1, :].tolist() ) # create a candle object for the clock
         self.lastCandle.timeframemsec = descriptor["timeframemsec"]
-        self.lastCandle.index = df.index[-1]
+        self.lastCandle.index = time_df.index[-1]
         self.lastCandle.updateRemainingTime()
         tasks.registerTask('clocks', self.update_clocks)
 
-        self.createPlots(df)
+        self.createPlots(arrays)
         self.addMarkers( descriptor['markers'].get("added") )
         self.addLines( descriptor['lines'].get("added") )
 
-
         tasks.registerTask('window', chart.show_async)
 
+        del time_df
+        del descriptor['arrays']
 
-    def createPlots(self, df:pd.DataFrame):
-        plotsList = self.descriptor['plots']
-        for name in plotsList.keys():
-            info = plotsList[name]
-            plot = plot_c( 
-                name,
-                info.get('panel'),
-                int(info.get('type')),
-                info.get('color'),
-                info.get('style'),
-                int(info.get('width')),
-                float(info.get('margin_top')),
-                float(info.get('margin_bottom')),
-                None
-            )
-            
-            if plot.panel:
-                panel = self.panels.get(plot.panel)
-                if panel == None:
-                    print( f"WARNING: Couldn't find panel [{plot.panel}] for plot [{plot.name}]" )
-                    continue
+
+    def createPlot(self, descriptor, timestamp_array, values_array ):
+        plot = plot_c( 
+            descriptor.get('name'),
+            descriptor.get('panel'),
+            int(descriptor.get('type')),
+            descriptor.get('color'),
+            descriptor.get('style'),
+            int(descriptor.get('width')),
+            float(descriptor.get('margin_top')),
+            float(descriptor.get('margin_bottom')),
+            None
+        )
+
+        chart = self.panels['main']['chart']
+        if plot.panel:
+            panel = self.panels.get(plot.panel)
+            if panel is not None:
                 chart = panel['chart']
-            else:
-                chart = self.panels['main']['chart']
-            
-            if plot.type == c.PLOT_LINE :
-                plot.instance = chart.create_line( plot.name, plot.color, plot.style, plot.width, price_line=False, price_label=False )
-                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( df['timestamp'], unit='ms' ), plot.name: df[plot.name]} ) )
-            elif plot.type == c.PLOT_HIST :
-                plot.instance = chart.create_histogram( plot.name, plot.color, price_line = False, price_label = False, scale_margin_top = plot.margin_top, scale_margin_bottom = plot.margin_bottom )
-                plot.instance.set( pd.DataFrame( {'time': pd.to_datetime( df['timestamp'], unit='ms' ), plot.name: df[plot.name]} ) )
+        
+        if plot.type == c.PLOT_LINE :
+            plot.instance = chart.create_line( plot.name, plot.color, plot.style, plot.width, price_line=False, price_label=False )
+            time_series = pd.to_datetime(timestamp_array, unit='ms')
+            plot.instance.set( pd.DataFrame({ 'time': time_series, plot.name: values_array }) )
+        elif plot.type == c.PLOT_HIST :
+            plot.instance = chart.create_histogram( plot.name, plot.color, price_line = False, price_label = False, scale_margin_top = plot.margin_top, scale_margin_bottom = plot.margin_bottom )
+            time_series = pd.to_datetime(timestamp_array, unit='ms')
+            plot.instance.set( pd.DataFrame({ 'time': time_series, plot.name: values_array }) )
 
-            self.plots.append( plot )
+        self.plots.append( plot )
+
+
+    def createPlots(self, arrays):
+        plotsList = self.descriptor['plots']
+        columns = self.descriptor['columns']
+        timecolumn = arrays[:, c.DF_TIMESTAMP]
+        for name in plotsList.keys():
+            plot_descriptor = plotsList[name]
+            index = columns.index(name)
+            valuescolumn = arrays[:, index]
+            self.createPlot( plot_descriptor, timecolumn, valuescolumn )
 
 
     def createMarker( self, m ):
@@ -867,12 +884,26 @@ class window_c:
         if columns is None:
             return
 
+        # add new plots if any
         if len(columns) != len(self.columns):
-            # ToDo: The dataframe has changed. We need to reload it
-            raise ValueError( "Dataframe columns have changed" )
+            # See if we have new plots
+            newplots:dict = msg.get('plots')
+            if newplots is not None and newplots:
+                newplots:dict = newplots.get('added')
+                if newplots is not None and newplots:
+                    for n in newplots.keys():
+                        desc = newplots[n]
+                        values_array = unpack_arrays( desc.get('array') )
+                        timestamp_array = unpack_arrays( desc.get('timestamp') )
+                        self.createPlot( newplots[n], timestamp_array, values_array )
+                        del desc['array']
+                        del desc['timestamp']
+
+            # TODO: Removed plots if we decide to add the feature.
+            self.columns = columns
         
         try:
-        # run through the list of plots and issue the updates
+        # run through the list of plots and issue the row updates
             for plot in self.plots:
                 index = columns.index(plot.name)
                 value = row[index]
@@ -1052,8 +1083,6 @@ async def send_command(socket, command: str, params: str = ""):
             data = msgpack.unpackb(reply, raw=False)
             if debug : print( "RECEIVED:", data )
         except Exception as e:
-            print( f"MSGPACK ERROR: {e}" )
-            print( f"DATA: {data}" )
             raise ValueError( f"MSGPACK ERROR: {e}" )
     
         if isinstance(data, dict):
@@ -1068,35 +1097,10 @@ async def send_command(socket, command: str, params: str = ""):
                 return
                 
             elif data['type'] == 'dataframe':
-
-                status = CLIENT_LOADING
                 print("Loading chart", data['timeframe'] )
- 
-                try:   
-                    array_data = unpack_arrays( data['arrays'] )
-                    
-                    # Create DataFrame
-                    df = pd.DataFrame(array_data, columns=data['columns'])
-                    
-                    # Handle timestamp column separately
-                    if 'timestamp' in df.columns:
-                        df['timestamp'] = df['timestamp'].astype(np.int64)
-
-                    # clear the raw data from memory. We won't use it again
-                    # FIXME? Maybe I shouldn't convert it to a dictionary here?
-                    del data['arrays']
-                    
-                    if debug : print(f"DataFrame shape: {df.shape}")
-
-                    ### fall through ###
-
-                except Exception as e:
-                    print(f"Error reconstructing DataFrame: {e}")
-                    status = CLIENT_CONNECTED
-                    return None
-                
-                # initialize the window with the dataframe and open it
-                window.loadChartData( data, df )
+                status = CLIENT_LOADING # this status doesn't make sense anymore
+                data['arrays'] = unpack_arrays( data['arrays'] )
+                window.loadChartData( data ) # initialize the window with the dataframe and open it
                 status = CLIENT_READY
                 return
         

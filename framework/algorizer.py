@@ -62,6 +62,18 @@ class plot_c:
         if source is None or isinstance(source, (float, int)):
             timeframe.dataset[timeframe.barindex, self.column_index] = np.nan if source is None else float(source)
 
+    def descriptor(self):
+        return {
+            'name': self.name,
+            'panel': self.chart_name,
+            'type': self.type,
+            'color': self.color,
+            'style': self.style,
+            'width': self.width,
+            'margin_top': self.hist_margin_top,
+            'margin_bottom': self.hist_margin_bottom
+        }
+
 
 class marker_c:
     def __init__( self, text:str, timestamp:int, position:str = 'below', shape:str = 'arrow_up', color:str = '#c7c7c7', chart_name:str = None ):
@@ -438,17 +450,8 @@ class timeframe_c:
     
     def plotsList( self )->dict:
         di = {}
-        for p in self.registeredPlots.values():
-            plot = {
-                'panel': p.chart_name,
-                'type': p.type,
-                'color': p.color,
-                'style': p.style,
-                'width': p.width,
-                'margin_top': p.hist_margin_top,
-                'margin_bottom': p.hist_margin_bottom
-            }
-            di[p.name] = plot
+        for plot in self.registeredPlots.values():
+            di[plot.name] = plot.descriptor()
         return di
     
     def columnsList( self )->list:
