@@ -40,7 +40,7 @@ class client_state_t:
 
         self.last_markers_dict:dict = {}
         self.last_lines_dict:dict = {}
-        self.last_plots_list = []
+        self.last_plots_dict:dict = {}
     
     def prepareMarkersUpdate(self, markers):
         # Convert old and new markers to dictionaries
@@ -226,6 +226,7 @@ def create_dataframe_message( timeframe ):
 
     client.last_lines_dict = {}  # reset the last_lines_dict for each timeframe
     client.last_markers_dict = {}  # reset the last_markers_dict for each timeframe
+    client.last_plots_dict = {}
     columns = timeframe.columnsList()
     message = {
         "type": "dataframe",
