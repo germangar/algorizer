@@ -335,11 +335,7 @@ class timeframe_c:
             self.dataset = np.vstack([self.dataset, new_row]) # Append the new row to the dataset
             
             # reallocate the named series views because a new row was created
-            for series in self.registeredSeries.values():
-                index = series.index
-                name = series.name
-                assignable = series.assignable
-                self.registeredSeries[name] = series_c( self.dataset[:, index], name, assignable= assignable, index= index )
+            self.relinkSeriesToDataset()
 
             # copy newrow into realtimeCandle for the NEXT incoming tick
             self.realtimeCandle.timestamp = newrow_timestamp
@@ -382,6 +378,7 @@ class timeframe_c:
         new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
         self.dataset = np.hstack([self.dataset, new_col])
         index = self.dataset.shape[1] - 1
+        self.relinkSeriesToDataset()
         return index
 
     def createColumnSeries( self, name, assignable = True )->series_c:
@@ -391,6 +388,14 @@ class timeframe_c:
         index = self.createColumn()
         self.registeredSeries[name] = series_c(self.dataset[:,index], name, assignable, index)
         return self.registeredSeries[name]
+    
+    def relinkSeriesToDataset(self):
+        # reallocate the named series views because a new row was created
+        for series in self.registeredSeries.values():
+            index = series.index
+            name = series.name
+            assignable = series.assignable
+            self.registeredSeries[name] = series_c( self.dataset[:, index], name, assignable= assignable, index= index )
 
 
     def calcGeneratedSeries( self, type:str, source: np.ndarray|generatedSeries_c, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
