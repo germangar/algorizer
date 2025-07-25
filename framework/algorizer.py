@@ -19,7 +19,7 @@ verbose = False
 
 
 class plot_c:
-    def __init__( self, source:float|int|series_c|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, type = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
+    def __init__( self, source:float|int|series_c|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, ptype = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
         '''name, color, style, width
         color: str = 'rgba(200, 200, 200, 0.6)',
         style: LINE_STYLE = 'solid', width: int = 2,
@@ -27,7 +27,7 @@ class plot_c:
         LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']
         '''
         self.name = name
-        self.type = type
+        self.type = ptype
         self.chart_name = chart_name
         self.column_index = -1
         self.color = color if color.startswith('rgba') else tools.hx2rgba(color)
@@ -54,13 +54,18 @@ class plot_c:
 
         elif isinstance( source, (generatedSeries_c, series_c) ):
             self.name = source.name
+            self.column_index = source.column_index if isinstance(source, generatedSeries_c) else source.index
+            if not self.screen_name:
+                self.screen_name = self.name
 
         if not self.name or self.name not in timeframe.registeredSeries.keys():
             raise ValueError(f"plot_c:Couldn't assign a name to the plot [{name}]")
 
     def update(self, source, timeframe):
         if source is None or isinstance(source, (float, int)):
-            timeframe.dataset[timeframe.barindex, self.column_index] = np.nan if source is None else float(source)
+            source = np.nan if source is None else float(source)
+            timeframe.dataset[timeframe.barindex, self.column_index] = source
+            # timeframe.registeredSeries[self.name][timeframe.barindex] = source # This is safer by a little bit slower.
 
     def descriptor(self):
         return {
@@ -330,12 +335,11 @@ class timeframe_c:
             self.dataset = np.vstack([self.dataset, new_row]) # Append the new row to the dataset
             
             # reallocate the named series views because a new row was created
-            for n in self.registeredSeries.keys():
-                gs = self.registeredSeries[n]
-                index = gs.index
-                name = gs.name
-                assignable = gs.assignable
-                self.registeredSeries[n] = series_c( self.dataset[:, index], name, assignable= assignable, index= index )
+            for series in self.registeredSeries.values():
+                index = series.index
+                name = series.name
+                assignable = series.assignable
+                self.registeredSeries[name] = series_c( self.dataset[:, index], name, assignable= assignable, index= index )
 
             # copy newrow into realtimeCandle for the NEXT incoming tick
             self.realtimeCandle.timestamp = newrow_timestamp

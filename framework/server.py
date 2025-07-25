@@ -141,6 +141,14 @@ class client_state_t:
             if old_plot_descriptors[name] != new_plot_descriptors[name]
         }
 
+        # Create a list of plots that need their values updated
+        updated_plots = {
+            name: timeframe.dataset[timeframe.barindex, timeframe.registeredPlots[name].column_index] for name in common_keys
+            if name not in added and name not in removed
+        }
+
+        # print( updated_plots )
+
         # Update the last known plot descriptors for the next comparison
         self.last_plots_dict = new_plot_descriptors.copy()
 
@@ -150,14 +158,19 @@ class client_state_t:
                 raise ValueError( f"ERROR [{name}] is not a registeredSeries in the dataframe" )
             # pack the data in the message
             descriptor = added[name]
-            descriptor['array'] = pack_array( column_array )
-            descriptor['timestamp'] = pack_array( timeframe.dataset[:, c.DF_TIMESTAMP] )
+            descriptor['array'] = pack_array( timeframe.dataset[:, column_array.index] )
+
+        timestamps = None
+        if added:
+            timestamps = pack_array( timeframe.dataset[:, c.DF_TIMESTAMP] )
 
         # Build delta dictionary
         delta = {
             "added": added,
             "removed": removed,
-            "modified": modified
+            "modified": modified,
+            "updated": updated_plots,
+            "timestamp": timestamps # the timestamps array is only included if there are new plots added and it's shared by all of them
         }
 
         return delta
@@ -221,26 +234,36 @@ def pack_array(array):
 
 def create_dataframe_message( timeframe ):
     assert(timeframe != None)
-    dataset = timeframe.dataset
+    dataset = timeframe.dataset[:, :6] # send only timestamp and OHLCV columns
     client.streaming_timeframe = timeframe
 
     client.last_lines_dict = {}  # reset the last_lines_dict for each timeframe
     client.last_markers_dict = {}  # reset the last_markers_dict for each timeframe
     client.last_plots_dict = {}
-    columns = timeframe.columnsList()
     message = {
         "type": "dataframe",
         "timeframe": timeframe.timeframeStr,
         "timeframemsec": tools.timeframeMsec(timeframe.timeframeStr),
-        "columns": columns,
         "arrays": pack_array(dataset),
-        "plots": timeframe.plotsList(),
+    }
+
+    return msgpack.packb(message, use_bin_type=True)
+
+def create_graphs_baseline_message( timeframe ):
+    assert(timeframe != None)
+
+    client.last_lines_dict = {}  # reset the last_lines_dict for each timeframe
+    client.last_markers_dict = {}  # reset the last_markers_dict for each timeframe
+    client.last_plots_dict = {}
+    message = {
+        "type": "graphs",
+        "timeframe": timeframe.timeframeStr,
+        "plots": client.preparePlotsUpdate( timeframe ),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ), # fixme: Markers aren't timeframe based but this isn't a clean way to grab them
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ) # same as above
     }
 
     return msgpack.packb(message, use_bin_type=True)
-
 
 def push_tick_update(timeframe):
     """Create a JSON message for tick/realtime updates"""
@@ -254,7 +277,9 @@ def push_tick_update(timeframe):
 def push_row_update(timeframe):
     if client.status != CLIENT_LISTENING or client.streaming_timeframe != active.timeframe:
         return
-    rows = timeframe.dataset[-1]
+    # rows = timeframe.dataset[-1]
+
+    rows = timeframe.dataset[-1, :6]
     
     message = {
         "type": "row",
@@ -480,6 +505,10 @@ async def run_server():
                         pass # FIXME: Execute a reset?
 
                     response = create_dataframe_message( timeframe )
+
+                #---------------------------
+                elif command == 'graphs':
+                    response = create_graphs_baseline_message( client.streaming_timeframe )
 
                 #---------------------------
                 elif command == 'listening': # the chart is ready. Waiting for realtime updates

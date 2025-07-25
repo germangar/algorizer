@@ -74,7 +74,10 @@ class series_c(np.ndarray):
     def __setitem__(self, key, value):
         if not self.assignable:
             raise ValueError( f"Assigning values to series_c [{self.name}] is not allowed.")
+
+        self.timeframe.dataset[key, self.index] = value
         super().__setitem__(key, value) # Call the parent class's __setitem__ method to actually set the value
+
 
     @staticmethod
     def get_column_index_from_array( candidate_col:np.ndarray ):

@@ -170,7 +170,6 @@ class window_c:
     def __init__(self, config):
         self.config = config
         self.descriptor: Optional[dict[str, Any]] = None
-        self.columns:list = []
         self.plots:list[plot_c] = []
         self.markers:list = []
         self.lines:list = []
@@ -429,17 +428,13 @@ class window_c:
                 subchart.hide_data()
 
         self.descriptor = descriptor
-        self.columns = descriptor['columns']
 
         self.lastCandle = candle_c( arrays[-1, :].tolist() ) # create a candle object for the clock
         self.lastCandle.timeframemsec = descriptor["timeframemsec"]
+        self.lastCandle.timestamp = self.timestamp + self.lastCandle.timeframemsec
         self.lastCandle.index = time_df.index[-1]
         self.lastCandle.updateRemainingTime()
         tasks.registerTask('clocks', self.update_clocks)
-
-        self.createPlots(arrays)
-        self.addMarkers( descriptor['markers'].get("added") )
-        self.addLines( descriptor['lines'].get("added") )
 
         tasks.registerTask('window', chart.show_async)
 
@@ -478,16 +473,17 @@ class window_c:
         self.plots.append( plot )
 
 
-    def createPlots(self, arrays):
-        plotsList = self.descriptor['plots']
-        columns = self.descriptor['columns']
-        timecolumn = arrays[:, c.DF_TIMESTAMP]
-        for name in plotsList.keys():
-            plot_descriptor = plotsList[name]
-            index = columns.index(name)
-            valuescolumn = arrays[:, index]
-            self.createPlot( plot_descriptor, timecolumn, valuescolumn )
-
+    def addPlots(self, data ):
+        if data is not None and data:
+            added:dict = data.get('added')
+            if added is not None and added:
+                if data.get('timestamp') == None:
+                    raise ValueError( "Missing timestamp array" )
+                timestamp_array = unpack_arrays( data['timestamp'] )
+                for desc in added.values():
+                    values_array = unpack_arrays( desc.get('array') )
+                    self.createPlot( desc, timestamp_array, values_array )
+                    del desc['array']
 
     def createMarker( self, m ):
         marker = marker_c(
@@ -856,9 +852,8 @@ class window_c:
 
 
     def newRow(self, msg):
-        row = msg.get('row_array')
+        row:np.ndarray = msg.get('row_array')
         row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP]) # fix type
-        columns = msg.get('columns')
         self.barindex = int( msg.get('barindex') )
         self.timestamp = row[c.DF_TIMESTAMP]
 
@@ -881,41 +876,22 @@ class window_c:
             raise ValueError( f"Failed  to locate the charts to update OHLCVs. {e}")
 
         # Second part - full data update
-        if columns is None:
-            return
 
         # add new plots if any
-        if len(columns) != len(self.columns):
-            # See if we have new plots
-            newplots:dict = msg.get('plots')
-            if newplots is not None and newplots:
-                newplots:dict = newplots.get('added')
-                if newplots is not None and newplots:
-                    for n in newplots.keys():
-                        desc = newplots[n]
-                        values_array = unpack_arrays( desc.get('array') )
-                        timestamp_array = unpack_arrays( desc.get('timestamp') )
-                        self.createPlot( newplots[n], timestamp_array, values_array )
-                        del desc['array']
-                        del desc['timestamp']
+        self.addPlots( msg.get('plots') )
 
-            # TODO: Removed plots if we decide to add the feature.
-            self.columns = columns
+        # TODO: Removed plots if we decide to add the feature.
         
-        try:
-        # run through the list of plots and issue the row updates
+        # Update plot values
+        updated:dict = msg['plots'].get('updated')
+        if updated:
             for plot in self.plots:
-                index = columns.index(plot.name)
-                value = row[index]
+                value = updated.get(plot.name)
                 if value is None or pd.isna(value):
                     continue
-                    # raise ValueError(f"Plot value for [{plot.name}] is None or NaN (row={row})")
-
                 if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
                     plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
-        except Exception as e:
-            raise ValueError( f"Failed to update a plot because: {e}")
-        
+
         # markers delta update
         self.removeMarkers( msg['markers'].get("removed") ) 
         self.modifyMarkers( msg['markers'].get("modified") )
@@ -1101,6 +1077,12 @@ async def send_command(socket, command: str, params: str = ""):
                 status = CLIENT_LOADING # this status doesn't make sense anymore
                 data['arrays'] = unpack_arrays( data['arrays'] )
                 window.loadChartData( data ) # initialize the window with the dataframe and open it
+                return
+            
+            elif data['type'] == 'graphs':
+                window.addPlots( data.get('plots') )
+                window.addMarkers( data['markers'].get("added") )
+                window.addLines( data['lines'].get("added") )
                 status = CLIENT_READY
                 return
         
@@ -1181,6 +1163,7 @@ async def run_client():
                 continue
 
             if status == CLIENT_LOADING:
+                await send_command(cmd_socket, "graphs", "")
                 await asyncio.sleep(0.05)
 
             if status == CLIENT_READY:
