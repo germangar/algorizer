@@ -1,13 +1,3 @@
-# THIS FILE HAS BEEN WRITTEN BY GEMINI AI 
-# I find this annoying to write so I just asked the AI to do it. 
-
-from datetime import datetime, timezone
-
-from .candle import candle_c
-from .algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle, getMintick, getPrecision, getFees
-from .constants import c
-from . import active # Corrected: Import active to get active.barindex
-
 from datetime import datetime, timezone
 
 from .candle import candle_c
@@ -175,11 +165,10 @@ class position_c:
         # doesn't include fees
         pnl = 0.0
         for order_data in self.order_history:
-            pnl += order_data.get('pnl', 0.0)
+            pnl += order_data.get('pnl', 0.0) / self.leverage  # Adjust for double-leveraging
         return pnl
     
     def calculate_fees_from_history(self):
-        # doesn't include fees
         fees = 0.0
         for order_data in self.order_history:
             fees += order_data.get('fees_cost', 0.0)
@@ -192,9 +181,9 @@ class position_c:
             return 0.0, 0.0
         pnl_q = 0.0
         if self.type == c.LONG:
-            pnl_q = (current_price - self.priceAvg) * quantity * self.leverage
+            pnl_q = (current_price - self.priceAvg) * quantity
         elif self.type == c.SHORT:
-            pnl_q = (self.priceAvg - current_price) * quantity * self.leverage
+            pnl_q = (self.priceAvg - current_price) * quantity
         pnl_pct = (pnl_q / self.collateral) * 100 if self.collateral > EPSILON else 0.0
         return pnl_q, pnl_pct
 
@@ -219,17 +208,11 @@ class position_c:
             return 0.0
         
         MAINTENANCE_MARGIN_RATE = self.strategy_instance.maintenance_margin_rate
-
         position_value = abs(self.size * self.priceAvg)
         maintenance_margin = position_value * MAINTENANCE_MARGIN_RATE
-        position_margin = self.collateral
+        position_margin = self.collateral + self.calculate_realized_pnl_from_history() - self.calculate_fees_from_history()
 
-        realized_pnl = self.calculate_realized_pnl_from_history()
-        fees = self.calculate_fees_from_history()
-        exit_fee = self.order_history[0].get('fees_cost', 0.0)
-        position_margin = self.collateral + realized_pnl - fees - exit_fee
-
-        delta = (maintenance_margin - position_margin) / (self.size)
+        delta = (maintenance_margin - position_margin) / self.size
         if self.type == c.LONG:
             return round_to_tick_size(self.priceAvg + delta, getMintick())
         elif self.type == c.SHORT:
@@ -363,9 +346,9 @@ class position_c:
         current_price = round_to_tick_size(getRealtimeCandle().close, getMintick())
         unrealized_pnl = 0.0
         if self.type == c.LONG:
-            unrealized_pnl = (current_price - self.priceAvg) * self.size * self.leverage
+            unrealized_pnl = (current_price - self.priceAvg) * self.size
         elif self.type == c.SHORT:
-            unrealized_pnl = (self.priceAvg - current_price) * self.size * self.leverage
+            unrealized_pnl = (self.priceAvg - current_price) * self.size
         return unrealized_pnl
 
     def get_unrealized_pnl_percentage(self) -> float:
@@ -401,7 +384,7 @@ def marker( pos:position_c, message = None, reversal:bool = False ):
 
         shape = 'arrow_up' if order_type == c.BUY else 'arrow_down'
         if newposition:
-            shape == 'circle'
+            shape = 'circle'
         elif closedposition == True:
             shape = 'square'
 
@@ -424,7 +407,6 @@ def marker( pos:position_c, message = None, reversal:bool = False ):
                     )
 
 def order(cmd: str, target_position_type: int = None, quantity: float = None, leverage: float = None):
-    
     order_type = c.BUY if cmd.lower() == 'buy' else c.SELL if cmd.lower() == 'sell' else None
     if not order_type:
         raise ValueError(f"Invalid order command: {cmd}")
@@ -526,7 +508,7 @@ def print_summary_stats():
     # Calculate metrics
     total_closed_positions = strategy.stats.total_winning_positions + strategy.stats.total_losing_positions
     
-    pnl_quantity = strategy.stats.total_profit_loss # Already in quote currency
+    pnl_quantity = strategy.stats.total_profit_loss
     
     # PnL percentage compared to initial_liquidity (initial_liquidity is always in USD)
     pnl_percentage_vs_liquidity = (pnl_quantity / strategy.initial_liquidity) * 100 if strategy.initial_liquidity != 0 else 0.0
@@ -541,14 +523,10 @@ def print_summary_stats():
     
     percentage_profitable_trades = (profitable_trades / total_closed_positions) * 100 if total_closed_positions > 0 else 0.0
 
-    # Calculate long and short win ratios
     long_win_ratio = (strategy.stats.total_winning_long_positions / strategy.stats.total_long_positions) * 100 if strategy.stats.total_long_positions > 0 else 0.0
     short_win_ratio = (strategy.stats.total_winning_short_positions / strategy.stats.total_short_positions) * 100 if strategy.stats.total_short_positions > 0 else 0.0
 
-
-    # Print header
     print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Liquidated':<12}")
-    # Print values
     print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {strategy.stats.total_liquidated_positions:<12}")
     print("------------------------------")
     if strategy.liquidity > 1:
