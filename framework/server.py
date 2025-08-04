@@ -71,7 +71,8 @@ class client_state_t:
         }
 
         # Store descriptor snapshots for next time
-        self.last_markers_dict = {k: v.descriptor().copy() for k, v in new_dict.items()}
+        if delta["added"] or delta["removed"] or delta["modified"]:
+            self.last_markers_dict = {k: v.descriptor().copy() for k, v in new_dict.items()}
         return delta
     
     

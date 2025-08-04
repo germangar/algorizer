@@ -3,11 +3,15 @@
 from enum import IntEnum
 
 class c(IntEnum):  # Ultra-short class name
-    PIVOT_HIGH = 1
-    PIVOT_LOW = -1
     LONG = 1
     SHORT = -1
     IDLE = 0
+
+    BUY = 1
+    SELL = -1
+
+    PIVOT_HIGH = 1
+    PIVOT_LOW = -1
     
     PLOT_LINE = 0
     PLOT_HIST = 1
