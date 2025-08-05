@@ -344,11 +344,7 @@ class position_c:
         if not self.active or self.size < EPSILON:
             return 0.0
         current_price = round_to_tick_size(getRealtimeCandle().close, getMintick())
-        unrealized_pnl = 0.0
-        if self.type == c.LONG:
-            unrealized_pnl = (current_price - self.priceAvg) * self.size
-        elif self.type == c.SHORT:
-            unrealized_pnl = (self.priceAvg - current_price) * self.size
+        unrealized_pnl, _ = self.calculate_pnl(current_price, self.size)
         return unrealized_pnl
 
     def get_unrealized_pnl_percentage(self) -> float:
