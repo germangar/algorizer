@@ -165,7 +165,7 @@ class position_c:
         # doesn't include fees
         pnl = 0.0
         for order_data in self.order_history:
-            pnl += order_data.get('pnl', 0.0) / self.leverage  # Adjust for double-leveraging
+            pnl += order_data.get('pnl', 0.0)
         return pnl
     
     def calculate_fees_from_history(self):
@@ -174,9 +174,7 @@ class position_c:
             fees += order_data.get('fees_cost', 0.0)
         return fees
 
-    def calculate_pnl(self, current_price: float, quantity: float = None) -> tuple[float, float]:
-        if quantity is None:
-            quantity = self.size
+    def calculate_pnl(self, current_price: float, quantity: float) -> tuple[float, float]:
         if quantity < EPSILON:
             return 0.0, 0.0
         pnl_q = 0.0
@@ -235,7 +233,6 @@ class position_c:
         price = round_to_tick_size(price, getMintick())
         if leverage > 1:
             quantity *= leverage
-        quantity = round_to_tick_size(quantity, getPrecision())
         if quantity < EPSILON:
             return None
 
@@ -250,14 +247,15 @@ class position_c:
         # Calculate collateral required
         collateral_change = 0.0
         if is_increasing:
+            if (quantity * price) / leverage > self.strategy_instance.liquidity:
+                quantity = (self.strategy_instance.liquidity * leverage) / price # liquidity and collateral always in USD
+            quantity = round_to_tick_size(quantity, getPrecision())
             collateral_change = (quantity * price) / leverage
-            if self.strategy_instance.currency_mode == 'USD' and collateral_change > self.strategy_instance.liquidity:
-                quantity = (self.strategy_instance.liquidity * leverage) / price
-                quantity = round_to_tick_size(quantity, getPrecision())
-                collateral_change = (quantity * price) / leverage
         else:
             # Clamp quantity if reducing position
             quantity = min(quantity, self.size)
+            if quantity != self.size:
+                quantity = round_to_tick_size(quantity, getPrecision())
             collateral_change = (-quantity * price) / leverage
 
         if quantity < EPSILON:
@@ -265,17 +263,19 @@ class position_c:
 
         # Calculate PNL and fees
         fee = self.calculate_fee_taker(price, quantity)
-        pnl_q, pnl_pct = self.calculate_pnl(price, quantity) if not is_increasing else (0.0, 0.0)
+        pnl_q = 0.0
+        pnl_pct = 0.0
 
         # Update position state
         if is_increasing:
             new_size = self.size + quantity
-            self.priceAvg = ((self.priceAvg * self.size) + (price * quantity)) / new_size if new_size > EPSILON else price
+            self.priceAvg = ((self.priceAvg * self.size) + (price * quantity)) / new_size
             self.size = new_size
             self.collateral += collateral_change
             self.max_size_held = max(self.max_size_held, self.size)
             self.leverage = leverage if not self.active else self.leverage # FIXME: Allow to combine orders with different leverages
         else:
+            pnl_q, pnl_pct = self.calculate_pnl(price, quantity)
             self.size -= quantity
             self.realized_pnl_quantity += pnl_q - fee
             self.realized_pnl_percentage += pnl_pct
@@ -394,7 +394,7 @@ def marker( pos:position_c, message = None, reversal:bool = False ):
                 message = f"pnl:{pnl:.2f}"
             else:
                 order_name = 'buy' if order_type == c.BUY else 'sell'
-                message = f"{order_name}:${abs(order_cost):.2f} (pos:{pos.size:.2f})"
+                message = f"{order_name}:${abs(order_cost):.2f} (pos:{pos.size:.3f})"
 
         location = 'below' if order_type == c.BUY else 'above'
         if pos.was_liquidated:

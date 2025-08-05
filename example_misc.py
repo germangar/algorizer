@@ -164,9 +164,9 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
             trade.order( 'buy', c.LONG )
 
     if longpos:
-        if longpos.get_unrealized_pnl_percentage() > 75 and longpos.collateral >= trade.strategy.order_size * 1.9:
+        if longpos.get_unrealized_pnl_percentage() > 50 and longpos.collateral >= trade.strategy.order_size * 1.9 and invRSI > 20:
             trade.order( 'sell', c.LONG )
-        elif longpos.get_unrealized_pnl_percentage() > 200:
+        elif longpos.get_unrealized_pnl_percentage() > 100 and invRSI > 60:
             trade.close( c.LONG )
 
     if sellSignal:
@@ -182,9 +182,9 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
             trade.order( 'sell', c.SHORT )
 
     if shortpos:
-        if shortpos.get_unrealized_pnl_percentage() > 75 and shortpos.collateral >= trade.strategy.order_size * 1.9:
+        if shortpos.get_unrealized_pnl_percentage() > 50 and shortpos.collateral >= trade.strategy.order_size * 1.9 and invRSI < 80:
             trade.order( 'buy', c.SHORT )
-        elif shortpos.get_unrealized_pnl_percentage() > 200:
+        elif shortpos.get_unrealized_pnl_percentage() > 100 and invRSI < 40:
             trade.close( c.SHORT )
 
     
@@ -265,7 +265,7 @@ if __name__ == '__main__':
     #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['8h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
+    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['6h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
 
     # Create subpanels to plot the oscilators.
     # width and height are values between 0 amd 1, representing the percentage of the
