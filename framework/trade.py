@@ -302,7 +302,7 @@ class position_c:
         if is_increasing:
             self.strategy_instance.liquidity -= collateral_change + fee
         else:
-            self.strategy_instance.liquidity += (pnl_q - fee)
+            self.strategy_instance.liquidity += -collateral_change + (pnl_q - fee)
 
         # Broker event
         if not isInitializing():
