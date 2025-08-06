@@ -130,10 +130,10 @@ class strategy_c:
                     return pos
         return None
 
-    def check_liquidation(self, candle: candle_c, realtime: bool = True):
+    def price_update(self, candle: candle_c, realtime: bool = True):
         for pos in self.positions:
             if pos.active:
-                pos.check_liquidation_and_close(candle.close, realtime)
+                pos.price_update(candle, realtime)
 
 
 class position_c:
@@ -149,7 +149,6 @@ class position_c:
         self.priceAvg = 0.0
         self.leverage = 1
         self.realized_pnl_quantity = 0.0
-        self.realized_pnl_percentage = 0.0
         self.order_history = []
         self.max_size_held = 0.0
         self.liquidation_price = 0.0
@@ -174,16 +173,16 @@ class position_c:
             fees += order_data.get('fees_cost', 0.0)
         return fees
 
-    def calculate_pnl(self, current_price: float, quantity: float) -> tuple[float, float]:
+    def calculate_pnl(self, current_price: float, quantity: float) -> float:
+        '''return PnL in quote currency'''
         if quantity < EPSILON:
-            return 0.0, 0.0
-        pnl_q = 0.0
+            return 0.0
+        pnl = 0.0
         if self.type == c.LONG:
-            pnl_q = (current_price - self.priceAvg) * quantity
+            pnl = (current_price - self.priceAvg) * quantity
         elif self.type == c.SHORT:
-            pnl_q = (self.priceAvg - current_price) * quantity
-        pnl_pct = (pnl_q / self.collateral) * 100 if self.collateral > EPSILON else 0.0
-        return pnl_q, pnl_pct
+            pnl = (self.priceAvg - current_price) * quantity
+        return pnl
 
     def calculate_fee_taker(self, price: float, quantity: float) -> float:
         _, taker_fee = getFees()
@@ -216,18 +215,6 @@ class position_c:
         elif self.type == c.SHORT:
             return round_to_tick_size(self.priceAvg - delta, getMintick())
         return 0.0
-
-    def check_liquidation_and_close(self, current_price: float, realtime: bool = True):
-        if not self.active or self.size < EPSILON:
-            return
-        self.liquidation_price = self.calculate_liquidation_price()
-        if self.liquidation_price < EPSILON:
-            return
-        if (self.type == c.LONG and current_price <= self.liquidation_price) or \
-           (self.type == c.SHORT and current_price >= self.liquidation_price):
-            order_type = c.BUY if self.type == c.SHORT else c.SELL
-            self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, liquidation= True)
-            marker( self, message = 'Liquidation' )
 
     def execute_order(self, order_type: int, price: float, quantity: float, leverage: float, liquidation:bool = False):
         price = round_to_tick_size(price, getMintick())
@@ -275,10 +262,9 @@ class position_c:
             self.max_size_held = max(self.max_size_held, self.size)
             self.leverage = leverage if not self.active else self.leverage # FIXME: Allow to combine orders with different leverages
         else:
-            pnl_q, pnl_pct = self.calculate_pnl(price, quantity)
+            pnl_q = self.calculate_pnl(price, quantity)
+            pnl_pct = (pnl_q / self.collateral) * 100 if self.collateral > EPSILON else 0.0
             self.size -= quantity
-            self.realized_pnl_quantity += pnl_q - fee
-            self.realized_pnl_percentage += pnl_pct
             self.collateral += collateral_change
             if self.size < EPSILON:
                 self.size = 0.0
@@ -340,19 +326,39 @@ class position_c:
         price = getRealtimeCandle().close
         self.execute_order(order_type, price, self.size, self.leverage)
 
+
+    def price_update(self, candle:candle_c, realtime: bool = True):
+        '''a tick with a price update has happened. Update the things to be updated in real time'''
+        if not self.active:
+            return
+        
+        current_price = round_to_tick_size(candle.close, getMintick())
+
+        # check stoploss
+        #
+        # TODO
+        
+        # check liquidation
+        #
+        self.liquidation_price = self.calculate_liquidation_price()
+        if self.liquidation_price > EPSILON:
+            if (self.type == c.LONG and current_price <= self.liquidation_price) or \
+            (self.type == c.SHORT and current_price >= self.liquidation_price):
+                order_type = c.BUY if self.type == c.SHORT else c.SELL
+                self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, liquidation= True)
+                marker( self, message = 'Liquidation' )
+                return # with the position liquidated there's no need to continue
+
     def get_unrealized_pnl(self) -> float:
-        if not self.active or self.size < EPSILON:
-            return 0.0
         current_price = round_to_tick_size(getRealtimeCandle().close, getMintick())
-        unrealized_pnl, _ = self.calculate_pnl(current_price, self.size)
-        return unrealized_pnl
+        return self.calculate_pnl(current_price, self.size)
 
     def get_unrealized_pnl_percentage(self) -> float:
         unrealized_pnl_q = self.get_unrealized_pnl()
         if abs(unrealized_pnl_q) < EPSILON or abs(self.collateral) < EPSILON:
             return 0.0
         return (unrealized_pnl_q / abs(self.collateral)) * 100
-
+        
     def get_order_by_direction(self, order_direction: int, older_than_bar_index: int = None) -> dict:
         for order_data in reversed(self.order_history):
             if order_data['type'] == order_direction:
@@ -366,7 +372,7 @@ def getActivePosition(pos_type: int = None) -> 'position_c':
     return strategy.get_active_position(pos_type)
 
 def newTick(candle: candle_c, realtime: bool = True):
-    strategy.check_liquidation(candle, realtime)
+    strategy.price_update(candle, realtime)
 
 def marker( pos:position_c, message = None, reversal:bool = False ):
     if strategy.show_markers and pos:
