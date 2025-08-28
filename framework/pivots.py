@@ -27,7 +27,6 @@ class pivots_c:
         self._current_trend_high_extrema_index = None
         self._current_trend_low_extrema_index = None
         self._last_confirmed_pivot_price = None
-        self._last_confirmed_pivot_reversal_magnitude = None
         self.isNewPivot = False # a new pivot was created in the last update
         self.pivots:list[pivot_c] = []
         self.temp_pivot: pivot_c = None # Stores the potential pivot in progress
@@ -65,7 +64,7 @@ class pivots_c:
                 self._current_reversal_percentage = 0.0 # Reset as new high sets a new "base" for potential reversal
                 return False
             
-            # Calculate current reversal if price drops from HH (this is the key calculation for the user's request)
+            # Calculate current reversal if price drops from HH
             current_reversal = self._current_trend_high_extrema - low
             if self._current_trend_high_extrema != 0: # Avoid division by zero
                 self._current_reversal_percentage = (current_reversal / self._current_trend_high_extrema) * 100
@@ -79,13 +78,12 @@ class pivots_c:
                 
                 # If we have a previous pivot to compare to
                 if self._last_confirmed_pivot_price is not None:
-                    reversal_threshold = self._last_confirmed_pivot_reversal_magnitude * (self.reversal_pct * 0.01)
+                    reversal_threshold = abs(self._current_trend_high_extrema - self._last_confirmed_pivot_price) * (self.reversal_pct * 0.01)
                     if current_reversal >= reversal_threshold:
                         # Confirmed down pivot
                         self.addPivot(self._current_trend_high_extrema_index, c.PIVOT_HIGH, self._current_trend_high_extrema) # Add the high pivot
                         self.trend = c.SHORT
                         self._last_confirmed_pivot_price = self._current_trend_high_extrema
-                        self._last_confirmed_pivot_reversal_magnitude = current_reversal
                         self._current_trend_low_extrema = low
                         self._current_trend_low_extrema_index = index
                         self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_low_extrema_index))
@@ -93,10 +91,9 @@ class pivots_c:
                         return True
                 else:
                     # First pivot, only use min_range
-                    self.addPivot( self._current_trend_high_extrema_index, c.PIVOT_HIGH, self._current_trend_high_extrema) # Add the high pivot
+                    self.addPivot(self._current_trend_high_extrema_index, c.PIVOT_HIGH, self._current_trend_high_extrema) # Add the high pivot
                     self.trend = c.SHORT
                     self._last_confirmed_pivot_price = self._current_trend_high_extrema
-                    self._last_confirmed_pivot_reversal_magnitude = current_reversal
                     self._current_trend_low_extrema = low
                     self._current_trend_low_extrema_index = index
                     self.temp_pivot = pivot_c(index=self._current_trend_low_extrema_index, type=c.PIVOT_LOW, price=self._current_trend_low_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_low_extrema_index))
@@ -112,7 +109,7 @@ class pivots_c:
                 self._current_reversal_percentage = 0.0 # Reset reversal percentage as a new low is made
                 return False
                 
-            # Calculate current reversal if price rises from LL (this is the key calculation for the user's request)
+            # Calculate current reversal if price rises from LL
             current_reversal = high - self._current_trend_low_extrema
             if self._current_trend_low_extrema != 0: # Avoid division by zero
                 self._current_reversal_percentage = (current_reversal / self._current_trend_low_extrema) * 100
@@ -126,13 +123,12 @@ class pivots_c:
                 
                 # If we have a previous pivot to compare to
                 if self._last_confirmed_pivot_price is not None:
-                    reversal_threshold = self._last_confirmed_pivot_reversal_magnitude * (self.reversal_pct * 0.01)
+                    reversal_threshold = abs(self._current_trend_low_extrema - self._last_confirmed_pivot_price) * (self.reversal_pct * 0.01)
                     if current_reversal >= reversal_threshold:
                         # Confirmed up pivot
-                        self.addPivot( self._current_trend_low_extrema_index, c.PIVOT_LOW, self._current_trend_low_extrema) # Add the low pivot
+                        self.addPivot(self._current_trend_low_extrema_index, c.PIVOT_LOW, self._current_trend_low_extrema) # Add the low pivot
                         self.trend = c.LONG
                         self._last_confirmed_pivot_price = self._current_trend_low_extrema
-                        self._last_confirmed_pivot_reversal_magnitude = current_reversal
                         self._current_trend_high_extrema = high
                         self._current_trend_high_extrema_index = index
                         self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_high_extrema_index))
@@ -140,10 +136,9 @@ class pivots_c:
                         return True
                 else:
                     # First pivot, only use min_range
-                    self.addPivot( self._current_trend_low_extrema_index, c.PIVOT_LOW, self._current_trend_low_extrema) # Add the low pivot
+                    self.addPivot(self._current_trend_low_extrema_index, c.PIVOT_LOW, self._current_trend_low_extrema) # Add the low pivot
                     self.trend = c.LONG
                     self._last_confirmed_pivot_price = self._current_trend_low_extrema
-                    self._last_confirmed_pivot_reversal_magnitude = current_reversal
                     self._current_trend_high_extrema = high
                     self._current_trend_high_extrema_index = index
                     self.temp_pivot = pivot_c(index=self._current_trend_high_extrema_index, type=c.PIVOT_HIGH, price=self._current_trend_high_extrema, timestamp=active.timeframe.timestampAtIndex(self._current_trend_high_extrema_index))
@@ -164,7 +159,6 @@ class pivots_c:
         else:
             self.pivots.append(pivot)
         self.isNewPivot = True # Set to True when a pivot is successfully added
-
 
     def getLast(self, type:int = None, since:int = None)->pivot_c|None:
         if since is None:since = active.barindex
