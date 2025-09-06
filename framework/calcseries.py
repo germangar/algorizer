@@ -1338,6 +1338,7 @@ class generatedSeries_c:
         self.timeframe = active.timeframe
         self.lastUpdatedTimestamp = 0
         self.alwaysReset = always_reset
+        self._is_generated_series = True # do not touch. It's used to identify it as generatedSeries when operating with a series_c
 
         if self.func is None:
             raise SystemError(f"Generated Series without a func [{self.name}]")
@@ -1484,7 +1485,7 @@ class generatedSeries_c:
     def __rsub__(self, other):
         if isinstance(other, (float, int)):
             return subtractScalar(other, self)
-        raise ValueError("rsub only defined for const - series")
+        return self.__sub__(other)
 
     def __mul__(self, other):
         if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):

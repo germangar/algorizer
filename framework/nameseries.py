@@ -1,6 +1,7 @@
 import numpy as np
 from . import active
 
+
 class series_c(np.ndarray):
     def __new__( cls, input_array, name:str, assignable:bool=True, index=-1 ):
 
@@ -77,6 +78,121 @@ class series_c(np.ndarray):
 
         self.timeframe.dataset[key, self.index] = value
         super().__setitem__(key, value) # Call the parent class's __setitem__ method to actually set the value
+
+
+   
+
+    # Magic methods for binary operations
+    def __add__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import addSeries
+            return addSeries(self, other)
+        return super().__add__(other)
+
+    def __radd__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__radd__(other)
+
+    def __sub__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import subtractSeries
+            return subtractSeries(self, other)
+        return super().__sub__(other)
+
+    def __rsub__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rsub__(other)
+
+    def __mul__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import multiplySeries 
+            return multiplySeries(self, other)
+        return super().__mul__(other)
+
+    def __rmul__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rmul__(other)
+
+    def __truediv__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import divideSeries
+            return divideSeries(self, other)
+        return super().__truediv__(other)
+
+    def __rtruediv__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rtruediv__(other)
+
+    # Magic methods for comparison operations
+    def __lt__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import lessSeries
+            return lessSeries(self, other)
+        return super().__lt__(other)
+
+    def __rlt__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rlt__(other)
+
+    def __le__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import lessOrEqualSeries
+            return lessOrEqualSeries(self, other)
+        return super().__le__(other)
+
+    def __rle__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rle__(other)
+
+    def __gt__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import greaterSeries
+            return greaterSeries(self, other)
+        return super().__gt__(other)
+
+    def __rgt__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rgt__(other)
+
+    def __ge__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import greaterOrEqualSeries
+            return greaterOrEqualSeries(self, other)
+        return super().__ge__(other)
+
+    def __rge__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rge__(other)
+
+    def __eq__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import equalSeries
+            return equalSeries(self, other)
+        return super().__eq__(other)
+
+    def __req__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__req__(other)
+
+    def __ne__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            from .calcseries import notequalSeries 
+            return notequalSeries(self, other)
+        return super().__ne__(other)
+
+    def __rne__(self, other):
+        if getattr(other, '_is_generated_series', False):
+            return NotImplemented
+        return super().__rne__(other)
 
 
     @staticmethod
