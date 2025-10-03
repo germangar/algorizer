@@ -243,7 +243,9 @@ class position_c:
             quantity = min(quantity, self.size)
             if quantity != self.size:
                 quantity = round_to_tick_size(quantity, getPrecision())
-            collateral_change = (-quantity * price) / leverage
+                collateral_change = (-quantity * self.priceAvg) / leverage
+            else:
+                collateral_change = -self.collateral
 
         if quantity < EPSILON:
             return None
@@ -259,13 +261,21 @@ class position_c:
             self.priceAvg = ((self.priceAvg * self.size) + (price * quantity)) / new_size
             self.size = new_size
             self.collateral += collateral_change
+            self.strategy_instance.liquidity -= collateral_change
             self.max_size_held = max(self.max_size_held, self.size)
             self.leverage = leverage if not self.active else self.leverage # FIXME: Allow to combine orders with different leverages
+            # print( f"collateral change {collateral_change} liquidity {self.strategy_instance.liquidity}")
         else:
-            pnl_q = self.calculate_pnl(price, quantity)
+            # adjust collateral and liquidity
+            pnl_q = self.calculate_pnl(price, quantity) - fee
             pnl_pct = (pnl_q / self.collateral) * 100 if self.collateral > EPSILON else 0.0
+
             self.size -= quantity
             self.collateral += collateral_change
+            self.strategy_instance.liquidity += -collateral_change + pnl_q
+
+            # These are just for the stats
+            # print( f"collateral change {collateral_change} pnl {pnl_q} liquidity {self.strategy_instance.liquidity}")
             if self.size < EPSILON:
                 self.size = 0.0
 
@@ -283,12 +293,6 @@ class position_c:
             'pnl_percentage': pnl_pct,
         }
         self.order_history.append(order_info)
-
-        # Update strategy liquidity
-        if is_increasing:
-            self.strategy_instance.liquidity -= collateral_change + fee
-        else:
-            self.strategy_instance.liquidity += -collateral_change + (pnl_q - fee)
 
         # Broker event
         if not isInitializing():
