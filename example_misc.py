@@ -224,7 +224,6 @@ if __name__ == '__main__':
     # currency_mode 'USD' or 'BASE' will change the calculation of your orders to use USD or the base currency.
 
     # configure the strategy before creating the stream
-    trade.strategy.verbose = False
     trade.strategy.hedged = False
     trade.strategy.currency_mode = 'USD'
     trade.strategy.order_size = 1000
