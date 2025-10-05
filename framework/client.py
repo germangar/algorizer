@@ -47,6 +47,7 @@ debug = False
 
 ############################ CHART WINDOW ################################
 from lightweight_charts import Chart
+# from bn_lightweight_charts import Chart
 # from lightweight_charts_esistjosh import Chart
 
 theme_black = {
