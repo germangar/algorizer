@@ -383,7 +383,7 @@ class position_c:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
                     self.execute_order(order_type, closing_price, quantity, self.leverage)
-                marker( self, message=f"SL" )
+                marker( self, prefix='SL⛔' )
                 if self.type == c.SHORT:
                     self.strategy_instance.stats.total_short_stoploss += 1
                 else:
@@ -407,7 +407,7 @@ class position_c:
             (self.type == c.SHORT and current_price >= self.liquidation_price):
                 order_type = c.BUY if self.type == c.SHORT else c.SELL
                 self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, liquidation= True)
-                marker( self, message = 'Liquidation' )
+                marker( self, prefix = '💀 ' )
                 return # with the position liquidated there's no need to continue
 
     def get_unrealized_pnl(self) -> float:
@@ -468,7 +468,7 @@ def getActivePosition(pos_type: int = None) -> 'position_c':
 def newTick(candle: candle_c, realtime: bool = True):
     strategy.price_update(candle, realtime)
 
-def marker( pos:position_c, message = None, reversal:bool = False ):
+def marker( pos:position_c, message = None, prefix = '', reversal:bool = False ):
     if strategy.show_markers and pos:
         order = pos.order_history[-1]
         if order['quantity'] < EPSILON:
@@ -496,7 +496,7 @@ def marker( pos:position_c, message = None, reversal:bool = False ):
         if pos.was_liquidated:
             location = 'below' if order_type == c.SHORT else 'above'
         
-        createMarker( message,
+        createMarker( prefix + message,
                     location,
                     shape,
                     COLOR_BULL if pos.type == c.LONG else COLOR_BEAR
