@@ -28,6 +28,9 @@ class strategy_stats_c:
     total_short_positions: int = 0
     total_winning_short_positions: int = 0
     total_losing_short_positions: int = 0
+    total_long_stoploss:int = 0
+    total_short_stoploss:int = 0
+    initial_liquidity:float = 0.0
     
 
 class strategy_c:
@@ -36,7 +39,6 @@ class strategy_c:
     """
     def __init__(self, initial_liquidity: float = 10000.0, order_size: float = 100.0, max_position_size: float = 100.0, currency_mode: str = 'USD', leverage_long: float = 1.0, leverage_short: float = 1.0):
         self.positions = []
-        self.initial_liquidity = initial_liquidity
         self.order_size = min(order_size, max_position_size)
         self.max_position_size = max_position_size
         self.currency_mode = currency_mode.upper()
@@ -55,7 +57,7 @@ class strategy_c:
         if self.currency_mode == 'USD' and self.max_position_size > self.liquidity:
             raise ValueError(f"max_position_size ({self.max_position_size}) cannot be greater than initial_liquidity ({self.liquidity}) when currency_mode is 'USD'.")
 
-        if self.initial_liquidity < self.order_size:
+        if self.liquidity < self.order_size:
             raise ValueError("Initial liquidity must be at least the order size.")
 
         if self.order_size <= 0:
@@ -73,6 +75,10 @@ class strategy_c:
         return pos.execute_order(order_type, price, quantity, leverage)
 
     def _new_position(self, pos_type: int, leverage: float) -> 'position_c':
+        # Set up stats if it's the first position ever opened
+        if not self.positions:
+            self.stats.initial_liquidity = self.liquidity
+
         pos = position_c(self)
         pos.type = pos_type
         pos.leverage = leverage
@@ -82,7 +88,9 @@ class strategy_c:
     def _close_position(self, pos: 'position_c'):
         if pos.active:
             pos.active = False
+            pos.stoploss_orders = []
 
+            # update stats
             if pos.type == c.LONG:
                 self.stats.total_long_positions += 1
             elif pos.type == c.SHORT:
@@ -153,6 +161,7 @@ class position_c:
         self.max_size_held = 0.0
         self.liquidation_price = 0.0
         self.was_liquidated = False
+        self.stoploss_orders = []
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
@@ -243,15 +252,14 @@ class position_c:
             quantity = min(quantity, self.size)
             if quantity != self.size:
                 quantity = round_to_tick_size(quantity, getPrecision())
-                collateral_change = (-quantity * self.priceAvg) / leverage
-            else:
-                collateral_change = -self.collateral
+            collateral_change = (-quantity * price) / leverage
 
         if quantity < EPSILON:
             return None
 
         # Calculate PNL and fees
         fee = self.calculate_fee_taker(price, quantity)
+        fee = 0
         pnl_q = 0.0
         pnl_pct = 0.0
 
@@ -261,20 +269,16 @@ class position_c:
             self.priceAvg = ((self.priceAvg * self.size) + (price * quantity)) / new_size
             self.size = new_size
             self.collateral += collateral_change
-            self.strategy_instance.liquidity -= collateral_change
+            self.strategy_instance.liquidity -= collateral_change + fee
             self.max_size_held = max(self.max_size_held, self.size)
             self.leverage = leverage if not self.active else self.leverage # FIXME: Allow to combine orders with different leverages
             # print( f"collateral change {collateral_change} liquidity {self.strategy_instance.liquidity}")
         else:
-            # adjust collateral and liquidity
-            pnl_q = self.calculate_pnl(price, quantity) - fee
+            pnl_q = self.calculate_pnl(price, quantity)
             pnl_pct = (pnl_q / self.collateral) * 100 if self.collateral > EPSILON else 0.0
-
             self.size -= quantity
             self.collateral += collateral_change
-            self.strategy_instance.liquidity += -collateral_change + pnl_q
-
-            # These are just for the stats
+            self.strategy_instance.liquidity += -collateral_change + pnl_q - fee
             # print( f"collateral change {collateral_change} pnl {pnl_q} liquidity {self.strategy_instance.liquidity}")
             if self.size < EPSILON:
                 self.size = 0.0
@@ -330,17 +334,70 @@ class position_c:
         price = getRealtimeCandle().close
         self.execute_order(order_type, price, self.size, self.leverage)
 
+    def check_stoploss(self, stoploss_order, current_price:float)->bool:
+        price = stoploss_order.get('price')
+        loss_pct = stoploss_order.get('loss_pct')
+        if price:
+            if self.type == c.LONG and current_price > price:
+                return False
+            if self.type == c.SHORT and current_price < price:
+                return False
+        if loss_pct:
+            pnl = self.calculate_pnl(current_price, self.size)
+            pnl = (pnl / abs(self.collateral)) * 100
+            if pnl >= 0.0:
+                return False
+            if abs(pnl) < loss_pct:
+                return False
+        assert( price or loss_pct )
+
+        if loss_pct:
+            print( f"SL triggered: pnl:{pnl} trigger:{loss_pct} Entry:{self.priceAvg} Current:{current_price}")
+        return True
+
 
     def price_update(self, candle:candle_c, realtime: bool = True):
         '''a tick with a price update has happened. Update the things to be updated in real time'''
         if not self.active:
             return
         
-        current_price = round_to_tick_size(candle.close, getMintick())
+        # current_price = round_to_tick_size(candle.close, getMintick())
+        current_price = candle.close
 
         # check stoploss
         #
-        # TODO
+        triggered = []
+        for stoploss_order in self.stoploss_orders:
+            if self.check_stoploss( stoploss_order, current_price ):
+                order_type = c.BUY if self.type == c.SHORT else c.SELL
+                quantity = stoploss_order.get('quantity')
+                quantity_pct = stoploss_order.get('quantity_pct')
+
+                closing_price = current_price
+                if not realtime and stoploss_order.get('price'):
+                    closing_price = stoploss_order.get('price')
+                
+                if quantity:
+                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                else:
+                    assert(quantity_pct)
+                    quantity = self.size * (quantity_pct / 100)
+                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                marker( self, message=f"SL" )
+                if self.type == c.SHORT:
+                    self.strategy_instance.stats.total_short_stoploss += 1
+                else:
+                    self.strategy_instance.stats.total_long_stoploss += 1
+                
+                if not self.active:
+                    break
+                triggered.append( stoploss_order )
+
+        if not self.active: # if the position was closed no need to continue
+            return
+        
+        for s in triggered:
+            self.stoploss_orders.remove(s)
         
         # check liquidation
         #
@@ -369,6 +426,39 @@ class position_c:
                 if older_than_bar_index is None or order_data['barindex'] < older_than_bar_index:
                     return order_data
         return None
+    
+    def stoploss(self, price:float = None, quantity:float = None, loss_pct:float = None, reduce_pct = None)->dict:
+        ''' quantity is in base currency.
+            quantity_pct is a percentage in a 0-100 scale'''
+        if not price and not loss_pct:
+            print( "Warning: Stoploss order requires a price or a percentage. Ignoring")
+            return None
+        
+        # if quantityUSDT and self.strategy_instance.currency_mode == 'USD': # convert it to base currency
+        #     quantity = quantityUSDT / price
+        #     reduce_pct = None
+        
+        if quantity:
+            quantity = min(self.size, max(0, quantity))
+            if quantity > EPSILON:
+                reduce_pct = None
+            else:
+                quantity = None
+        
+        if not quantity:
+            reduce_pct = min(100.0, max(1.0, reduce_pct)) if reduce_pct else 100.0
+
+        # create the stoploss item
+        stoploss_order = {
+            'price': price,
+            'quantity': quantity,
+            'quantity_pct': reduce_pct,
+            'loss_pct': loss_pct
+        }
+
+        self.stoploss_orders.append( stoploss_order )
+        return stoploss_order
+
 
 strategy = strategy_c(currency_mode='USD')
 
@@ -509,15 +599,16 @@ def print_summary_stats():
     """
     Print summary of strategy performance.
     """
-    print("\n--- Strategy Summary Stats ---")
+    
+    print(f"\n--- {active.timeframe.stream.symbol} Strategy Summary Stats ---")
     
     # Calculate metrics
     total_closed_positions = strategy.stats.total_winning_positions + strategy.stats.total_losing_positions
     
     pnl_quantity = strategy.stats.total_profit_loss
     
-    # PnL percentage compared to initial_liquidity (initial_liquidity is always in USD)
-    pnl_percentage_vs_liquidity = (pnl_quantity / strategy.initial_liquidity) * 100 if strategy.initial_liquidity != 0 else 0.0
+    # PnL percentage: percent change from initial_liquidity to current liquidity
+    pnl_percentage_vs_liquidity = ((strategy.liquidity - strategy.stats.initial_liquidity) / strategy.stats.initial_liquidity) * 100 if strategy.stats.initial_liquidity != 0 else 0.0
     
     # This calculation's meaning (PnL % vs Max Pos) depends on currency_mode for max_position_size
     # It's kept as is to match previous output structure.
@@ -532,8 +623,8 @@ def print_summary_stats():
     long_win_ratio = (strategy.stats.total_winning_long_positions / strategy.stats.total_long_positions) * 100 if strategy.stats.total_long_positions > 0 else 0.0
     short_win_ratio = (strategy.stats.total_winning_short_positions / strategy.stats.total_short_positions) * 100 if strategy.stats.total_short_positions > 0 else 0.0
 
-    print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Liquidated':<12}")
-    print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {strategy.stats.total_liquidated_positions:<12}")
+    print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Long SL':<12} {'Short SL':<12} {'Liquidated':<12}")
+    print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {strategy.stats.total_long_stoploss:<12} {strategy.stats.total_short_stoploss:<12} {strategy.stats.total_liquidated_positions:<12}")
     print("------------------------------")
     if strategy.liquidity > 1:
         print(f"Final Account Liquidity: {strategy.liquidity:.2f} USD ({pnl_percentage_vs_liquidity:.2f}% PnL)"     )
@@ -550,6 +641,9 @@ def print_pnl_by_period_summary():
     if not pnl_history:
         print("No closed positions to report PnL by period.")
         return
+    
+    numQuarters = 0
+    allQuarters = 0.0
 
     # Print by year, quarters and total in one line
     # Print header
@@ -561,5 +655,13 @@ def print_pnl_by_period_summary():
         q3 = sum(months[6:9])
         q4 = sum(months[9:12])
         total = sum(months)
+        if q1 != 0.0: numQuarters += 1; allQuarters += q1
+        if q2 != 0.0: numQuarters += 1; allQuarters += q2
+        if q3 != 0.0: numQuarters += 1; allQuarters += q3
+        if q4 != 0.0: numQuarters += 1; allQuarters += q4
         print(f"{year:<8} {total:12.2f} {q1:12.2f} {q2:12.2f} {q3:12.2f} {q4:12.2f}")
+    print("-----------------------------")
+    avgq = allQuarters/numQuarters
+    avgqpct = (avgq / strategy.max_position_size) * 100
+    print(f"Average PnL per quarter: {avgq:.2f} ({avgqpct:.1f}% relative to max position size)")
     print("-----------------------------")
