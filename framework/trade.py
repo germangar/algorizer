@@ -600,7 +600,7 @@ def print_summary_stats():
     Print summary of strategy performance.
     """
     
-    print(f"\n--- {active.timeframe.stream.symbol} Strategy Summary Stats ---")
+    print(f"\n--- Strategy Summary Stats [{active.timeframe.stream.symbol.replace(':USDT', '')}]---")
     
     # Calculate metrics
     total_closed_positions = strategy.stats.total_winning_positions + strategy.stats.total_losing_positions
@@ -626,6 +626,8 @@ def print_summary_stats():
     print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Long SL':<12} {'Short SL':<12} {'Liquidated':<12}")
     print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {strategy.stats.total_long_stoploss:<12} {strategy.stats.total_short_stoploss:<12} {strategy.stats.total_liquidated_positions:<12}")
     print("------------------------------")
+    print(f"{'Order size':<12} {'Max Position':<12} {'Initial Liquidity':<12}")
+    print(f"{strategy.order_size:<12} {strategy.max_position_size:<12} {strategy.stats.initial_liquidity:<12}")
     if strategy.liquidity > 1:
         print(f"Final Account Liquidity: {strategy.liquidity:.2f} USD ({pnl_percentage_vs_liquidity:.2f}% PnL)"     )
     else:
