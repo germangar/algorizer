@@ -158,6 +158,7 @@ class timeframe_c:
         self.timestamp = 0
         self.backtesting = False
         self.jumpstart = False
+        self.ready = False
 
         self.dataset:Optional[np.NDArray[np.float64]] = None
         self.generatedSeries: dict[str, generatedSeries_c] = {}
@@ -223,6 +224,8 @@ class timeframe_c:
         self.realtimeCandle.bottom = min(self.realtimeCandle.open, self.realtimeCandle.close)
         self.stream.timestampFetch = self.realtimeCandle.timestamp
 
+        self.ready = True
+
         print( len(self.dataset), "candles processed. Total time: {:.2f} seconds".format(time.time() - start_time))
 
 
@@ -258,6 +261,21 @@ class timeframe_c:
                 # Update stream's fetch timestamp if this is the smallest timeframe
                 if is_fetch:
                     self.stream.timestampFetch = self.realtimeCandle.timestamp
+
+                # Circle back to the already precomputed timeframes and set the barindex 
+                # and timestamp to the same bar so we can read them in parallel
+                for lt in self.stream.timeframes.values():
+                    if not lt.ready:
+                        continue
+                    # figure out the other timeframe barindex and timestamp for this candle barindex and timestamp
+                    lt.barindex = lt.indexForTimestamp( newrow_timestamp )
+                    # if lt.barindex == -1: print( f"newrow_timestamp: {newrow_timestamp}" )
+                    # assert(lt.barindex != -1)
+                    lt.timestamp = lt.timestampAtIndex( lt.barindex ) if lt.barindex >= 0 else 0
+                    # if self.barindex < 500: 
+                    #     tstamp = int(self.timestamp*0.00001)
+                    #     ltstamp = int(lt.timestamp*0.00001)
+                    #     print( f"barindex:{self.barindex} timestamp:{tstamp} close:{newrow_close} big TF barindex:{lt.barindex} timestamp:{ltstamp} close:{lt.dataset[lt.barindex, c.DF_CLOSE]}")
 
                 # Execute the user-defined callback for each historical candle.
                 if( self.callback != None ):
