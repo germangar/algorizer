@@ -487,6 +487,8 @@ def marker( pos:position_c, message = None, prefix = '', reversal:bool = False )
         if not message:
             if closedposition:
                 pnl = pos.calculate_realized_pnl_from_history() - pos.calculate_fees_from_history()
+                if not prefix:
+                    prefix = '🚩' if pnl < 0.0 else '💲'
                 message = f"pnl:{pnl:.2f}"
             else:
                 order_name = 'buy' if order_type == c.BUY else 'sell'
