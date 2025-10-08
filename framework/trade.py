@@ -162,6 +162,7 @@ class position_c:
         self.liquidation_price = 0.0
         self.was_liquidated = False
         self.stoploss_orders = []
+        self.takeprofit_orders = []
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
@@ -334,16 +335,17 @@ class position_c:
         price = getRealtimeCandle().close
         self.execute_order(order_type, price, self.size, self.leverage)
 
-    def check_stoploss(self, stoploss_order, current_price:float)->bool:
+    def check_stoploss(self, stoploss_order, candle:candle_c)->bool:
         price = stoploss_order.get('price')
         loss_pct = stoploss_order.get('loss_pct')
         if price:
-            if self.type == c.LONG and current_price > price:
+            if self.type == c.LONG and candle.low > price:
                 return False
-            if self.type == c.SHORT and current_price < price:
+            if self.type == c.SHORT and candle.high < price:
                 return False
         if loss_pct:
-            pnl = self.calculate_pnl(current_price, self.size)
+            directional_price = candle.high if self.type == c.SHORT else candle.low
+            pnl = self.calculate_pnl(directional_price, self.size)
             pnl = (pnl / abs(self.collateral)) * 100
             if pnl >= 0.0:
                 return False
@@ -352,7 +354,7 @@ class position_c:
         assert( price or loss_pct )
 
         if loss_pct:
-            print( f"SL triggered: pnl:{pnl} trigger:{loss_pct} Entry:{self.priceAvg} Current:{current_price}")
+            print( f"SL triggered: pnl:{pnl} trigger:{loss_pct} Entry:{self.priceAvg}")
         return True
 
 
@@ -368,7 +370,7 @@ class position_c:
         #
         triggered = []
         for stoploss_order in self.stoploss_orders:
-            if self.check_stoploss( stoploss_order, current_price ):
+            if self.check_stoploss( stoploss_order, candle ):
                 order_type = c.BUY if self.type == c.SHORT else c.SELL
                 quantity = stoploss_order.get('quantity')
                 quantity_pct = stoploss_order.get('quantity_pct')
@@ -403,8 +405,8 @@ class position_c:
         #
         self.liquidation_price = self.calculate_liquidation_price()
         if self.liquidation_price > EPSILON:
-            if (self.type == c.LONG and current_price <= self.liquidation_price) or \
-            (self.type == c.SHORT and current_price >= self.liquidation_price):
+            if (self.type == c.LONG and candle.low < self.liquidation_price) or \
+            (self.type == c.SHORT and candle.high > self.liquidation_price):
                 order_type = c.BUY if self.type == c.SHORT else c.SELL
                 self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, liquidation= True)
                 marker( self, prefix = '💀 ' )
