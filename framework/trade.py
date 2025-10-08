@@ -89,6 +89,7 @@ class strategy_c:
         if pos.active:
             pos.active = False
             pos.stoploss_orders = []
+            pos.takeprofit_orders = []
 
             # update stats
             if pos.type == c.LONG:
@@ -356,6 +357,28 @@ class position_c:
         if loss_pct:
             print( f"SL triggered: pnl:{pnl} trigger:{loss_pct} Entry:{self.priceAvg}")
         return True
+    
+    def check_takeprofit(self, tp_order, candle:candle_c)->bool:
+        price = tp_order.get('price')
+        win_pct = tp_order.get('win_pct')
+        if price:
+            if self.type == c.LONG and candle.high < price:
+                return False
+            if self.type == c.SHORT and candle.low > price:
+                return False
+        if win_pct:
+            directional_price = candle.low if self.type == c.SHORT else candle.high
+            pnl = self.calculate_pnl(directional_price, self.size)
+            pnl = (pnl / abs(self.collateral)) * 100
+            if pnl <= 0.0:
+                return False
+            if abs(pnl) < win_pct:
+                return False
+        assert( price or win_pct )
+
+        if win_pct:
+            print( f"SL triggered: pnl:{pnl} trigger:{win_pct} Entry:{self.priceAvg}")
+        return True
 
 
     def price_update(self, candle:candle_c, realtime: bool = True):
@@ -363,8 +386,36 @@ class position_c:
         if not self.active:
             return
         
-        # current_price = round_to_tick_size(candle.close, getMintick())
-        current_price = candle.close
+        # check take profit
+        #
+        triggered = []
+        for tp_order in self.takeprofit_orders:
+            if self.check_takeprofit( tp_order, candle ):
+                order_type = c.BUY if self.type == c.SHORT else c.SELL
+                quantity = tp_order.get('quantity')
+                quantity_pct = tp_order.get('quantity_pct')
+
+                closing_price = candle.close
+                if not realtime and tp_order.get('price'):
+                    closing_price = tp_order.get('price')
+                
+                if quantity:
+                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                else:
+                    assert(quantity_pct)
+                    quantity = self.size * (quantity_pct / 100)
+                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                marker( self, prefix=f'TP({quantity:.2f}):' )
+
+                if not self.active:
+                    break
+                triggered.append( tp_order )
+        
+        if not self.active: # if the position was closed no need to continue
+            return
+        
+        for s in triggered:
+            self.takeprofit_orders.remove(s)
 
         # check stoploss
         #
@@ -375,7 +426,7 @@ class position_c:
                 quantity = stoploss_order.get('quantity')
                 quantity_pct = stoploss_order.get('quantity_pct')
 
-                closing_price = current_price
+                closing_price = candle.close
                 if not realtime and stoploss_order.get('price'):
                     closing_price = stoploss_order.get('price')
                 
@@ -429,7 +480,39 @@ class position_c:
                     return order_data
         return None
     
-    def stoploss(self, price:float = None, quantity:float = None, loss_pct:float = None, reduce_pct = None)->dict:
+    def createTakeprofit(self, price:float = None, quantity:float = None, win_pct:float = None, reduce_pct = None)->dict:
+        ''' quantity is in base currency.
+            quantity_pct is a percentage in a 0-100 scale'''
+        if not price and not win_pct:
+            print( "Warning: Stoploss order requires a price or a percentage. Ignoring")
+            return None
+        
+        # if quantityUSDT and self.strategy_instance.currency_mode == 'USD': # convert it to base currency
+        #     quantity = quantityUSDT / price
+        #     reduce_pct = None
+        
+        if quantity:
+            quantity = min(self.size, max(0, quantity))
+            if quantity > EPSILON:
+                reduce_pct = None
+            else:
+                quantity = None
+        
+        if not quantity:
+            reduce_pct = min(100.0, max(1.0, reduce_pct)) if reduce_pct else 100.0
+
+        # create the stoploss item
+        tp_order = {
+            'price': price,
+            'quantity': quantity,
+            'quantity_pct': reduce_pct,
+            'win_pct': win_pct
+        }
+
+        self.takeprofit_orders.append( tp_order )
+        return tp_order
+    
+    def createStoploss(self, price:float = None, quantity:float = None, loss_pct:float = None, reduce_pct = None)->dict:
         ''' quantity is in base currency.
             quantity_pct is a percentage in a 0-100 scale'''
         if not price and not loss_pct:
