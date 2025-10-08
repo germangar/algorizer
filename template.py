@@ -55,7 +55,7 @@ if __name__ == '__main__':
     # the backtest will happen at stream initialization
     trade.strategy.hedged = False
     trade.strategy.currency_mode = 'USD' # 'BASE' for base currency mode
-    trade.strategy.initial_liquidity = 10000
+    trade.strategy.liquidity = 10000
     trade.strategy.order_size = 1000
     trade.strategy.max_position_size = 2000
     trade.strategy.leverage_long = 1
