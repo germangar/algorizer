@@ -400,11 +400,12 @@ class position_c:
                     closing_price = tp_order.get('price')
                 
                 if quantity:
-                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
                 else:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
-                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
+                    print( f"TAKE PROFIT: Pos active:{self.active} Remaining size:{self.size}")
                 marker( self, prefix=f'TP({quantity:.2f}):' )
 
                 if not self.active:
@@ -431,11 +432,11 @@ class position_c:
                     closing_price = stoploss_order.get('price')
                 
                 if quantity:
-                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
                 else:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
-                    self.execute_order(order_type, closing_price, quantity, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
                 marker( self, prefix='SL⛔' )
                 if self.type == c.SHORT:
                     self.strategy_instance.stats.total_short_stoploss += 1
