@@ -284,6 +284,7 @@ class position_c:
             # print( f"collateral change {collateral_change} pnl {pnl_q} liquidity {self.strategy_instance.liquidity}")
             if self.size < EPSILON:
                 self.size = 0.0
+                self.collateral = 0.0
 
         # Store order in history
         order_info = {
@@ -319,8 +320,6 @@ class position_c:
         
         if self.size < EPSILON: # The order has emptied the position
             self.was_liquidated = liquidation
-            self.size = 0.0
-            self.collateral = 0.0
             self.realized_pnl_quantity = self.calculate_realized_pnl_from_history() - self.calculate_fees_from_history()
             self.strategy_instance._close_position(self)
             return order_info
@@ -405,7 +404,6 @@ class position_c:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
                     self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
-                    print( f"TAKE PROFIT: Pos active:{self.active} Remaining size:{self.size}")
                 marker( self, prefix=f'TP({quantity:.2f}):' )
 
                 if not self.active:
