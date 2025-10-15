@@ -774,7 +774,9 @@ class stream_c:
 
     def createWindow( self, timeframeStr ):
         """Create and show a window for the given timeframe"""
-        if not tools.validateTimeframeName( timeframeStr):
+        if not timeframeStr:
+            timeframeStr = self.timeframeFetch
+        if not tools.validateTimeframeName( timeframeStr ):
             print( f"{timeframeStr} is not a valid timeframe name" )
             return
         if timeframeStr not in self.timeframes.keys():
@@ -851,7 +853,7 @@ async def cli_task(stream: 'stream_c'): # Added type hint for clarity
         command = parts[0].lower()
         args = parts[1] if len(parts) > 1 else '' # Get args if they exist
 
-        if command == 'chart':
+        if command == 'chart' or command == 'c':
             stream.createWindow( args )
 
         elif command == 'close':
