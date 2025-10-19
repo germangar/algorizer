@@ -39,6 +39,9 @@ class candle_c:
     def str( self ):
         return f'timestamp:{self.timestamp} open:{self.open} high:{self.high} low:{self.low} close:{self.close} volume:{self.volume}'
     
+    def tolist( self ):
+        return [ float(self.timestamp), self.open, self.high, self.low, self.close, self.volume ]
+    
     def updateRemainingTime( self ):
         from datetime import datetime
         if( self.timestamp <= 0 ):

@@ -154,6 +154,17 @@ class ohlcvs_c:
 
         return ohlcv_list
     
+    def fetchLastClosed( self, symbol, timeframe ):
+        ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=2)
+        if not ohlcv:
+            print( " fetcher: no ohlcvs" )
+            return []
+        elif len(ohlcv)<2:
+            # print( f" fetcher: ohlcv len {len(ohlcv)} {ohlcv[-1]}" )
+            return ohlcv[-1]
+        # print( ohlcv[-2] )
+        return ohlcv[-2]
+    
 
     def loadCache( self, symbol, timeframe, grab_amount ):
         grab_amount = grab_amount if( grab_amount != None ) else 0

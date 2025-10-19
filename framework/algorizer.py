@@ -16,6 +16,7 @@ from . import active
 
 
 verbose = False
+VERIFY_CLOSED_CANDLES = True # Asks the exchange to send the full candle. Prevents mismatches between backtest and realtime, but it's half a second slower at updating and running closeCandle
 
 
 class plot_c:
@@ -337,20 +338,48 @@ class timeframe_c:
                 continue
 
             # NEW CANDLE - REAL-TIME
+
+            # Exchange issued candle updates may not match fetched closed candles (used for historic backtesting)
+            # so we need to fetch the last historic candle after the updates closed a candle. Which SUCKS because it adds
+            # half a second or more of delay, but if we don't the backtest may not match the realtime strategy.
+            if VERIFY_CLOSED_CANDLES and self.stream.exchange.id != "binance": # chatGPT affirms Binance is the only one with perfect candles in the updates.
+                ohlcv = self.stream.fetcher.fetchLastClosed(self.stream.symbol, self.timeframeStr)
+                # FIXME: I guess I should add error handling to the fetch. More delays, yeepee
+                if ohlcv:
+                    if (ohlcv[c.DF_TIMESTAMP] != self.realtimeCandle.timestamp or 
+                        ohlcv[c.DF_OPEN] != self.realtimeCandle.open or 
+                        ohlcv[c.DF_HIGH] != self.realtimeCandle.high or 
+                        ohlcv[c.DF_LOW] != self.realtimeCandle.low or 
+                        ohlcv[c.DF_CLOSE] != self.realtimeCandle.close):
+                        print( f"WARNING: Candle mismatch corrected {self.timeframeStr}:\n local: {self.realtimeCandle.tolist()}\n fetch: {ohlcv[c.DF_TIMESTAMP], ohlcv[c.DF_OPEN], ohlcv[c.DF_HIGH], ohlcv[c.DF_LOW], ohlcv[c.DF_CLOSE], ohlcv[c.DF_VOLUME] }")
+                    
+                    # update with the fetched candle data
+                    self.realtimeCandle.timestamp = int(ohlcv[c.DF_TIMESTAMP])
+                    self.realtimeCandle.open = ohlcv[c.DF_OPEN]
+                    self.realtimeCandle.high = ohlcv[c.DF_HIGH]
+                    self.realtimeCandle.low = ohlcv[c.DF_LOW]
+                    self.realtimeCandle.close = ohlcv[c.DF_CLOSE]
+                    self.realtimeCandle.volume = ohlcv[c.DF_VOLUME]
+                    self.realtimeCandle.bottom = min( self.realtimeCandle.open, self.realtimeCandle.close )
+                    self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
+                    # if len(rows) >= 2:
+                    #     print( f"-- ------: {rows[-2, 0], rows[-2, 1], rows[-2, 2], rows[-2, 3], rows[-2, 4], rows[-2, 5]}" )
+                        
+
             # Append a new row to the Dataset for the closed candle data
             new_idx = self.barindex + 1
 
             # Create a new row with values from self.realtimeCandle
-            new_row = np.full(self.dataset.shape[1], np.nan)
-            new_row[c.DF_TIMESTAMP] = self.realtimeCandle.timestamp
-            new_row[c.DF_OPEN]      = self.realtimeCandle.open
-            new_row[c.DF_HIGH]      = self.realtimeCandle.high
-            new_row[c.DF_LOW]       = self.realtimeCandle.low
-            new_row[c.DF_CLOSE]     = self.realtimeCandle.close
-            new_row[c.DF_VOLUME]    = self.realtimeCandle.volume
-            new_row[c.DF_TOP]    = self.realtimeCandle.top
-            new_row[c.DF_BOTTOM]    = self.realtimeCandle.bottom
-            self.dataset = np.vstack([self.dataset, new_row]) # Append the new row to the dataset
+            new_dataset_row = np.full(self.dataset.shape[1], np.nan)
+            new_dataset_row[c.DF_TIMESTAMP] = self.realtimeCandle.timestamp
+            new_dataset_row[c.DF_OPEN]      = self.realtimeCandle.open
+            new_dataset_row[c.DF_HIGH]      = self.realtimeCandle.high
+            new_dataset_row[c.DF_LOW]       = self.realtimeCandle.low
+            new_dataset_row[c.DF_CLOSE]     = self.realtimeCandle.close
+            new_dataset_row[c.DF_VOLUME]    = self.realtimeCandle.volume
+            new_dataset_row[c.DF_TOP]    = self.realtimeCandle.top
+            new_dataset_row[c.DF_BOTTOM]    = self.realtimeCandle.bottom
+            self.dataset = np.vstack([self.dataset, new_dataset_row]) # Append the new row to the dataset
             
             # reallocate the named series views because a new row was created
             self.relinkSeriesToDataset()
@@ -373,7 +402,8 @@ class timeframe_c:
             if is_fetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
 
-            print( f"NEW CANDLE {self.timeframeStr} : {newrow.tolist()}" )
+            print( f"NEW CANDLE {self.timeframeStr} : {[new_dataset_row[c.DF_TIMESTAMP], new_dataset_row[c.DF_OPEN], new_dataset_row[c.DF_HIGH], new_dataset_row[c.DF_LOW], new_dataset_row[c.DF_CLOSE], new_dataset_row[c.DF_VOLUME]]}" )
+            # print( f" RT CANDLE {self.timeframeStr} : {self.realtimeCandle.tolist()}" )
 
             if( self.callback != None ):
                 self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
@@ -583,7 +613,7 @@ class stream_c:
         # Fetch the candle history and update the cache
         #################################################
 
-        fetcher = ohlcvs_c( exchangeID, self.symbol )
+        self.fetcher = fetcher = ohlcvs_c( exchangeID, self.symbol )
 
         self.markets = fetcher.getMarkets()
         self.precision = fetcher.getPrecision()
