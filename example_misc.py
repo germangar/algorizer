@@ -264,7 +264,7 @@ if __name__ == '__main__':
     #   Use the candle datas in cache without trying to fetch new candles to update it
 
 
-    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['6h', '1h'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
+    stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['5m', '1m'], [runCloseCandle_slow, runCloseCandle_fast], event, 35000 )
 
     # Create subpanels to plot the oscilators.
     # width and height are values between 0 amd 1, representing the percentage of the

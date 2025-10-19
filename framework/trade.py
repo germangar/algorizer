@@ -686,16 +686,26 @@ def print_summary_stats():
     Print summary of strategy performance.
     """
     
-    print(f"\n--- Strategy Summary Stats [{active.timeframe.stream.symbol.replace(':USDT', '')}]---")
+    print(f"\n--- Strategy Summary Stats ---")
     
+    # PnL percentage: percent change from initial_liquidity to current balance
+    longpos = getActivePosition(c.LONG)
+    shortpos = getActivePosition(c.LONG)
+    balance = strategy.liquidity
+    balance += longpos.calculate_collateral_from_history() + longpos.get_unrealized_pnl() if longpos else 0.0
+    balance += shortpos.calculate_collateral_from_history() + shortpos.get_unrealized_pnl() if shortpos else 0.0
+    pnl_percentage_vs_liquidity = (balance - strategy.stats.initial_liquidity) / strategy.stats.initial_liquidity * 100 if strategy.stats.initial_liquidity != 0 else 0.0
+
+    pnlStr = f"{balance - strategy.stats.initial_liquidity:.2f} ({pnl_percentage_vs_liquidity:.2f}%)" if strategy.liquidity > EPSILON else "Your account has been terminated."
+    print(f"{active.timeframe.stream.symbol.split(':', 1)[0]:<10} {'Order size':<11} {'Max Position':<13} {'Initial Liquidity':<18} {'Final Liquidity':<16} {'Account PnL':<18}")
+    print(f"{'':<10} {strategy.order_size:<11} {strategy.max_position_size:<13} {strategy.stats.initial_liquidity:<18} {strategy.liquidity:<16.2f} {pnlStr:<18}")
+    print("------------------------------")
+
     # Calculate metrics
     total_closed_positions = strategy.stats.total_winning_positions + strategy.stats.total_losing_positions
     
     pnl_quantity = strategy.stats.total_profit_loss
-    
-    # PnL percentage: percent change from initial_liquidity to current liquidity
-    pnl_percentage_vs_liquidity = ((strategy.liquidity - strategy.stats.initial_liquidity) / strategy.stats.initial_liquidity) * 100 if strategy.stats.initial_liquidity != 0 else 0.0
-    
+
     # This calculation's meaning (PnL % vs Max Pos) depends on currency_mode for max_position_size
     # It's kept as is to match previous output structure.
     # It represents PnL as a percentage of the maximum capital allowed per position.
@@ -712,12 +722,7 @@ def print_summary_stats():
     print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Long SL':<12} {'Short SL':<12} {'Liquidated':<12}")
     print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {strategy.stats.total_long_stoploss:<12} {strategy.stats.total_short_stoploss:<12} {strategy.stats.total_liquidated_positions:<12}")
     print("------------------------------")
-    print(f"{'Order size':<12} {'Max Position':<12} {'Initial Liquidity':<12}")
-    print(f"{strategy.order_size:<12} {strategy.max_position_size:<12} {strategy.stats.initial_liquidity:<12}")
-    if strategy.liquidity > 1:
-        print(f"Final Account Liquidity: {strategy.liquidity:.2f} USD ({pnl_percentage_vs_liquidity:.2f}% PnL)"     )
-    else:
-        print("Your account has been terminated.")
+
 
 
 def print_pnl_by_period_summary():
@@ -735,7 +740,7 @@ def print_pnl_by_period_summary():
 
     # Print by year, quarters and total in one line
     # Print header
-    print(f"{'Year':<8} {f'PnL {strategy.currency_mode}':>12} {'Q1':>12} {'Q2':>12} {'Q3':>12} {'Q4':>12} ")
+    print(f"{'Year':<5} {f'PnL {strategy.currency_mode}':>12} | {'Q1':>12} {'Q2':>12} {'Q3':>12} {'Q4':>12} ")
     for year in sorted(pnl_history.keys()):
         months = pnl_history[year]
         q1 = sum(months[0:3])
@@ -747,7 +752,7 @@ def print_pnl_by_period_summary():
         if q2 != 0.0: numQuarters += 1; allQuarters += q2
         if q3 != 0.0: numQuarters += 1; allQuarters += q3
         if q4 != 0.0: numQuarters += 1; allQuarters += q4
-        print(f"{year:<8} {total:12.2f} {q1:12.2f} {q2:12.2f} {q3:12.2f} {q4:12.2f}")
+        print(f"{year:<5} {total:12.2f} | {q1:12.2f} {q2:12.2f} {q3:12.2f} {q4:12.2f}")
     print("-----------------------------")
     avgq = allQuarters/numQuarters
     avgqpct = (avgq / strategy.max_position_size) * 100
