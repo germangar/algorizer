@@ -346,24 +346,23 @@ class timeframe_c:
                 ohlcv = self.stream.fetcher.fetchLastClosed(self.stream.symbol, self.timeframeStr)
                 # FIXME: I guess I should add error handling to the fetch. More delays, yeepee
                 if ohlcv:
-                    if verbose and (ohlcv[c.DF_TIMESTAMP] != self.realtimeCandle.timestamp or 
-                        ohlcv[c.DF_OPEN] != self.realtimeCandle.open or 
-                        ohlcv[c.DF_HIGH] != self.realtimeCandle.high or 
-                        ohlcv[c.DF_LOW] != self.realtimeCandle.low or 
-                        ohlcv[c.DF_CLOSE] != self.realtimeCandle.close):
-                        print( f"WARNING: Candle mismatch corrected {self.timeframeStr}:\n local: {self.realtimeCandle.tolist()}\n fetch: {ohlcv[c.DF_TIMESTAMP], ohlcv[c.DF_OPEN], ohlcv[c.DF_HIGH], ohlcv[c.DF_LOW], ohlcv[c.DF_CLOSE], ohlcv[c.DF_VOLUME] }")
-                    
-                    # update with the fetched candle data
-                    self.realtimeCandle.timestamp = int(ohlcv[c.DF_TIMESTAMP])
-                    self.realtimeCandle.open = ohlcv[c.DF_OPEN]
-                    self.realtimeCandle.high = ohlcv[c.DF_HIGH]
-                    self.realtimeCandle.low = ohlcv[c.DF_LOW]
-                    self.realtimeCandle.close = ohlcv[c.DF_CLOSE]
-                    self.realtimeCandle.volume = ohlcv[c.DF_VOLUME]
-                    self.realtimeCandle.bottom = min( self.realtimeCandle.open, self.realtimeCandle.close )
-                    self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
-                    # if len(rows) >= 2:
-                    #     print( f"-- ------: {rows[-2, 0], rows[-2, 1], rows[-2, 2], rows[-2, 3], rows[-2, 4], rows[-2, 5]}" )
+                    if ohlcv[c.DF_TIMESTAMP] == self.realtimeCandle.timestamp:
+                        if verbose and (ohlcv[c.DF_OPEN] != self.realtimeCandle.open or 
+                            ohlcv[c.DF_HIGH] != self.realtimeCandle.high or 
+                            ohlcv[c.DF_LOW] != self.realtimeCandle.low or 
+                            ohlcv[c.DF_CLOSE] != self.realtimeCandle.close):
+                            print( f"WARNING: Candle mismatch corrected {self.timeframeStr}:\n local: {self.realtimeCandle.tolist()}\n fetch: {ohlcv[c.DF_TIMESTAMP], ohlcv[c.DF_OPEN], ohlcv[c.DF_HIGH], ohlcv[c.DF_LOW], ohlcv[c.DF_CLOSE], ohlcv[c.DF_VOLUME] }")
+                        
+                        # update with the fetched candle data
+                        self.realtimeCandle.open = ohlcv[c.DF_OPEN]
+                        self.realtimeCandle.high = ohlcv[c.DF_HIGH]
+                        self.realtimeCandle.low = ohlcv[c.DF_LOW]
+                        self.realtimeCandle.close = ohlcv[c.DF_CLOSE]
+                        self.realtimeCandle.volume = ohlcv[c.DF_VOLUME]
+                        self.realtimeCandle.bottom = min( self.realtimeCandle.open, self.realtimeCandle.close )
+                        self.realtimeCandle.top = max( self.realtimeCandle.open, self.realtimeCandle.close )
+                        # if len(rows) >= 2:
+                        #     print( f"-- ------: {rows[-2, 0], rows[-2, 1], rows[-2, 2], rows[-2, 3], rows[-2, 4], rows[-2, 5]}" )
                         
 
             # Append a new row to the Dataset for the closed candle data
