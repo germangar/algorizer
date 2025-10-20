@@ -346,7 +346,7 @@ class timeframe_c:
                 ohlcv = self.stream.fetcher.fetchLastClosed(self.stream.symbol, self.timeframeStr)
                 # FIXME: I guess I should add error handling to the fetch. More delays, yeepee
                 if ohlcv:
-                    if (ohlcv[c.DF_TIMESTAMP] != self.realtimeCandle.timestamp or 
+                    if verbose and (ohlcv[c.DF_TIMESTAMP] != self.realtimeCandle.timestamp or 
                         ohlcv[c.DF_OPEN] != self.realtimeCandle.open or 
                         ohlcv[c.DF_HIGH] != self.realtimeCandle.high or 
                         ohlcv[c.DF_LOW] != self.realtimeCandle.low or 
