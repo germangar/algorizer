@@ -246,6 +246,7 @@ def create_dataframe_message( timeframe ):
         "timeframe": timeframe.timeframeStr,
         "timeframemsec": tools.timeframeMsec(timeframe.timeframeStr),
         "arrays": pack_array(dataset),
+        "tick": { "type": "tick", "data": timeframe.realtimeCandle.tickData() }
     }
 
     return msgpack.packb(message, use_bin_type=True)
@@ -268,6 +269,8 @@ def create_graphs_baseline_message( timeframe ):
 
 def push_tick_update(timeframe):
     """Create a JSON message for tick/realtime updates"""
+    if client.status != CLIENT_LISTENING or client.streaming_timeframe != timeframe:
+        return
     message = {
         "type": "tick",
         "data": timeframe.realtimeCandle.tickData()
@@ -276,7 +279,7 @@ def push_tick_update(timeframe):
 
 
 def push_row_update(timeframe):
-    if client.status != CLIENT_LISTENING or client.streaming_timeframe != active.timeframe:
+    if client.status != CLIENT_LISTENING or client.streaming_timeframe != timeframe:
         return
     # rows = timeframe.dataset[-1]
 

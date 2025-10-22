@@ -1408,7 +1408,10 @@ class generatedSeries_c:
         self.lastUpdatedTimestamp = timeframe.timestamp
 
     def iloc( self, index = -1 ):
-        # return self.__getitem__(index)
+        # too slow
+        # series = self.timeframe.dataset[:,self.column_index]
+        # return series[index]
+
         barindex = self.timeframe.barindex
 
         if self.timeframe != active.timeframe :

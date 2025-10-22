@@ -433,6 +433,7 @@ class window_c:
         self.lastCandle = candle_c( arrays[-1, :].tolist() ) # create a candle object for the clock
         self.lastCandle.timeframemsec = descriptor["timeframemsec"]
         self.lastCandle.timestamp = self.timestamp + self.lastCandle.timeframemsec
+        self.newTick( descriptor.get('tick'), force = True )
         self.lastCandle.index = time_df.index[-1]
         self.lastCandle.updateRemainingTime()
         tasks.registerTask('clocks', self.update_clocks)
@@ -822,13 +823,20 @@ class window_c:
             self.addLine( line )
 
 
-    def newTick(self, msg):
+    def newTick(self, msg, force:bool = False):
         
         row = msg.get('data')
         if not row:
             return
         assert(row[c.DF_TIMESTAMP] is not None)
-        row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP])
+
+        if not force:
+            row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP])
+            row[c.DF_OPEN] = self.lastCandle.open
+            row[c.DF_HIGH] = max( self.lastCandle.high, row[c.DF_HIGH] )
+            row[c.DF_LOW] = min( self.lastCandle.low, row[c.DF_LOW] )
+            row[c.DF_CLOSE] = row[c.DF_CLOSE]
+            row[c.DF_VOLUME] = self.lastCandle.volume # FIXME: This will make the realtime candle not update it's volume
         
         self.lastCandle.updateFromSource(row) # for the clock
         self.lastCandle.updateRemainingTime()
@@ -904,7 +912,7 @@ class window_c:
         self.addLines( msg['lines'].get("added") )
 
         # finally add the opening of the realtime candle
-        self.newTick( msg.get('tick') )
+        self.newTick( msg.get('tick'), force = True )
         
 
     def isAlive(self)->bool:

@@ -332,8 +332,8 @@ class timeframe_c:
 
                 if is_fetch :
                     self.stream.tickEvent( self.realtimeCandle, True )
-                    if not self.stream.initializing:
-                        push_tick_update( self )
+                if not self.stream.initializing:
+                    push_tick_update( self )
 
                 continue
 
@@ -534,8 +534,8 @@ class timeframe_c:
     def indexForTimestamp( self, timestamp:int )->int:
         # Estimate the index by dividing the offset by the time difference between rows
         baseTimestamp = self.dataset[0, c.DF_TIMESTAMP]
-        index = int((timestamp - baseTimestamp) // self.timeframeMsec)
-        return max(-1, index - 1) # Return the previous index or -1 if not found
+        index = int((timestamp - baseTimestamp) // self.timeframeMsec) - 1
+        return max(-1, index) # Return the previous index or -1 if not found
     
     def timestampAtIndex( self, index:int )->int:
         return int( self.dataset[index, c.DF_TIMESTAMP] )
@@ -545,7 +545,7 @@ class timeframe_c:
 
     def valueAtTimestamp( self, column_name, timestamp:int ):
         index = self.indexForTimestamp(timestamp)
-        if index == -1:
+        if index == -1 or index > self.barindex:
             return None
         if column_name not in self.registeredSeries.keys():
             raise ValueError(f"Column '{column_name}' not found in dataset.")
