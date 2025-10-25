@@ -11,3 +11,5 @@ BOL.py
 config.json
 .vscode/settings.json
 charts.html
+*.svn-base
+*.svn
