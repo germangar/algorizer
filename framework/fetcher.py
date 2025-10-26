@@ -155,7 +155,10 @@ class ohlcvs_c:
         return ohlcv_list
     
     def fetchLastClosed( self, symbol, timeframe ):
-        ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=2)
+        try:
+            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=2)
+        except Exception as e:
+            return []
         if not ohlcv:
             print( " fetcher: no ohlcvs" )
             return []
