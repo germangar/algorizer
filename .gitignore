@@ -13,3 +13,4 @@ config.json
 charts.html
 *.svn-base
 *.svn
+strat.py
