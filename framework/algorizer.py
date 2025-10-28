@@ -169,6 +169,7 @@ class timeframe_c:
         self.realtimeCandle:candle_c = candle_c()
         self.realtimeCandle.timeframemsec = self.timeframeMsec
 
+        self.lastExecutedTimestamp = 0 # for debug purposes
  
     def initDataframe( self, ohlcvNP ):
         print( "=================" )
@@ -223,7 +224,7 @@ class timeframe_c:
         self.realtimeCandle.volume = row[c.DF_VOLUME]
         self.realtimeCandle.top = max(self.realtimeCandle.open, self.realtimeCandle.close)
         self.realtimeCandle.bottom = min(self.realtimeCandle.open, self.realtimeCandle.close)
-        self.stream.timestampFetch = self.realtimeCandle.timestamp
+        self.stream.timestampFetch = self.timestamp
 
         self.ready = True
 
@@ -279,8 +280,10 @@ class timeframe_c:
                     #     print( f"barindex:{self.barindex} timestamp:{tstamp} close:{newrow_close} big TF barindex:{lt.barindex} timestamp:{ltstamp} close:{lt.dataset[lt.barindex, c.DF_CLOSE]}")
 
                 # Execute the user-defined callback for each historical candle.
+                assert self.dataset[self.barindex, c.DF_TIMESTAMP] != self.lastExecutedTimestamp, "parseCandleUpdate (backtesting) tried to execute the same timestamp twice"
                 if( self.callback != None ):
                     self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
+                self.lastExecutedTimestamp = self.timestamp
 
                 # Print progress only during the main historical processing loop
                 if self.barindex % 10000 == 0 and not self.jumpstart: 
@@ -395,7 +398,7 @@ class timeframe_c:
             self.realtimeCandle.index = new_idx + 1
             self.realtimeCandle.updateRemainingTime()
 
-            self.barindex = new_idx
+            self.barindex = self.dataset.shape[0] - 1
             active.barindex = self.barindex
             self.timestamp = int( self.dataset[ self.barindex, c.DF_TIMESTAMP ] )
             if is_fetch :
@@ -404,9 +407,11 @@ class timeframe_c:
             print( f"NEW CANDLE {self.timeframeStr} : {[new_dataset_row[c.DF_TIMESTAMP], new_dataset_row[c.DF_OPEN], new_dataset_row[c.DF_HIGH], new_dataset_row[c.DF_LOW], new_dataset_row[c.DF_CLOSE], new_dataset_row[c.DF_VOLUME]]}" )
             # print( f" RT CANDLE {self.timeframeStr} : {self.realtimeCandle.tolist()}" )
 
+            assert self.dataset[self.barindex, c.DF_TIMESTAMP] != self.lastExecutedTimestamp, "parseCandleUpdate (realtime) tried to execute the same timestamp twice"
             if( self.callback != None ):
                 self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
-
+            self.lastExecutedTimestamp = self.timestamp
+            
             # make sure no generated series is left unupdated
             for n in self.generatedSeries.keys():
                 gs = self.generatedSeries[n]
@@ -664,10 +669,6 @@ class stream_c:
             
             candles = []
 
-        # we skipped the last row at initializing each timeframe
-        # so we can parse it now as an update because the last candle
-        # we received is almost certainly not closed yet
-        self.parseCandleUpdateMulti( ohlcvNP[-1:, :] )
         del ohlcvNP
 
         #################################################
