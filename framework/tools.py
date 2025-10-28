@@ -1,5 +1,4 @@
 import numpy as np
-from .nameseries import series_c
 from .calcseries import generatedSeries_c
 
 def get_column_index_from_array( dataset:np.ndarray, candidate_col:np.ndarray ):
@@ -22,7 +21,7 @@ def stringToValue( arg )->float:
 # used to standarize the name given to a generated series (calcseries.py)
 # I probably should defined type pd.series for 'source' but I don't feel like importing pandas here
 def generatedSeriesNameFormat( type, source, period:int ):
-    if isinstance(source, (series_c, generatedSeries_c)):
+    if isinstance(source, generatedSeries_c):
         return f'_{type}_{period}{source.name}'
     return f'_{type}_{period}'
 

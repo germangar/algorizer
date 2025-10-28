@@ -144,8 +144,8 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     signal_line.plot( 'macd', color = "#1BC573" )
 
     # same thing using methods
-    buySignal = rsi14[barindex] > 50.0 and BBlower.crossingDown(close) and invRSI < 20
-    sellSignal = rsi14[barindex] < 50.0 and BBupper.crossingUp(close) and invRSI > 80
+    buySignal = rsi14[barindex] > 50.0 and BBlower.crossingDown(close) and invRSI and invRSI < 20
+    sellSignal = rsi14[barindex] < 50.0 and BBupper.crossingUp(close) and invRSI and invRSI > 80
 
     # accesing positions and making orders
     shortpos = trade.getActivePosition(c.SHORT)

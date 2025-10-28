@@ -13,7 +13,6 @@ import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import time
 
-from .nameseries import series_c
 from .constants import c
 from . import active
 from . import tools
@@ -61,51 +60,164 @@ def _rolling_window_apply_optimized(arr: np.ndarray, window: int, func) -> np.nd
     return np.concatenate((np.full(window - 1, np.nan, dtype=np.float64), applied_values))
 
 
+def _rolling_window_apply_optimized_axis(arr: np.ndarray, window: int, func) -> np.ndarray:
+    """
+    Applies a function over a rolling window of a 1D NumPy array using sliding_window_view.
+    Pads the beginning with NaNs to match the input array's length.
+    """
+    if not isinstance(arr, np.ndarray):
+        arr = np.asarray(arr, dtype=np.float64)
+    
+    n = len(arr)
+    if window < 1:
+        return np.full_like(arr, np.nan) # Should technically return all NaNs for length < 1
+    
+    # Check if we have enough data to form at least one window
+    if n < window:
+        return np.full_like(arr, np.nan)
+        
+    # Create the rolling window view
+    # The view will have shape (n - window + 1, window)
+    window_view = sliding_window_view(arr, window)
+    
+    # Apply the function across the last axis (the window dimension)
+    # The result will have shape (n - window + 1,)
+    calculated_values = func(window_view)
+    
+    # Pad the beginning with NaNs to match the original array size
+    # We need (window - 1) NaNs at the start
+    padding = np.full(window - 1, np.nan, dtype=np.float64)
+    
+    # Concatenate the padding and the calculated values
+    result = np.concatenate((padding, calculated_values))
+    
+    # Ensure the result has the same length as the input
+    if len(result) > n:
+        return result[:n]
+    elif len(result) < n:
+        # This case should ideally not happen if n >= window
+        return np.pad(result, (0, n - len(result)), constant_values=np.nan)
+
+    return result
+
 
 NumericScalar = Union[float, int]
 OperandType = Union[np.ndarray, NumericScalar]
 
+def _prepare_param_for_op2( param, src_len ):
+    # if isinstance(param, (float, int)):
+    #     return param
+    if np.isscalar(param):
+        val = float(param)
+        return np.full(src_len, val, dtype=np.float64)
+    
+    p_len = param.shape[0]
+
+    if src_len == 1:
+        if p_len == 0: # If param is empty, result is NaN
+            return np.array([np.nan], dtype=np.float64)
+        # Use the most recent value from param (tail)
+        param = param[-1]
+
+    if src_len == p_len: # for thinking delete me later
+        param = np.asarray(param, dtype=np.float64)
+
+    elif p_len > src_len:
+        param_arr = np.asarray(param, dtype=np.float64)
+        param = param_arr[-src_len:]
+
+    return param
+
+
+def _prepare_param_for_op(param, src_len: int, dataset) -> np.ndarray:
+    """
+    Normalize 'param' into a 1-D np.float64 array of length src_len aligned to the tail.
+
+    Rules:
+    - Python or NumPy scalar -> full array filled with scalar.
+    - or 1-D ndarray -> tail-aligned: last src_len values (left-pad with NaNs if shorter).
+    - None or empty -> full NaN array.
+    - 0-D np.ndarray (numpy scalar) treated like scalar.
+    - 2-D arrays raise ValueError.
+    """
+
+    # Scalar (covers Python and NumPy scalars)
+    if np.isscalar(param):
+        val = float(param)
+        return np.full(src_len, val, dtype=np.float64)
+
+    # None or empty
+    if param is None:
+        return np.full(src_len, np.nan, dtype=np.float64)
+    
+    if isinstance(param, generatedSeries_c):
+        param = param.series()
+        if len(param) >= src_len:
+            return param[-src_len:].astype(np.float64, copy=False)
+        return np.asarray(param, dtype=np.float64)
+
+    # coerce to ndarray
+    param_arr = np.asarray(param, dtype=np.float64)
+
+    # If param_arr ended up 0-D (numpy scalar), treat like scalar
+    if param_arr.ndim == 0:
+        return np.full(src_len, float(param_arr), dtype=np.float64)
+
+    # Reject 2-D or higher arrays — callers should pass a column or 1-D array
+    if param_arr.ndim != 1:
+        raise ValueError("param must be scalar or 1-D array/series")
+
+    p_len = param_arr.shape[0]
+    # If param has at least src_len elements, take last src_len
+    if p_len >= src_len:
+        return param_arr[-src_len:].astype(np.float64, copy=False)
+
+    # p_len < src_len -> left-pad with NaNs so tails align
+    pad = np.full(src_len - p_len, np.nan, dtype=np.float64)
+    return np.concatenate((pad, param_arr)).astype(np.float64)
+
+
 def _generatedseries_calculate_add_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source + param
+    return np.asarray(source, dtype=np.float64) + _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_subtract_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source - param
+    return np.asarray(source, dtype=np.float64) - _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_multiply_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source * param
+    return np.asarray(source, dtype=np.float64) * _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_divide_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source / param
+    return np.asarray(source, dtype=np.float64) / _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_power_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return np.power(source, param)
+    return np.power(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
 
 def _generatedseries_calculate_min_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return np.minimum(source, param)
+    return np.minimum(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
 
 def _generatedseries_calculate_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return np.maximum(source, param)
+    return np.maximum(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
 
 def _generatedseries_calculate_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source == param
+    return np.asarray(source, dtype=np.float64) == _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_notequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source != param
+    return np.asarray(source, dtype=np.float64) != _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_greater_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source > param
+    return np.asarray(source, dtype=np.float64) > _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_greaterorequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source >= param
+    return np.asarray(source, dtype=np.float64) >= _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_less_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source < param
+    return np.asarray(source, dtype=np.float64) < _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return source <= param
+    return np.asarray(source, dtype=np.float64) <= _prepare_param_for_op( param, source.shape[0], dataset )
 
 def _generatedseries_calculate_logical_not(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    return ~source
+    return ~np.asarray(source, dtype=np.float64)
 
 
 ##### scalars by series
@@ -330,6 +442,16 @@ def _generatedseries_calculate_barswhilefalse(series: np.ndarray, period: int = 
 
 #
 def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    source = np.asarray(source, dtype=np.float64)
+    if period < 1 or period > source.shape[0]:
+        return np.full_like(source, np.nan)
+
+    sma = np.full_like(source, np.nan)
+    cumsum = np.cumsum(np.insert(source, 0, 0))
+    sma[period-1:] = (cumsum[period:] - cumsum[:-period]) / period
+    return sma
+
+def _generatedseries_calculate_sma2(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
         return talib.SMA(source, period)
     
@@ -341,6 +463,17 @@ def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.
     cumsum = np.cumsum(np.insert(source, 0, 0))
     sma[period-1:] = (cumsum[period:] - cumsum[:-period]) / period
     return sma
+
+def _generatedseries_calculate_sma3(source: np.ndarray, period: int) -> np.ndarray:
+    """Calculates Simple Moving Average (SMA) using the rolling window helper."""
+    if period < 1:
+        return np.full_like(source, np.nan)
+    
+    # Function to apply to each window: calculate the mean (average)
+    def mean_func(window):
+        return np.mean(window, axis=1)
+
+    return _rolling_window_apply_optimized(source, period, mean_func)
 
 # _ema_250. Elapsed time: 0.03 seconds (a little slow, but it's the only reliable one. Talib is also unreliable)
 def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -630,10 +763,11 @@ def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np
 
     return result
 
+
 # _stdev250. Elapsed time: 0.02 seconds (talib 0.00 seconds)
-def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+def _generatedseries_calculate_stdev_talib(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param:float=1.0) -> np.ndarray:
     if talib_available:
-        return talib.STDDEV(series, period)
+        return talib.STDDEV(series, period) * param
 
     length = len(series)
     if length < period:
@@ -643,13 +777,276 @@ def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: n
     windows = sliding_window_view(series, window_shape=period)
 
     # Compute sample standard deviation (ddof=1) for each window
-    stdev = np.std(windows, axis=1, ddof=1)
+    # Use nan-aware std to be robust to NaNs in incremental/update slices
+    try:
+        stdev = np.nanstd(windows, axis=1, ddof=1) * param
+    except Exception:
+        # Fallback: compute per-window to avoid shape issues
+        stdev = np.array([np.nanstd(w, ddof=0) * param for w in windows], dtype=np.float64)
 
     # Pad with NaNs for the first period - 1 values
     result = np.full(length, np.nan)
     result[period - 1:] = stdev
 
     return result
+
+# _stdev250. Elapsed time: 0.02 seconds (talib 0.00 seconds)
+def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param:float=1.0) -> np.ndarray:
+    # if talib_available:
+    #     return talib.STDDEV(series, period) * param
+
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+    
+    ddof = 0
+
+    # Create rolling windows
+    windows = sliding_window_view(series, window_shape=period)
+
+    # Compute sample standard deviation (ddof=1) for each window
+    # Use nan-aware std to be robust to NaNs in incremental/update slices
+    try:
+        stdev = np.nanstd(windows, axis=1, ddof=ddof) * param
+    except Exception:
+        # Fallback: compute per-window to avoid shape issues
+        stdev = np.array([np.nanstd(w, ddof=ddof) * param for w in windows], dtype=np.float64)
+
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = stdev
+
+    return result
+
+
+def _generatedseries_calculate_stdev2(series: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param:float= 1.0) -> np.ndarray:
+    """
+    Calculate rolling sample standard deviation using either TA-Lib or NumPy.
+    Compatible with both historical (full array) and incremental updates.
+    """
+
+    series = np.asarray(series, dtype=np.float64)
+    length = len(series)
+
+    if length == 0 or period < 2:
+        return np.full(length, np.nan)
+    
+    ddof = 0
+
+    # Historical / full array mode
+    if length > period * 2:
+        try:
+            from numpy.lib.stride_tricks import sliding_window_view
+            windows = sliding_window_view(series, window_shape=period)
+            stdev = np.nanstd(windows, axis=1, ddof=ddof)
+            result = np.full(length, np.nan)
+            result[period - 1:] = stdev * param
+            return result
+        except Exception:
+            pass  # fallback below
+
+    # Incremental / realtime mode (short period slice)
+    valid = series[~np.isnan(series)]
+    if len(valid) >= 2:
+        val = np.std(valid[-period:], ddof=ddof)
+    else:
+        val = np.nan
+
+    # Return aligned array (NaNs except last element)
+    result = np.full(length, np.nan)
+    result[-1] = val * param
+    return result
+
+
+def _generatedseries_calculate_stdev3(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=1.0) -> np.ndarray:
+    """
+    Full recalculation version of rolling standard deviation.
+    This function always computes the rolling sample std (ddof=1)
+    over the full-length series. If `series` is a short slice (incremental
+    update), it will try to reconstruct the original full column from
+    `dataset` by matching the tail; if not possible it will pad the
+    slice with NaNs to the full length and compute the rolling std.
+
+    Returns a full-length array (same length as dataset) with NaNs for
+    the first `period-1` positions.
+    """
+    # Defensive conversions
+    series = np.asarray(series, dtype=np.float64)
+    full_len = dataset.shape[0] if dataset is not None and hasattr(dataset, 'shape') else len(series)
+
+    if full_len < period:
+        return np.full(full_len, np.nan)
+
+    # If the provided series already covers the full dataset, use it
+    if len(series) == full_len:
+        full_series = series
+    else:
+        # Try to reconstruct the full column from dataset by matching the tail
+        start_idx = full_len - len(series)
+        full_series = None
+        if dataset is not None and dataset.shape[0] >= full_len:
+            try:
+                # match against tail of each column
+                for col in range(dataset.shape[1]):
+                    col_tail = dataset[start_idx:, col]
+                    if col_tail.shape[0] != len(series):
+                        continue
+                    # compare only non-nan positions
+                    mask = ~np.isnan(series)
+                    if mask.sum() == 0:
+                        # nothing to compare, skip
+                        continue
+                    try:
+                        if np.allclose(col_tail[mask], series[mask], rtol=1e-9, atol=1e-12, equal_nan=True):
+                            full_series = dataset[:, col].astype(np.float64)
+                            break
+                    except Exception:
+                        if np.array_equal(col_tail[mask], series[mask]):
+                            full_series = dataset[:, col].astype(np.float64)
+                            break
+            except Exception:
+                full_series = None
+
+        # If not found, pad with NaNs at the front
+        if full_series is None:
+            pad = np.full(full_len - len(series), np.nan, dtype=np.float64)
+            full_series = np.concatenate((pad, series)).astype(np.float64)
+
+    # Compute rolling windows and sample std (ddof=1)
+    # sliding_window_view will produce (full_len - period + 1, period)
+    windows = sliding_window_view(full_series, window_shape=period)
+    stdev_values = np.empty(windows.shape[0], dtype=np.float64)
+    for i, w in enumerate(windows):
+        valid_count = np.sum(~np.isnan(w))
+        if valid_count <= 1:
+            stdev_values[i] = np.nan
+        else:
+            # ddof=1 for sample standard deviation
+            stdev_values[i] = np.nanstd(w, ddof=0)
+
+    result = np.full(full_len, np.nan, dtype=np.float64)
+    result[period - 1:] = stdev_values * param
+    return result
+
+
+
+# Population STDEV
+# def _generatedseries_calculate_stdev4(series: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param=None) -> np.ndarray:
+#     """Calculates the Population Standard Deviation (STDEV) over a rolling window.
+#     Uses np.std with ddof=0 for consistency with TradingView's ta.stdev().
+#     """
+#     if period < 1:
+#         return np.full_like(series, np.nan)
+
+#     # Function to apply to each window: calculate the Population Standard Deviation (ddof=0)
+#     # The axis=1 tells NumPy to calculate the std along the window dimension
+#     def std_func(window):
+#         # np.std(..., ddof=0) is Population STDEV (divides by N)
+#         return np.std(window, axis=1, ddof=0)
+
+#     # Use the optimized helper to apply this function over the full array
+#     return _rolling_window_apply_optimized(series, period, std_func)
+
+def _generatedseries_calculate_stdev4(
+    source_arr: np.ndarray, 
+    length: int, 
+    dataset: np.ndarray = None, 
+    cindex: int = None, 
+    param:float=1.0
+) -> np.ndarray:
+    """
+    Calculates the Population Standard Deviation (STDEV) over a rolling window.
+    Uses np.std with ddof=0, and always performs a full array calculation 
+    to be consistent with the user's alwaysReset=True initialization flow.
+    Signature is adapted to accept extra arguments from generatedSeries_c.initialize.
+    """
+    # # If the array is too short, return all NaNs, which the full calculation handles
+    # if length < 1 or len(source_arr) < length:
+    #     return np.full_like(source_arr, np.nan)
+
+    # # Function to apply to each window: calculate the Population Standard Deviation (ddof=0)
+    # def std_func(window):
+    #     # np.std(..., ddof=0) is Population STDEV (divides by N)
+    #     return np.std(window, axis=1, ddof=0) * param
+
+    # # Use the optimized helper to apply this function over the full array
+    # return _rolling_window_apply_optimized_axis(source_arr, length, std_func)
+
+    """
+    Calculates the Population Standard Deviation (STDEV) over a rolling window.
+    Uses np.nanstd with ddof=0 (Population STDEV, dividing by N).
+    """
+    
+    # CRITICAL FIX: Always create a new copy of the source data as float64. 
+    source_arr = np.array(source_arr, dtype=np.float64, copy=True)
+    
+    if length < 1 or len(source_arr) < length:
+        return np.full_like(source_arr, np.nan)
+
+    def std_func(window_view: np.ndarray):
+        """
+        Function to apply to the 2D window view array.
+        Calculates Population STDEV (ddof=0) while ignoring NaNs.
+        """
+        
+        # 1. Calculate the Population STDEV, ignoring NaNs. ddof=0 divides by N.
+        stds = np.nanstd(window_view, axis=1, ddof=0) * param
+        
+        # 2. Critical Correction: np.nanstd returns 0.0 when all elements are NaN.
+        all_nan_mask = np.all(np.isnan(window_view), axis=1)
+        # We only want to mask out cases where ALL inputs were NaN.
+        stds[all_nan_mask] = np.nan
+        
+        return stds
+
+    # Use the optimized helper to apply this function over the full array
+    return _rolling_window_apply_optimized_axis(source_arr, length, std_func)
+
+def _generatedseries_calculate_STDEV_POPULATION_SIMPLE(
+    source_arr: np.ndarray, 
+    length: int, 
+    dataset: np.ndarray = None, 
+    cindex: int = None, 
+    param:float=  1.0
+) -> np.ndarray:
+    """
+    Calculates the Population Standard Deviation (STDEV) using a simple, unoptimized
+    Python loop and slicing. Uses np.nanstd with ddof=0 (Population STDEV).
+    
+    This function is suitable for both full array initialization (returning a long 
+    array with leading NaNs) and single bar updates (when passed a short array, 
+    it returns a short array where only the last element is the calculated value).
+    """
+    
+    # 1. Ensure source is a clean, float array copy
+    source_arr = np.array(source_arr, dtype=np.float64, copy=True)
+    n = len(source_arr)
+    
+    if length < 1 or n < length:
+        return np.full_like(source_arr, np.nan)
+    
+    # 2. Initialize result array with NaNs
+    result = np.full(n, np.nan, dtype=np.float64)
+    
+    # 3. Iterate over the array to define the window
+    for i in range(n):
+        if i >= length - 1:
+            # The window runs from (i - length + 1) up to (i + 1)
+            start_index = i - length + 1
+            window = source_arr[start_index : i + 1]
+            
+            # Count non-NaN elements in the window
+            num_valid = np.count_nonzero(~np.isnan(window))
+            
+            if num_valid > 0:
+                # Calculate Population STDEV (ddof=0) on the slice, ignoring NaNs
+                # NOTE: np.nanstd requires at least one non-NaN value, which num_valid > 0 guarantees.
+                stdev = np.nanstd(window, ddof=0) * param
+                result[i] = stdev
+            # If num_valid is 0 (all NaN), result[i] remains NaN from initialization
+
+    return result
+
 
 # _dev250. Elapsed time: 0.03 seconds
 def _generatedseries_calculate_dev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -1217,15 +1614,6 @@ def _generatedseries_calculate_obv(source: np.ndarray, period: int, dataset: np.
         return np.full(length, np.nan, dtype=np.float64)
     
 
-import numpy as np
-from typing import Union, Any, Optional
-
-# Ensure these are correctly imported in your calcseries.py:
-from .nameseries import series_c
-from .constants import c
-from . import active
-from . import tools
-
 # ... (your existing _generatedseries_calculate_ functions) ...
 
 # --- Laguerre Oscillator Calculation ---
@@ -1324,12 +1712,27 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
 
 
 class generatedSeries_c:
-    def __init__(self, type: str, source: np.ndarray, period: int, func=None, param=None, always_reset: bool = False):
+    
+    def __init__(self, name: str, source: np.ndarray|int, period: int, func=None, param=None, always_reset: bool = False):
         # Find the column index and name for the passed source array
-        if not isinstance( source, series_c ):
-            raise ValueError( "Source must be 'series_c' type" )
+        if isinstance( source, int ):
+            self.name = name
+            self.source_name = name
+            self.column_index = source
+            self.period = period if period is not None else 1
 
-        self.name = tools.generatedSeriesNameFormat(type, source, period)
+            self.param = None
+            self.func = None
+            self.timeframe = active.timeframe
+            self.lastUpdatedTimestamp = active.timeframe.timestamp
+            self.alwaysReset = False
+            self._is_generated_series = True # do not touch. 
+            return
+        
+        if not isinstance( source, generatedSeries_c ):
+            raise ValueError( f"Source must be 'generatedSeries_c' type [{name}]" )
+
+        self.name = tools.generatedSeriesNameFormat(name, source, period)
         self.column_index = -1
         self.source_name = source.name
         self.period = period if period is not None else len(source)
@@ -1338,7 +1741,7 @@ class generatedSeries_c:
         self.timeframe = active.timeframe
         self.lastUpdatedTimestamp = 0
         self.alwaysReset = always_reset
-        self._is_generated_series = True # do not touch. It's used to identify it as generatedSeries when operating with a series_c
+        self._is_generated_series = True # do not touch. 
 
         if self.func is None:
             raise SystemError(f"Generated Series without a func [{self.name}]")
@@ -1347,29 +1750,43 @@ class generatedSeries_c:
             raise SystemError(f"Generated Series with invalid period [{period}]")
 
 
-    def initialize( self, source: series_c ):
-        assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
+    def initialize( self, source ):
+        if not self.func:
+            raise ValueError( f"Tried to initialize {self.name} without a func" )
+        assert isinstance(source, generatedSeries_c), f"Source {source.name} must be generatedSeries_c type"  # temporary while make sure everything is
         assert self.timeframe == active.timeframe
-        if len(source) >= self.period and (self.name not in self.timeframe.registeredSeries.keys() or self.alwaysReset):
+        
+        if len(source) < self.period:
+            return
+        if self.name not in self.timeframe.generatedSeries.keys() or self.alwaysReset:
             timeframe = self.timeframe
 
-            barindex = len(source) - 1
+            if self.lastUpdatedTimestamp >= timeframe.timestamp:
+                return
+
+            barindex = len(timeframe.dataset) - 1
             start_time = time.time()
 
             # Call the func, which must now accept a 1D numpy array as the source and the 2D array as "dataset"
             # Expect func to return a 1D numpy array of values, aligned with the full dataset length
-            values = self.func(source, self.period, timeframe.dataset, self.column_index, self.param)
+            array = timeframe.dataset[:,source.column_index]
+
+
+            values = self.func(array, self.period, timeframe.dataset, self.column_index, self.param)
             if isinstance(values, (list, tuple)):
                 values = np.array(values, dtype=np.float64)
 
-            # Add the new column if necessary
-            if self.name not in timeframe.registeredSeries.keys():
-                series = timeframe.createColumnSeries( self.name, False )
-                self.column_index = series.index
+            # raise ValueError( f"REACHED {self.name}" )
+
+            if self.column_index == -1:
+                self.column_index = timeframe.dataset_createColumn()
+                if self.name not in timeframe.generatedSeries.keys():
+                    timeframe.generatedSeries[self.name] = self
 
             # Only assign values where not nan (mimicking dropna)
-            mask = ~np.isnan(values)
-            timeframe.dataset[mask, self.column_index] = values[mask]
+            # mask = ~np.isnan(values)
+            # timeframe.dataset[mask, self.column_index] = values[mask]
+            timeframe.dataset[:, self.column_index] = values
 
             # Find the timestamp column index
             self.lastUpdatedTimestamp = int(timeframe.dataset[barindex, c.DF_TIMESTAMP])
@@ -1377,41 +1794,44 @@ class generatedSeries_c:
             if timeframe.stream.initializing:
                 print(f"Initialized {self.name}. Elapsed time: {time.time() - start_time:.2f} seconds")
 
-    def update( self, source:series_c ):
-        if self.timeframe.backtesting:
-            if self.lastUpdatedTimestamp == 0:
-                self.initialize(source)
+    def update( self, source ):
+        if not self.func:
+            self.lastUpdatedTimestamp = self.timeframe.timestamp
             return
-        
-        assert isinstance(source, series_c), "Source must be series_c type"  # temporary while make sure everything is
+
+        assert isinstance(source, generatedSeries_c), "Source must be generatedSeries_c type"  # temporary while make sure everything is
         assert self.timeframe == active.timeframe
         
         timeframe = self.timeframe
+
+        # has this row already been updated?
+        if self.lastUpdatedTimestamp >= timeframe.timestamp:
+            return
 
         # if non existent or needs reset, initialize
         if self.alwaysReset or self.lastUpdatedTimestamp == 0:
             self.initialize(source)
             return
 
-        # has this row already been updated?
-        if self.lastUpdatedTimestamp >= timeframe.timestamp:
-            return
-
         # slice the required block for current calculation
-        barindex = timeframe.barindex
-        period_slice = source[-self.period:]
+        # period_slice = source[-self.period:]
+        period_slice = timeframe.dataset[-self.period:, source.column_index]
+
+        # source = source.series()
+        # source = np.asarray(source, dtype=np.float64)
+        # period_slice = source[-self.period:]
+
         # func should return a 1D array or scalar; we want the most recent value
         newval = self.func(period_slice, self.period, timeframe.dataset, self.column_index, self.param)
-        if isinstance(newval, (np.ndarray, series_c, list, tuple)):
+        
+        if isinstance(newval, (np.ndarray, list, tuple)):
             newval = newval[-1]
-        timeframe.dataset[barindex, self.column_index] = newval
+            
+        timeframe.dataset[timeframe.barindex, self.column_index] = newval
         self.lastUpdatedTimestamp = timeframe.timestamp
 
-    def iloc( self, index = -1 ):
-        # too slow
-        # series = self.timeframe.dataset[:,self.column_index]
-        # return series[index]
 
+    def iloc( self, index = -1 ):
         barindex = self.timeframe.barindex
 
         if self.timeframe != active.timeframe :
@@ -1432,13 +1852,13 @@ class generatedSeries_c:
     
     def current( self ):
         '''returns the last value in the series'''
-        return self.__getitem__(-1)
+        return self.__getitem__(self.timeframe.barindex)
     
-    def series(self):
+    def series(self)->np.ndarray:
         try:
-            series = self.timeframe.registeredSeries[self.name]
+            return self.timeframe.dataset[:,self.column_index]
         except Exception as e:
-            series = self.timeframe.dataset[:, self.column_index]
+            raise ValueError( "series() method couldn't produce an array" )
         return series
     
     def __getitem__(self, key):
@@ -1458,7 +1878,10 @@ class generatedSeries_c:
         self.series()[key] = value # This is going to be denied
 
     def __len__(self):
-        return len(self.timeframe.dataset[:, self.column_index])
+        # print( f"LEN {self.name}" )
+        # if not self.timeframe.backtesting:
+        #     raise ValueError( f"STOP HERE {self.name}" )
+        return self.timeframe.dataset.shape[0]
     
     def _lenError(self, other):
         if isinstance(other, generatedSeries_c):
@@ -1467,7 +1890,7 @@ class generatedSeries_c:
         raise ValueError( f"Can't operate on series of different lengths. {self.name} != {other.name}" )
     
     def __add__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return addSeries(self, other)
@@ -1479,7 +1902,7 @@ class generatedSeries_c:
         return self.__add__(other)
 
     def __sub__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return subtractSeries(self, other)
@@ -1491,7 +1914,7 @@ class generatedSeries_c:
         return self.__sub__(other)
 
     def __mul__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return multiplySeries(self, other)
@@ -1503,7 +1926,7 @@ class generatedSeries_c:
         return self.__mul__(other)
 
     def __truediv__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return divideSeries(self, other)
@@ -1518,7 +1941,7 @@ class generatedSeries_c:
         return multiplySeries(self, -1)
 
     def __lt__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return lessSeries(self, other)
@@ -1530,7 +1953,7 @@ class generatedSeries_c:
         raise ValueError("Unsupported reversed operand for <")
 
     def __le__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return lessOrEqualSeries(self, other)
@@ -1542,7 +1965,7 @@ class generatedSeries_c:
         raise ValueError("Unsupported reversed operand for <=")
 
     def __gt__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return greaterSeries(self, other)
@@ -1554,7 +1977,7 @@ class generatedSeries_c:
         raise ValueError("Unsupported reversed operand for >")
 
     def __ge__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return greaterOrEqualSeries(self, other)
@@ -1566,7 +1989,7 @@ class generatedSeries_c:
         raise ValueError("Unsupported reversed operand for >=")
 
     def __eq__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return equalSeries(self, other)
@@ -1578,7 +2001,7 @@ class generatedSeries_c:
         return NotImplemented
 
     def __ne__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, series_c, NumericScalar)):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
             if not isinstance(other, NumericScalar) and len(self) != len(other):
                 self._lenError(other)
             return notequalSeries(self, other)
@@ -1671,7 +2094,7 @@ class generatedSeries_c:
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, (series_c,np.ndarray) ):
+        elif isinstance( other, (np.ndarray) ):
             # Use iloc directly from the pd.Series
             if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
@@ -1696,7 +2119,7 @@ class generatedSeries_c:
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, (series_c,np.ndarray) ):
+        elif isinstance( other, (np.ndarray) ):
             if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
             return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and current_self_val != previous_self_val )
@@ -1712,213 +2135,207 @@ class generatedSeries_c:
     
 
 
-def _ensure_object_array( data: series_c|generatedSeries_c )-> series_c:
+def _ensure_object_array( data: generatedSeries_c )-> generatedSeries_c:
     """
     Helper function to ensure the input is a NumPy array.
     This replaces the initial type checking and conversion logic.
     """
-    if isinstance(data, series_c):
+    if isinstance(data, generatedSeries_c):
         return data
-    elif isinstance(data, generatedSeries_c):
-        return data.series()
     elif isinstance(data, np.ndarray):
-        # try to guess its index but we won't allow it anyway. We want to get rid of this option
-        index = tools.get_column_index_from_array( active.timeframe.dataset, data )
-        if index:
-            name = list(active.timeframe.registeredSeries.keys())[index]
-            raise ValueError( f"_ensure_object_array: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{name}]" )
         raise ValueError( "_ensure_object_array: Numpy np.ndarray is not a valid object" )
     else:
         raise TypeError(f"Unsupported input type: {type(data)}. Expected np.ndarray, pd.Series, or generatedSeries_c.")
 
 
 
-def addSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def addSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"add_{colA.index}_{colB}"
+        name = f"add_{colA.column_index}_s{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"add_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"add_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
 
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_add_series, colB )
+    # if not timeframe.backtesting:print( "COL A type:", colA.name, "                    COL B type:", colB.name )
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_add_series, param= colB )
 
-def subtractSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def subtractSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"sub_{colA.index}_{colB}"
+        name = f"sub_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"sub_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
-            raise ValueError("Operands must have the same shape for element-wise addition.")
-        
-    return timeframe.calcGeneratedSeries( name, colA, 1, _generatedseries_calculate_subtract_series, colB )
-
-def multiplySeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
-    timeframe = active.timeframe
-
-    colA = timeframe.seriesFromMultiObject( colA )
-    if isinstance( colB, NumericScalar ):
-        name = f"mul_{colA.index}_{colB}"
-    else:
-        colB = timeframe.seriesFromMultiObject( colB )
-        name = f"mul_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"sub_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_multiply_series, colB)
+    return timeframe.calcGeneratedSeries( name, colA, 1, _generatedseries_calculate_subtract_series, param= colB )
 
-def divideSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def multiplySeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"div_{colA.index}_{colB}"
+        name = f"mul_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"div_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"mul_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_divide_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_multiply_series, param= colB)
 
-def powerSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def divideSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"pow_{colA.index}_{colB}"
+        name = f"div_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"pow_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"div_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_power_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_divide_series, param= colB)
 
-def minSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def powerSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"min_{colA.index}_{colB}"
+        name = f"pow_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"min_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"pow_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_power_series, param= colB)
 
-def maxSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def minSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"max_{colA.index}_{colB}"
+        name = f"min_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"max_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, param= colB)
 
-def equalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def maxSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"eq_{colA.index}_{colB}"
+        name = f"max_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"eq_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"max_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_equal_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, param= colB)
 
-def notequalSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def equalSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"neq_{colA.index}_{colB}"
+        name = f"eq_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"neq_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"eq_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_notequal_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_equal_series, param= colB)
 
-def greaterSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def notequalSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"gr_{colA.index}_{colB}"
+        name = f"neq_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"gr_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"neq_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greater_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_notequal_series, param= colB)
 
-def greaterOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def greaterSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"gre_{colA.index}_{colB}"
+        name = f"gr_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"gre_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"gr_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greaterorequal_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greater_series, param= colB)
 
-def lessSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def greaterOrEqualSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"lt_{colA.index}_{colB}"
+        name = f"gre_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"lt_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"gre_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_less_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greaterorequal_series, param= colB)
 
-def lessOrEqualSeries(colA: str | generatedSeries_c | series_c, colB: str | generatedSeries_c | series_c | NumericScalar) -> generatedSeries_c:
+def lessSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
     colA = timeframe.seriesFromMultiObject( colA )
     if isinstance( colB, NumericScalar ):
-        name = f"le_{colA.index}_{colB}"
+        name = f"lt_{colA.column_index}_{colB}"
     else:
         colB = timeframe.seriesFromMultiObject( colB )
-        name = f"le_{colA.index}_{colB.index}" # Using resolved indices/names for consistent naming
-        if colA.shape != colB.shape: # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+        name = f"lt_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_lessequal_series, colB)
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_less_series, param= colB)
 
-def notSeries(source: str | generatedSeries_c | series_c) ->generatedSeries_c:
+def lessOrEqualSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    timeframe = active.timeframe
+
+    colA = timeframe.seriesFromMultiObject( colA )
+    if isinstance( colB, NumericScalar ):
+        name = f"le_{colA.column_index}_{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"le_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise addition.")
+        
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_lessequal_series, param= colB)
+
+def notSeries(source: str | generatedSeries_c) ->generatedSeries_c:
     timeframe = active.timeframe
 
     source = timeframe.seriesFromMultiObject( source )
-    name = f"not_{source.index}"
+    name = f"not_{source.column_index}"
     return timeframe.calcGeneratedSeries( name, source, 1, _generatedseries_calculate_logical_not, None )
 
 #
@@ -1926,140 +2343,140 @@ def notSeries(source: str | generatedSeries_c | series_c) ->generatedSeries_c:
 #
 
 
-def addScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def addScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar + series.
     """
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"add_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_add_series, scalar )
+    name = f"add_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_add_series, param= scalar )
 
-def subtractScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def subtractScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar - series.
     """
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"sub_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_subtract_series, scalar)
+    name = f"sub_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_subtract_series, param= scalar)
 
-def multiplyScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def multiplyScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar * series.
     """
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"mul_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_multiply_series, scalar)
+    name = f"mul_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_multiply_series, param= scalar)
 
-def divideScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def divideScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar / series.
     """
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"div_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_divide_series, scalar)
+    name = f"div_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_divide_series, param= scalar)
 
-def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar ** series.
     """
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"pow_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_power_series, scalar)
+    name = f"pow_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_power_series, param= scalar)
 
-def minScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def minScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for min(scalar, series).
     """
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"min_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_min_series, scalar)
+    name = f"min_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_min_series, param= scalar)
 
-def maxScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def maxScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for max(scalar, series).
     """
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"max_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_max_series, scalar)
+    name = f"max_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_max_series, param= scalar)
 
-def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar == series."""
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"eq_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_equal_series, scalar)
+    name = f"eq_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_equal_series, param= scalar)
 
-def notEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def notEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar != series."""
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"neq_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_notequal_series, scalar)
+    name = f"neq_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_notequal_series, param= scalar)
 
-def greaterScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def greaterScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar > series."""
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"gt_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greater_series, scalar)
+    name = f"gt_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greater_series, param= scalar)
 
-def greaterOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def greaterOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar >= series."""
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"ge_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greaterorequal_series, scalar)
+    name = f"ge_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greaterorequal_series, param= scalar)
 
-def lessScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def lessScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar < series."""
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"lt_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_less_series, scalar)
+    name = f"lt_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_less_series, param= scalar)
 
-def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c | series_c) -> generatedSeries_c:
+def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar <= series."""
     timeframe = active.timeframe
     series = timeframe.seriesFromMultiObject( series )
-    name = f"le_{scalar}_{series.index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_lessequal_series, scalar)
+    name = f"le_{scalar}_{series.column_index}" # Consistent naming for scalar first
+    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_lessequal_series, param= scalar)
 
 
 
 ###################### ANALITIC TOOLS #################################
 
-def highest(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+def highest(source: generatedSeries_c, period: int) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('highest', _ensure_object_array(source), period, _generatedseries_calculate_highest)
 
-def lowest(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+def lowest(source: generatedSeries_c, period: int) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('lowest', _ensure_object_array(source), period, _generatedseries_calculate_lowest)
 
-def highestbars(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+def highestbars(source: generatedSeries_c, period: int) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('highestbars', _ensure_object_array(source), period, _generatedseries_calculate_highestbars)
 
-def lowestbars(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+def lowestbars(source: generatedSeries_c, period: int) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('lowestbars', _ensure_object_array(source), period, _generatedseries_calculate_lowestbars)
 
-def falling( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def falling( source: generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'falling', _ensure_object_array(source), period, _generatedseries_calculate_falling )
 
-def rising( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def rising( source: generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rising', _ensure_object_array(source), period, _generatedseries_calculate_rising )
 
-def barsSinceSeries(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+def barsSinceSeries(source: generatedSeries_c, period: int) -> generatedSeries_c:
     import inspect
     # Get caller info by going up 2 levels in the stack
     caller_frame = inspect.currentframe().f_back
@@ -2068,19 +2485,19 @@ def barsSinceSeries(source: series_c|generatedSeries_c, period: int) -> generate
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('barsSince'+caller_id, _ensure_object_array(source), period, _generatedseries_calculate_barssince)
 
-def indexWhenTrueSeries(source: series_c|generatedSeries_c, period: int = None) -> generatedSeries_c:
+def indexWhenTrueSeries(source: generatedSeries_c, period: int = None) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('indexwhentrue_series', _ensure_object_array(source), period, _generatedseries_calculate_indexwhentrue)
 
-def indexWhenFalseSeries(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+def indexWhenFalseSeries(source: generatedSeries_c, period: int) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('indexwhenfalse_series', _ensure_object_array(source), period, _generatedseries_calculate_indexwhenfalse)
 
-def barsWhileTrueSeries(source: series_c|generatedSeries_c, period: int = None) -> generatedSeries_c:
+def barsWhileTrueSeries(source: generatedSeries_c, period: int = None) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('barsWhileTrue', _ensure_object_array(source), period, _generatedseries_calculate_barswhiletrue)
 
-def barsWhileFalseSeries(source: series_c|generatedSeries_c, period: int = None) -> generatedSeries_c:
+def barsWhileFalseSeries(source: generatedSeries_c, period: int = None) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('barsWhileFalse', _ensure_object_array(source), period, _generatedseries_calculate_barswhilefalse)
 
@@ -2089,27 +2506,35 @@ def barsWhileFalseSeries(source: series_c|generatedSeries_c, period: int = None)
 
 ########################## INDICATORS #################################
 
-def SMA( source: series_c|generatedSeries_c, period: int )->generatedSeries_c:
+def SMA( source: generatedSeries_c, period: int )->generatedSeries_c:
     timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries('sma', _ensure_object_array(source), period, _generatedseries_calculate_sma)
+    return timeframe.calcGeneratedSeries('sma', _ensure_object_array(source), period, _generatedseries_calculate_sma )
 
-def EMA( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def SMA2( source: generatedSeries_c, period: int )->generatedSeries_c:
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('sma2', _ensure_object_array(source), period, _generatedseries_calculate_sma2, always_reset= True )
+
+def SMA3( source: generatedSeries_c, period: int )->generatedSeries_c:
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries('sma2', _ensure_object_array(source), period, _generatedseries_calculate_sma3, always_reset= False )
+
+def EMA( source: generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "ema", _ensure_object_array(source), period, _generatedseries_calculate_ema, always_reset=True )
 
-def DEMA( source: series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def DEMA( source: generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "dema", _ensure_object_array(source), period, _generatedseries_calculate_dema, always_reset=True )
 
-def RMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def RMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rma', _ensure_object_array(source), period, _generatedseries_calculate_rma, always_reset=True )
 
-def WMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def WMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "wma", _ensure_object_array(source), period, _generatedseries_calculate_wma )
 
-def HMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def HMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     """Hull Moving Average implementation using multiple calculation steps
     HMA = WMA(2*WMA(n/2) - WMA(n), sqrt(n))
     """
@@ -2129,44 +2554,65 @@ def HMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
     
     # Final WMA with sqrt(period)
     sqrt_period = int(np.sqrt(period))
-    return timeframe.calcGeneratedSeries( "hma", raw_hma.series(), sqrt_period, _generatedseries_calculate_wma )
+    return timeframe.calcGeneratedSeries( "hma", raw_hma, sqrt_period, _generatedseries_calculate_wma )
 
-def STDEV( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def STDEV( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
     timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev )
+    return timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev, param = scalar, always_reset= True )
 
-def DEV( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def STDEVTALIB( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev_talib, param = scalar, always_reset= True )
+
+def STDEV2( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c: # con always_reset parece ok
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'stdev2', _ensure_object_array(source), period, _generatedseries_calculate_stdev2, param = scalar, always_reset= True )
+
+def STDEV3( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c: # Parece funcionar con always_reset. Es lentísima.Sin always_reset es sospechosa
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'stdev3', _ensure_object_array(source), period, _generatedseries_calculate_stdev3, param = scalar, always_reset= True )
+
+def STDEV4( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c: # Muy parecido pero NO lo mismo que en tiempo real
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'stdev4', _ensure_object_array(source), period, _generatedseries_calculate_stdev4, param = scalar, always_reset= True )
+
+def STDEV5( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'stdev5', _ensure_object_array(source), period, _generatedseries_calculate_STDEV_POPULATION_SIMPLE, param = scalar, always_reset= True )
+
+
+def DEV( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'dev', _ensure_object_array(source), period, _generatedseries_calculate_dev )
 
 def WILLR( period:int )->generatedSeries_c:
     timeframe = active.timeframe
-    source = timeframe.registeredSeries['close']
+    source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
 def TR( period:int )->generatedSeries_c:
     timeframe = active.timeframe
-    source = timeframe.registeredSeries['close']
+    source = _ensure_object_array(timeframe.generatedSeries['close'])
     return timeframe.calcGeneratedSeries( 'tr', source, period, _generatedseries_calculate_tr )
 
 def ATR( period:int )->generatedSeries_c:
     timeframe = active.timeframe
-    source = timeframe.registeredSeries['close']
+    source = _ensure_object_array(timeframe.generatedSeries['close'])
     return timeframe.calcGeneratedSeries( 'atr', source, period, _generatedseries_calculate_atr )
 
-def SLOPE( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def SLOPE( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'slope', _ensure_object_array(source), period, _generatedseries_calculate_slope )
 
-def VHMA(source: series_c|generatedSeries_c, period: int) -> generatedSeries_c:
+def VHMA(source: generatedSeries_c, period: int) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('vhma', _ensure_object_array(source), period, _generatedseries_calculate_vhma, always_reset= True)
 
-def BIAS( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def BIAS( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'bias', _ensure_object_array(source), period, _generatedseries_calculate_bias )
 
-def LINREG( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def LINREG( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "linreg", _ensure_object_array(source), period, _generatedseries_calculate_linreg )
 
@@ -2174,47 +2620,52 @@ def CCI(period: int = 20) -> generatedSeries_c:
     if not isinstance(period, int ):
         raise ValueError( "CCI requires only a period argument" )
     timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries('cci', timeframe.registeredSeries['close'], period, _generatedseries_calculate_cci, always_reset= True)
+    source = timeframe.generatedSeries['close']
+    return timeframe.calcGeneratedSeries('cci', _ensure_object_array(source), period, _generatedseries_calculate_cci, always_reset= True)
 
-def CFO( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def CFO( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cfo', _ensure_object_array(source), period, _generatedseries_calculate_cfo )
 
-def CMO(source: series_c|generatedSeries_c, period: int = 9) -> generatedSeries_c:
+def CMO(source: generatedSeries_c, period: int = 9) -> generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('cmo', _ensure_object_array(source), period, _generatedseries_calculate_cmo)
 
-def FWMA( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def FWMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'fwma', _ensure_object_array(source), period, _generatedseries_calculate_fwma )
 
-def RSI( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def RSI( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'rsi', _ensure_object_array(source), period, _generatedseries_calculate_rsi, always_reset=True )
 
-def IFTrsi( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def IFTrsi( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     rsi = timeframe.calcGeneratedSeries( 'rsi', _ensure_object_array(source), period, _generatedseries_calculate_rsi, always_reset=True )
-    return timeframe.calcGeneratedSeries( 'iftrsi', rsi.series(), period, _generatedseries_calculate_inverse_fisher_rsi )
+    return timeframe.calcGeneratedSeries( 'iftrsi', rsi, period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = active.timeframe
-    fish = timeframe.calcGeneratedSeries( 'fisher', timeframe.registeredSeries['close'], period, _generatedseries_calculate_fisher )
-    sig = timeframe.calcGeneratedSeries( 'fishersig', timeframe.registeredSeries['close'], period, _generatedseries_calculate_fisher_signal, signal )
+    source = _ensure_object_array(timeframe.generatedSeries['close'])
+    fish = timeframe.calcGeneratedSeries( 'fisher', source, period, _generatedseries_calculate_fisher )
+    sig = timeframe.calcGeneratedSeries( 'fishersig', source, period, _generatedseries_calculate_fisher_signal, signal )
     return fish, sig
 
 def AO( fast: int = 5, slow: int = 34 ) -> generatedSeries_c:
     timeframe = active.timeframe
     param = (fast, slow)
-    return timeframe.calcGeneratedSeries('ao', timeframe.registeredSeries['close'], max(fast,slow), _generatedseries_calculate_ao, param)
+    source = _ensure_object_array(timeframe.generatedSeries['close'])
+    return timeframe.calcGeneratedSeries('ao', source, max(fast,slow), _generatedseries_calculate_ao, param)
 
 def BR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'br', timeframe.registeredSeries['close'], period, _generatedseries_calculate_br )
+    source = _ensure_object_array(timeframe.generatedSeries['close'])
+    return timeframe.calcGeneratedSeries( 'br', source, period, _generatedseries_calculate_br )
 
 def AR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'ar', timeframe.registeredSeries['close'], period, _generatedseries_calculate_ar )
+    source = _ensure_object_array(timeframe.generatedSeries['close'])
+    return timeframe.calcGeneratedSeries( 'ar', source, period, _generatedseries_calculate_ar )
 
 def BRAR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = active.timeframe
@@ -2222,20 +2673,21 @@ def BRAR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
     ar = AR(period, timeframe)
     return br, ar
 
-def CG( source:series_c|generatedSeries_c, period:int )->generatedSeries_c:
+def CG( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'cg', _ensure_object_array(source), period, _generatedseries_calculate_cg )
 
-def STOCHk( source: series_c|generatedSeries_c, period:int )-> tuple[generatedSeries_c, generatedSeries_c]:
+def STOCHk( source: generatedSeries_c, period:int )-> tuple[generatedSeries_c, generatedSeries_c]:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( "stochk", _ensure_object_array(source), period, _generatedseries_calculate_stoch_k )
 
 def OBV( timeframe=None ) -> generatedSeries_c:
     timeframe = active.timeframe
     # period=2 because obv reads the previous value of close. It can not be anything else.
-    return timeframe.calcGeneratedSeries( 'obv', timeframe.registeredSeries['close'], 2, _generatedseries_calculate_obv )
+    source = _ensure_object_array(timeframe.generatedSeries['close'])
+    return timeframe.calcGeneratedSeries( 'obv', source, 2, _generatedseries_calculate_obv )
 
-def LAGUERRE(source: Union[str, series_c, generatedSeries_c], gamma: float = 0.7)->generatedSeries_c:
+def LAGUERRE(source: Union[str, generatedSeries_c], gamma: float = 0.7)->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'lagerre', _ensure_object_array(source), 1, _generatedseries_calculate_laguerre, gamma, always_reset=True )
 
@@ -2245,7 +2697,7 @@ def LAGUERRE(source: Union[str, series_c, generatedSeries_c], gamma: float = 0.7
 # # #
 
 
-def Stochastic(source: series_c|generatedSeries_c, k_period: int = 14, d_period: int = 3)-> tuple[generatedSeries_c, generatedSeries_c]:
+def Stochastic(source: generatedSeries_c, k_period: int = 14, d_period: int = 3)-> tuple[generatedSeries_c, generatedSeries_c]:
     """
     Calculates the Stochastic Oscillator (%K and %D lines).
 
@@ -2268,7 +2720,7 @@ def Stochastic(source: series_c|generatedSeries_c, k_period: int = 14, d_period:
     return k_line_series, d_line_series
 
 
-def BollingerBands( source:series_c|generatedSeries_c, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+def BollingerBands( source:generatedSeries_c, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the Bollinger Bands (basis, upper, lower) for the given source series and period.
 
@@ -2280,13 +2732,16 @@ def BollingerBands( source:series_c|generatedSeries_c, period:int, mult:float = 
         Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
     """
     BBbasis = SMA(source, period)
-    stdev = STDEV(source, period)
-    BBupper = BBbasis + (stdev * mult)
-    BBlower = BBbasis - (stdev * mult)
+    # stdev = STDEV(source, period)
+    # BBupper = BBbasis + (stdev * mult)
+    # BBlower = BBbasis - (stdev * mult)
+    stdev = STDEV(source, period, mult)
+    BBupper = BBbasis + stdev
+    BBlower = BBbasis - stdev
     return BBbasis, BBupper, BBlower
 
 
-def MACD( source:series_c|generatedSeries_c, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
+def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
     Returns the MACD line, Signal line, and Histogram for given source and periods.
     Args:
@@ -2316,7 +2771,7 @@ def MACD( source:series_c|generatedSeries_c, fast: int = 12, slow: int = 26, sig
 
 ################ Helpers. Not series #########################
 
-def indexWhenTrue(source: series_c|generatedSeries_c)-> Union[int, None]:
+def indexWhenTrue(source: generatedSeries_c)-> Union[int, None]:
     """
     Finds the 0-based positional index of the last True value in a boolean-coercible array.
 
@@ -2341,7 +2796,7 @@ def indexWhenTrue(source: series_c|generatedSeries_c)-> Union[int, None]:
     else:
         return None
 
-def indexWhenFalse(source: series_c|generatedSeries_c)-> Union[int, None]:
+def indexWhenFalse(source: generatedSeries_c)-> Union[int, None]:
     """
     Finds the 0-based positional index of the last False value in a boolean-coercible array.
 
@@ -2378,7 +2833,7 @@ def barsWhileTrue( source ):
         return None
     return active.barindex - index_when_false
 
-def crossingUp( self:series_c|generatedSeries_c|float, other:series_c|generatedSeries_c|float ):
+def crossingUp( self:generatedSeries_c|float, other:generatedSeries_c|float ):
     """
     Determines if 'self' crosses up over 'other' between the previous and current bar.
 
@@ -2402,7 +2857,7 @@ def crossingUp( self:series_c|generatedSeries_c|float, other:series_c|generatedS
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, (np.ndarray, series_c) ):
+        elif isinstance( other, np.ndarray ):
             if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
             return ( previous_self_val <= other[active.barindex-1] and current_self_val >= other[active.barindex] and current_self_val != previous_self_val )
@@ -2429,19 +2884,19 @@ def crossingUp( self:series_c|generatedSeries_c|float, other:series_c|generatedS
     self_new = 0
     other_old = 0
     other_new = 0
-    if isinstance( self, (np.ndarray, series_c) ):
+    if isinstance( self, np.ndarray ):
         if( len(self) < 2 or active.barindex < 1 ):
             return False
         self_old = self[active.barindex-1]
         self_new = self[active.barindex]
-        if isinstance( other, (np.ndarray, series_c) ):
+        if isinstance( other, np.ndarray ):
             if( len(other) < 2 ):
                 return False
             other_old = other[active.barindex-1]
             other_new = other[active.barindex]
         elif isinstance( other, generatedSeries_c ):
             # Directly use other.iloc(-1) and other.iloc(-2)
-            if np.isnan(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
+            if np.isnan(other.lastUpdatedTimestamp) or len(other) < 2 or active.barindex < 1 :
                 return False
             other_old = other.iloc(-2)
             other_new = other.iloc(-1) 
@@ -2465,7 +2920,7 @@ def crossingUp( self:series_c|generatedSeries_c|float, other:series_c|generatedS
     return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
 
 
-def crossingDown( self:series_c|generatedSeries_c|float, other:series_c|generatedSeries_c|float ):
+def crossingDown( self:generatedSeries_c|float, other:generatedSeries_c|float ):
     """
     Determines if 'self' crosses down below 'other' between the previous and current bar.
 
@@ -2488,7 +2943,7 @@ def crossingDown( self:series_c|generatedSeries_c|float, other:series_c|generate
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
             return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, (np.ndarray, series_c) ):
+        elif isinstance( other, np.ndarray ):
             if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
             return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and current_self_val != previous_self_val )
@@ -2515,18 +2970,18 @@ def crossingDown( self:series_c|generatedSeries_c|float, other:series_c|generate
     self_new = 0
     other_old = 0
     other_new = 0
-    if isinstance( self, (np.ndarray, series_c) ):
+    if isinstance( self, np.ndarray ):
         if( len(self) < 2 or active.barindex < 1 ):
             return False
         self_old = self[active.barindex-1]
         self_new = self[active.barindex]
-        if isinstance( other, (np.ndarray, series_c) ):
+        if isinstance( other, np.ndarray ):
             if( len(other) < 2 ):
                 return False
             other_old = other[active.barindex-1]
             other_new = other[active.barindex]
         elif isinstance( other, generatedSeries_c ):
-            if np.isnan(other.lastUpdatedTimestamp) or len(other.series()) < 2 or active.barindex < 1 :
+            if np.isnan(other.lastUpdatedTimestamp) or len(other) < 2 or active.barindex < 1 :
                 return False
             other_old = other.iloc(-2)
             other_new = other.iloc(-1) 
@@ -2565,7 +3020,7 @@ def crossing( self, other ):
 
 from .pivots import pivots_c, pivot_c
 pivotsNow:pivots_c = None
-def pivots( high:series_c, low:series_c, amplitude: float = 1.0, reversal_percent: float = 32.0 )->pivots_c:
+def pivots( high:generatedSeries_c, low:generatedSeries_c, amplitude: float = 1.0, reversal_percent: float = 32.0 )->pivots_c:
     global pivotsNow
     if pivotsNow == None:
         pivotsNow = pivots_c(amplitude, reversal_percent)

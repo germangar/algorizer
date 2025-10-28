@@ -9,7 +9,6 @@ from . import tasks
 from . import tools
 from .fetcher import ohlcvs_c
 from .candle import candle_c
-from .nameseries import series_c
 from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update
 from . import active
@@ -20,7 +19,7 @@ VERIFY_CLOSED_CANDLES = True # Asks the exchange to send the full candle. Preven
 
 
 class plot_c:
-    def __init__( self, source:float|int|series_c|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, ptype = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
+    def __init__( self, source:float|int|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, ptype = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
         '''name, color, style, width
         color: str = 'rgba(200, 200, 200, 0.6)',
         style: LINE_STYLE = 'solid', width: int = 2,
@@ -40,9 +39,9 @@ class plot_c:
 
         timeframe = active.timeframe
 
-        if source is None or isinstance(source, (float, int)):
+        if source is None or np.isscalar(source): # or isinstance(source, (float, int)):
             if name:
-                if name in timeframe.registeredSeries.keys():
+                if name in timeframe.generatedSeries.keys():
                     raise ValueError(f"plot_c:name [{name}] is already in use")
                 if name.startswith('_'):
                     raise ValueError(f"plot_c:names starting with an underscore are reserved for generatedSeries_c objects")
@@ -50,23 +49,24 @@ class plot_c:
                 if not self.screen_name:
                     self.screen_name = self.name
 
-                series = timeframe.createColumnSeries( self.name, True ) # it creates a series_c with its name and stores it in timeframe.registeredSeries
-                self.column_index = series.index
+                gs:generatedSeries_c = timeframe.createGeneratedSeriesColumn( self.name )
+                self.column_index = gs.column_index
 
-        elif isinstance( source, (generatedSeries_c, series_c) ):
+        elif isinstance( source, generatedSeries_c ):
             self.name = source.name
-            self.column_index = source.column_index if isinstance(source, generatedSeries_c) else source.index
+            self.column_index = source.column_index
             if not self.screen_name:
                 self.screen_name = self.name
 
-        if not self.name or self.name not in timeframe.registeredSeries.keys():
-            raise ValueError(f"plot_c:Couldn't assign a name to the plot [{name}]")
+        if not self.name: #  # FIXME!!
+            raise ValueError( f"plot_c:Couldn't assign a name to the plot [{name}]      type: {type(source)}" )
+        
+        timeframe.registeredPlots[self.name] = self
 
     def update(self, source, timeframe):
         if source is None or isinstance(source, (float, int)):
             source = np.nan if source is None else float(source)
             timeframe.dataset[timeframe.barindex, self.column_index] = source
-            # timeframe.registeredSeries[self.name][timeframe.barindex] = source # This is safer by a little bit slower.
 
     def descriptor(self):
         return {
@@ -101,13 +101,13 @@ class marker_c:
     
 class line_c:
     def __init__( self, x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, style = 'solid', chart_name:str = 'main' ):
-        if isinstance( x1, (generatedSeries_c, series_c, np.ndarray ) ):
+        if isinstance( x1, (generatedSeries_c, np.ndarray ) ):
             x1 = x1[active.timeframe.barindex]
-        if isinstance( y1, (generatedSeries_c, series_c, np.ndarray ) ):
+        if isinstance( y1, (generatedSeries_c, np.ndarray ) ):
             y1 = y1[active.timeframe.barindex]
-        if isinstance( x2, (generatedSeries_c, series_c, np.ndarray ) ):
+        if isinstance( x2, (generatedSeries_c, np.ndarray ) ):
             x2 = x2[active.timeframe.barindex]
-        if isinstance( y2, (generatedSeries_c, series_c, np.ndarray ) ):
+        if isinstance( y2, (generatedSeries_c, np.ndarray ) ):
             y2 = y2[active.timeframe.barindex]
         self.id = id(self)
         self.x1 = x1
@@ -164,12 +164,12 @@ class timeframe_c:
         self.dataset:Optional[np.NDArray[np.float64]] = None
         self.generatedSeries: dict[str, generatedSeries_c] = {}
         self.registeredPlots: dict[str, plot_c] = {}
-        self.registeredSeries: dict[str, series_c] = {}
 
         self.realtimeCandle:candle_c = candle_c()
         self.realtimeCandle.timeframemsec = self.timeframeMsec
 
-        self.lastExecutedTimestamp = 0 # for debug purposes
+        self.lastTimestampExecuted = 0
+
  
     def initDataframe( self, ohlcvNP ):
         print( "=================" )
@@ -181,15 +181,15 @@ class timeframe_c:
         start_time = time.time()
         self.dataset = ohlcvNP[:-1, :].copy()
 
-        # create series_c objects representing the columns
-        self.registeredSeries['timestamp'] = series_c( self.dataset[:, c.DF_TIMESTAMP], 'timestamp', False )
-        self.registeredSeries['open'] = series_c( self.dataset[:, c.DF_OPEN], 'open', False )
-        self.registeredSeries['high'] = series_c( self.dataset[:, c.DF_HIGH], 'high', False )
-        self.registeredSeries['low'] = series_c( self.dataset[:, c.DF_LOW], 'low', False )
-        self.registeredSeries['close'] = series_c( self.dataset[:, c.DF_CLOSE], 'close', False )
-        self.registeredSeries['volume'] = series_c( self.dataset[:, c.DF_VOLUME], 'volume', False )
-        self.registeredSeries['top'] = series_c( self.dataset[:, c.DF_TOP], 'top', False )
-        self.registeredSeries['bottom'] = series_c( self.dataset[:, c.DF_BOTTOM], 'bottom', False )
+        # create generatedSeries_c objects representing the columns
+        self.generatedSeries['timestamp'] = generatedSeries_c( 'timestamp', c.DF_TIMESTAMP, 1 )
+        self.generatedSeries['open'] = generatedSeries_c( 'open', c.DF_OPEN, 1 )
+        self.generatedSeries['high'] = generatedSeries_c( 'high', c.DF_HIGH, 1 )
+        self.generatedSeries['low'] = generatedSeries_c( 'low', c.DF_LOW, 1 )
+        self.generatedSeries['close'] = generatedSeries_c( 'close', c.DF_CLOSE, 1 )
+        self.generatedSeries['volume'] = generatedSeries_c( 'volume', c.DF_VOLUME, 1 )
+        self.generatedSeries['top'] = generatedSeries_c( 'top', c.DF_TOP, 1 )
+        self.generatedSeries['bottom'] = generatedSeries_c( 'bottom', c.DF_BOTTOM, 1 )
         
 
         # --- Phase 2: backtesting (row-by-row backtest simulation) ---
@@ -215,7 +215,7 @@ class timeframe_c:
             print( f"No callback function defined or is empty. Skipping script logic {self.timeframeStr}." )
 
         # set the realtime candle to the row we skipped because it isn't yet closed
-        row = ohlcvNP[-1]
+        row = ohlcvNP[-1, :]
         self.realtimeCandle.timestamp = row[c.DF_TIMESTAMP]
         self.realtimeCandle.open = row[c.DF_OPEN]
         self.realtimeCandle.high = row[c.DF_HIGH]
@@ -224,6 +224,7 @@ class timeframe_c:
         self.realtimeCandle.volume = row[c.DF_VOLUME]
         self.realtimeCandle.top = max(self.realtimeCandle.open, self.realtimeCandle.close)
         self.realtimeCandle.bottom = min(self.realtimeCandle.open, self.realtimeCandle.close)
+
         self.stream.timestampFetch = self.timestamp
 
         self.ready = True
@@ -267,7 +268,7 @@ class timeframe_c:
                 # Circle back to the already precomputed timeframes and set the barindex 
                 # and timestamp to the same bar so we can read them in parallel
                 for lt in self.stream.timeframes.values():
-                    if not lt.ready:
+                    if not lt.ready or lt.backtesting:
                         continue
                     # figure out the other timeframe barindex and timestamp for this candle barindex and timestamp
                     lt.barindex = lt.indexForTimestamp( newrow_timestamp )
@@ -280,10 +281,20 @@ class timeframe_c:
                     #     print( f"barindex:{self.barindex} timestamp:{tstamp} close:{newrow_close} big TF barindex:{lt.barindex} timestamp:{ltstamp} close:{lt.dataset[lt.barindex, c.DF_CLOSE]}")
 
                 # Execute the user-defined callback for each historical candle.
-                assert self.dataset[self.barindex, c.DF_TIMESTAMP] != self.lastExecutedTimestamp, "parseCandleUpdate (backtesting) tried to execute the same timestamp twice"
+                if self.lastTimestampExecuted == self.dataset[self.barindex, c.DF_TIMESTAMP]:
+                    raise ValueError( f"Backtesting: Timestamp already executed [{int(self.dataset[self.barindex, c.DF_TIMESTAMP])}] at barindex {self.barindex}\n previous index timestamp: {int(self.dataset[self.barindex-1, c.DF_TIMESTAMP])}")
+
                 if( self.callback != None ):
-                    self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
-                self.lastExecutedTimestamp = self.timestamp
+                    self.callback( self, 
+                              self.generatedSeries['open'], 
+                              self.generatedSeries['high'], 
+                              self.generatedSeries['low'], 
+                              self.generatedSeries['close'], 
+                              self.generatedSeries['volume'], 
+                              self.generatedSeries['top'], 
+                              self.generatedSeries['bottom'] )
+                    
+                self.lastTimestampExecuted = self.dataset[self.barindex, c.DF_TIMESTAMP]
 
                 # Print progress only during the main historical processing loop
                 if self.barindex % 10000 == 0 and not self.jumpstart: 
@@ -345,7 +356,7 @@ class timeframe_c:
             # Exchange issued candle updates may not match fetched closed candles (used for historic backtesting)
             # so we need to fetch the last historic candle after the updates closed a candle. Which SUCKS because it adds
             # half a second or more of delay, but if we don't the backtest may not match the realtime strategy.
-            if VERIFY_CLOSED_CANDLES and self.stream.exchange.id != "binance": # chatGPT affirms Binance is the only one with perfect candles in the updates.
+            if VERIFY_CLOSED_CANDLES: # and self.stream.exchange.id != "binance": # chatGPT affirms Binance is the only one with perfect candles in the updates.
                 ohlcv = self.stream.fetcher.fetchLastClosed(self.stream.symbol, self.timeframeStr)
                 # FIXME: I guess I should add error handling to the fetch. More delays, yeepee
                 if ohlcv:
@@ -383,8 +394,6 @@ class timeframe_c:
             new_dataset_row[c.DF_BOTTOM]    = self.realtimeCandle.bottom
             self.dataset = np.vstack([self.dataset, new_dataset_row]) # Append the new row to the dataset
             
-            # reallocate the named series views because a new row was created
-            self.relinkSeriesToDataset()
 
             # copy newrow into realtimeCandle for the NEXT incoming tick
             self.realtimeCandle.timestamp = newrow_timestamp
@@ -404,19 +413,29 @@ class timeframe_c:
             if is_fetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
 
-            print( f"NEW CANDLE {self.timeframeStr} : {[new_dataset_row[c.DF_TIMESTAMP], new_dataset_row[c.DF_OPEN], new_dataset_row[c.DF_HIGH], new_dataset_row[c.DF_LOW], new_dataset_row[c.DF_CLOSE], new_dataset_row[c.DF_VOLUME]]}" )
+            # print( f"NEW CANDLE {self.timeframeStr} : {[new_dataset_row[c.DF_TIMESTAMP], new_dataset_row[c.DF_OPEN], new_dataset_row[c.DF_HIGH], new_dataset_row[c.DF_LOW], new_dataset_row[c.DF_CLOSE], new_dataset_row[c.DF_VOLUME]]}" )
             # print( f" RT CANDLE {self.timeframeStr} : {self.realtimeCandle.tolist()}" )
 
-            assert self.dataset[self.barindex, c.DF_TIMESTAMP] != self.lastExecutedTimestamp, "parseCandleUpdate (realtime) tried to execute the same timestamp twice"
-            if( self.callback != None ):
-                self.callback( self, self.registeredSeries['open'], self.registeredSeries['high'], self.registeredSeries['low'], self.registeredSeries['close'], self.registeredSeries['volume'], self.registeredSeries['top'], self.registeredSeries['bottom'] )
-            self.lastExecutedTimestamp = self.timestamp
             
+            if self.lastTimestampExecuted == self.dataset[self.barindex, c.DF_TIMESTAMP]:
+                raise ValueError( f"Realtime: Timestamp already executed [{int(self.dataset[self.barindex, c.DF_TIMESTAMP])}] at barindex {self.barindex}\n previous index timestamps: {self.dataset[:, c.DF_TIMESTAMP].tolist()[-3:]}")
+                
+            if( self.callback != None ):
+                self.callback( self, 
+                              self.generatedSeries['open'], 
+                              self.generatedSeries['high'], 
+                              self.generatedSeries['low'], 
+                              self.generatedSeries['close'], 
+                              self.generatedSeries['volume'], 
+                              self.generatedSeries['top'], 
+                              self.generatedSeries['bottom'] )
+                
+            self.lastTimestampExecuted = self.dataset[self.barindex, c.DF_TIMESTAMP]
+
             # make sure no generated series is left unupdated
-            for n in self.generatedSeries.keys():
-                gs = self.generatedSeries[n]
-                if gs.lastUpdatedTimestamp < self.barindex:
-                    gs.update(self.registeredSeries[gs.source_name])
+            # for gs in self.generatedSeries.values():
+            #     if gs.lastUpdatedTimestamp < self.timestamp:
+            #         gs.update(self.generatedSeries[gs.source_name])
 
             self.stream.tickEvent( self.realtimeCandle, True )
 
@@ -424,30 +443,45 @@ class timeframe_c:
                 push_row_update( self )
         
 
-    def createColumn( self )->int:
+    def dataset_createColumn( self )->int:
         # Add the new column if necessary
         n_rows = self.dataset.shape[0]
         new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
         self.dataset = np.hstack([self.dataset, new_col])
         index = self.dataset.shape[1] - 1
-        self.relinkSeriesToDataset()
         return index
 
-    def createColumnSeries( self, name, assignable = True )->series_c:
-        if name in self.registeredSeries.keys():
+
+    def createGeneratedSeriesColumn( self, name, assignable = True )->generatedSeries_c:
+        if name in self.generatedSeries.keys():
             raise ValueError( f"column [{name}] already exists" )
 
-        index = self.createColumn()
-        self.registeredSeries[name] = series_c(self.dataset[:,index], name, assignable, index)
-        return self.registeredSeries[name]
+        index = self.dataset_createColumn()
+        self.generatedSeries[name] = generatedSeries_c( name, index, 1 )
+        return self.generatedSeries[name]
     
-    def relinkSeriesToDataset(self):
-        # reallocate the named series views because a new row was created
-        for series in self.registeredSeries.values():
-            index = series.index
-            name = series.name
-            assignable = series.assignable
-            self.registeredSeries[name] = series_c( self.dataset[:, index], name, assignable= assignable, index= index )
+    def columnsList( self )->list:
+        return list( self.generatedSeries.keys() )
+
+    def indexForTimestamp( self, timestamp:int )->int:
+        # Estimate the index by dividing the offset by the time difference between rows
+        baseTimestamp = self.dataset[0, c.DF_TIMESTAMP]
+        index = int((timestamp - baseTimestamp) // self.timeframeMsec) - 1
+        return max(-1, index) # Return the previous index or -1 if not found
+    
+
+    def timestampAtIndex( self, index:int )->int:
+        return int( self.dataset[index, c.DF_TIMESTAMP] )
+
+
+    def valueAtTimestamp( self, column_name, timestamp:int ):
+        index = self.indexForTimestamp(timestamp)
+        if index == -1 or index > self.barindex:
+            return None
+        if column_name not in self.generatedSeries.keys():
+            raise ValueError(f"Column '{column_name}' not found in dataset.")
+        series = self.generatedSeries[column_name]
+        return self.dataset[index, series.column_index]
 
 
     def calcGeneratedSeries( self, type:str, source: np.ndarray|generatedSeries_c, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
@@ -456,15 +490,14 @@ class timeframe_c:
         gse = self.generatedSeries.get( name )
         if( gse == None ):
             gse = generatedSeries_c( type, source, period, func, param, always_reset )
-            self.generatedSeries[name] = gse
 
         # If we are in the jumpstart phase, initialize and update the series immediately.
         # Otherwise, the update will be handled by generatedSeries_c.update
         # This part should remain as is for generatedSeries which are pre-calculated for speed.
-        if self.jumpstart:
-            gse.initialize( source ) # Full series calculation during jumpstart
-        else:
-            gse.update( source ) # Incremental update during live/backtesting
+        # if self.jumpstart:
+        #     gse.initialize( source ) # Full series calculation during jumpstart
+        # else:
+        gse.update( source ) # Incremental update during live/backtesting
         return gse
 
 
@@ -483,7 +516,6 @@ class timeframe_c:
 
         if( plot == None ):
             plot = plot_c( source, name, chart_name, color, style, width, type, hist_margin_top, hist_margin_bottom )
-            self.registeredPlots[name] = plot
         
         plot.update( source, self )
         return plot
@@ -512,49 +544,27 @@ class timeframe_c:
     def plotsList( self )->dict:
         di = {}
         for plot in self.registeredPlots.values():
+            gs = self.generatedSeries[plot.name]
+            if gs.column_index == -1: # HACK: Avoid adding plots without a dataset column initialized
+                continue
             di[plot.name] = plot.descriptor()
         return di
     
-    def columnsList( self )->list:
-        return list( self.registeredSeries.keys() )
-
-    def seriesFromMultiObject( self, source: str|generatedSeries_c|np.ndarray )->series_c:
-        if isinstance( source, series_c ):
+    def seriesFromMultiObject( self, source: str|generatedSeries_c|np.ndarray )->generatedSeries_c:
+        if isinstance( source, generatedSeries_c ):
             return source
-        elif isinstance( source, generatedSeries_c ):
-            return source.series()
         elif isinstance( source, str ):
-            if source in self.registeredSeries.keys():
-                return self.registeredSeries[source]
+            if source in self.generatedSeries.keys():
+                return self.generatedSeries[source]
+            raise ValueError( f"seriesFromMultiObject: {source} is not a registered generatedSeries" )
         elif isinstance( source, np.ndarray ):
             # try to guess its index but we won't allow it anyway
             index = tools.get_column_index_from_array( self.dataset, source )
             if index:
-                name = list(self.registeredSeries.keys())[index]
-                raise ValueError( f"seriesFromMultiObject: Numpy np.ndarray is not a valid object, but array index found [{index}]. Name: [{name}]" )
+                raise ValueError( f"seriesFromMultiObject: Numpy np.ndarray is not a valid object, but array index found [{index}].]" )
             raise ValueError( "seriesFromMultiObject: Numpy np.ndarray is not a valid object" )
         else:
             raise ValueError( "seriesFromMultiObject: Not a recognized series object" )
-
-    def indexForTimestamp( self, timestamp:int )->int:
-        # Estimate the index by dividing the offset by the time difference between rows
-        baseTimestamp = self.dataset[0, c.DF_TIMESTAMP]
-        index = int((timestamp - baseTimestamp) // self.timeframeMsec) - 1
-        return max(-1, index) # Return the previous index or -1 if not found
-    
-    def timestampAtIndex( self, index:int )->int:
-        return int( self.dataset[index, c.DF_TIMESTAMP] )
-
-    def _columnIndex( self, column_name ):
-        return list(self.registeredSeries.keys()).index[column_name]
-
-    def valueAtTimestamp( self, column_name, timestamp:int ):
-        index = self.indexForTimestamp(timestamp)
-        if index == -1 or index > self.barindex:
-            return None
-        if column_name not in self.registeredSeries.keys():
-            raise ValueError(f"Column '{column_name}' not found in dataset.")
-        return self.registeredSeries[column_name][index]
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
@@ -670,6 +680,7 @@ class stream_c:
             candles = []
 
         del ohlcvNP
+        
 
         #################################################
 

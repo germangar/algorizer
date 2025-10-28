@@ -1,6 +1,5 @@
 
 import numpy as np
-from .nameseries import series_c
 from .constants import c
 from . import active
 
@@ -170,6 +169,6 @@ class pivots_c:
             return pivot
         return None
     
-    def update(self, high: series_c, low: series_c):
+    def update(self, high, low):
         if( not active.timeframe.jumpstart ):
             self.isNewPivot = self.process_candle(active.barindex, high[active.barindex], low[active.barindex])

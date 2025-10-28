@@ -144,7 +144,7 @@ class client_state_t:
 
         # Create a list of plots that need their values updated
         updated_plots = {
-            name: timeframe.dataset[timeframe.barindex, timeframe.registeredPlots[name].column_index] for name in common_keys
+            name: timeframe.dataset[timeframe.barindex, timeframe.generatedSeries[name].column_index] for name in common_keys
             if name not in added and name not in removed
         }
 
@@ -154,12 +154,12 @@ class client_state_t:
         self.last_plots_dict = new_plot_descriptors.copy()
 
         for name in added.keys():
-            column_array = timeframe.registeredSeries.get(name)
+            column_array = timeframe.generatedSeries.get(name)
             if column_array is None: # something went terribly wrong
-                raise ValueError( f"ERROR [{name}] is not a registeredSeries in the dataframe" )
+                raise ValueError( f"ERROR [{name}] is not registered in the dataframe" )
             # pack the data in the message
             descriptor = added[name]
-            descriptor['array'] = pack_array( timeframe.dataset[:, column_array.index] )
+            descriptor['array'] = pack_array( timeframe.dataset[:, column_array.column_index] )
 
         timestamps = None
         if added:
