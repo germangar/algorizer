@@ -39,7 +39,9 @@ class plot_c:
 
         timeframe = active.timeframe
 
-        if source is None or np.isscalar(source): # or isinstance(source, (float, int)):
+        # FIXME: I can clean all this up much better.
+
+        if source is None or np.isscalar(source):
             if name:
                 if name in timeframe.generatedSeries.keys():
                     raise ValueError(f"plot_c:name [{name}] is already in use")
@@ -49,7 +51,7 @@ class plot_c:
                 if not self.screen_name:
                     self.screen_name = self.name
 
-                gs:generatedSeries_c = timeframe.createGeneratedSeriesColumn( self.name )
+                gs = generatedSeries_c( name, None, 1 )
                 self.column_index = gs.column_index
 
         elif isinstance( source, generatedSeries_c ):
@@ -182,14 +184,14 @@ class timeframe_c:
         self.dataset = ohlcvNP[:-1, :].copy()
 
         # create generatedSeries_c objects representing the columns
-        self.generatedSeries['timestamp'] = generatedSeries_c( 'timestamp', c.DF_TIMESTAMP, 1 )
-        self.generatedSeries['open'] = generatedSeries_c( 'open', c.DF_OPEN, 1 )
-        self.generatedSeries['high'] = generatedSeries_c( 'high', c.DF_HIGH, 1 )
-        self.generatedSeries['low'] = generatedSeries_c( 'low', c.DF_LOW, 1 )
-        self.generatedSeries['close'] = generatedSeries_c( 'close', c.DF_CLOSE, 1 )
-        self.generatedSeries['volume'] = generatedSeries_c( 'volume', c.DF_VOLUME, 1 )
-        self.generatedSeries['top'] = generatedSeries_c( 'top', c.DF_TOP, 1 )
-        self.generatedSeries['bottom'] = generatedSeries_c( 'bottom', c.DF_BOTTOM, 1 )
+        self.generatedSeries['timestamp'] = generatedSeries_c( 'timestamp', None, 1 )
+        self.generatedSeries['open'] = generatedSeries_c( 'open', None, 1 )
+        self.generatedSeries['high'] = generatedSeries_c( 'high', None, 1 )
+        self.generatedSeries['low'] = generatedSeries_c( 'low', None, 1 )
+        self.generatedSeries['close'] = generatedSeries_c( 'close', None, 1 )
+        self.generatedSeries['volume'] = generatedSeries_c( 'volume', None, 1 )
+        self.generatedSeries['top'] = generatedSeries_c( 'top', None, 1 )
+        self.generatedSeries['bottom'] = generatedSeries_c( 'bottom', None, 1 )
         
 
         # --- Phase 2: backtesting (row-by-row backtest simulation) ---
@@ -433,9 +435,9 @@ class timeframe_c:
             self.lastTimestampExecuted = self.dataset[self.barindex, c.DF_TIMESTAMP]
 
             # make sure no generated series is left unupdated
-            # for gs in self.generatedSeries.values():
-            #     if gs.lastUpdatedTimestamp < self.timestamp:
-            #         gs.update(self.generatedSeries[gs.source_name])
+            for gs in self.generatedSeries.values():
+                if gs.lastUpdatedTimestamp < self.timestamp and gs.func != None:
+                    gs.update(self.generatedSeries[gs.source_name])
 
             self.stream.tickEvent( self.realtimeCandle, True )
 
@@ -485,18 +487,11 @@ class timeframe_c:
 
 
     def calcGeneratedSeries( self, type:str, source: np.ndarray|generatedSeries_c, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
-        name = tools.generatedSeriesNameFormat( type, source, period )
 
-        gse = self.generatedSeries.get( name )
+        gse = self.generatedSeries.get( tools.generatedSeriesNameFormat( type, source, period ) )
         if( gse == None ):
             gse = generatedSeries_c( type, source, period, func, param, always_reset )
 
-        # If we are in the jumpstart phase, initialize and update the series immediately.
-        # Otherwise, the update will be handled by generatedSeries_c.update
-        # This part should remain as is for generatedSeries which are pre-calculated for speed.
-        # if self.jumpstart:
-        #     gse.initialize( source ) # Full series calculation during jumpstart
-        # else:
         gse.update( source ) # Incremental update during live/backtesting
         return gse
 

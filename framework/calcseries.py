@@ -940,12 +940,12 @@ def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np
 
 # _rsi14. Elapsed time: 0.02 seconds
 def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
-        return talib.RSI(series, period)
-
     length = len(series)
     if length < period + 1:
         return np.full(length, np.nan)
+    
+    if talib_available:
+        return talib.RSI(series, period)
 
     # Step 1: Compute price changes
     delta = np.diff(series, prepend=series[0])  # Prepend first value to maintain length
@@ -1439,86 +1439,102 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
 
 class generatedSeries_c:
     
-    def __init__(self, name: str, source: np.ndarray|int, period: int, func=None, param=None, always_reset: bool = False):
-        # Find the column index and name for the passed source array
-        if isinstance( source, int ):
+    def __init__(self, name: str, source: np.ndarray, period: int, func=None, param=None, always_reset: bool = False):
+
+        timeframe = active.timeframe
+        
+        # These are generated series created by the user, used by plots, or the built in (ohlcv) columns
+        if func is None:
             self.name = name
             self.source_name = name
-            self.column_index = source
-            self.period = period if period is not None else 1
+            self.column_index = -1
+            self.period = 1 # ignore the period
 
             self.param = None
             self.func = None
-            self.timeframe = active.timeframe
-            self.lastUpdatedTimestamp = active.timeframe.timestamp
+            self.timeframe = timeframe
+            self.lastUpdatedTimestamp = timeframe.timestamp
             self.alwaysReset = False
-            self._is_generated_series = True # do not touch. 
+            self._is_generated_series = False # do not touch. 
+            
+            # ohlcv (and top/bottom) are special. They don't need a column created.
+            if self.name == 'timestamp' : self.column_index = c.DF_TIMESTAMP
+            if self.name == 'open' : self.column_index = c.DF_OPEN
+            if self.name == 'high' : self.column_index = c.DF_HIGH
+            if self.name == 'low' : self.column_index = c.DF_LOW
+            if self.name == 'close' : self.column_index = c.DF_CLOSE
+            if self.name == 'volume' : self.column_index = c.DF_VOLUME
+            if self.name == 'top' : self.column_index = c.DF_TOP
+            if self.name == 'bottom' : self.column_index = c.DF_BOTTOM
+
+            # create a column
+            if self.column_index == -1:
+                assert name not in timeframe.generatedSeries.keys(), f"A generatedSeries_c with the name '{name}' already exists"
+                self.column_index = timeframe.dataset_createColumn()
+                print( f"Column created at index {self.column_index} for {self.name}")
+
+            # register the column
+            timeframe.generatedSeries[self.name] = self
             return
         
         if not isinstance( source, generatedSeries_c ):
-            raise ValueError( f"Source must be 'generatedSeries_c' type [{name}]" )
+            raise ValueError( f"Source must be 'generatedSeries_c' type [{name}] for series with a func" )
 
-        self.name = tools.generatedSeriesNameFormat(name, source, period)
+        testname = tools.generatedSeriesNameFormat(name, source, period)
+        if testname in timeframe.generatedSeries.keys():
+            raise ValueError( f"A generatedSeries_c with the name '{testname}' already exists" )
+        self.name = testname
         self.column_index = -1
         self.source_name = source.name
-        self.period = period if period is not None else len(source)
+        self.period = max(period, 1) if period is not None else len(source)
         self.param = param
         self.func = func
-        self.timeframe = active.timeframe
+        self.timeframe = timeframe
         self.lastUpdatedTimestamp = 0
         self.alwaysReset = always_reset
         self._is_generated_series = True # do not touch. 
-
-        if self.func is None:
-            raise SystemError(f"Generated Series without a func [{self.name}]")
-
-        if self.period < 1:
-            raise SystemError(f"Generated Series with invalid period [{period}]")
-
-
-    def initialize( self, source ):
+        
+        # create a column and register it
+        self.column_index = timeframe.dataset_createColumn()
+        timeframe.generatedSeries[self.name] = self
+        # print( f"Column created at index {self.column_index} for {self.name}")
+        
+        
+    def calculate_full( self, source ):
         if not self.func:
             raise ValueError( f"Tried to initialize {self.name} without a func" )
+        
+        # FIXME: All of these are overdone. They're temporary. Remove them
         assert isinstance(source, generatedSeries_c), f"Source {source.name} must be generatedSeries_c type"  # temporary while make sure everything is
         assert self.timeframe == active.timeframe
+        assert self.column_index != -1
+        assert self.name in self.timeframe.generatedSeries.keys()
         
         if len(source) < self.period:
             return
-        if self.name not in self.timeframe.generatedSeries.keys() or self.alwaysReset:
-            timeframe = self.timeframe
+        
+        timeframe = self.timeframe
 
-            if self.lastUpdatedTimestamp >= timeframe.timestamp:
-                return
+        if self.lastUpdatedTimestamp >= timeframe.timestamp:
+            return
 
-            barindex = len(timeframe.dataset) - 1
-            start_time = time.time()
+        start_time = time.time()
 
-            # Call the func, which must now accept a 1D numpy array as the source and the 2D array as "dataset"
-            # Expect func to return a 1D numpy array of values, aligned with the full dataset length
-            array = timeframe.dataset[:,source.column_index]
+        # Call the func, which must now accept a 1D numpy array as the source and the 2D array as "dataset"
+        # Expect func to return a 1D numpy array of values, aligned with the full dataset length
+        array = timeframe.dataset[:,source.column_index]
+        values = self.func(array, self.period, timeframe.dataset, self.column_index, self.param)
+        if isinstance(values, (list, tuple)):
+            values = np.array(values, dtype=np.float64)
 
+        timeframe.dataset[:, self.column_index] = values
 
-            values = self.func(array, self.period, timeframe.dataset, self.column_index, self.param)
-            if isinstance(values, (list, tuple)):
-                values = np.array(values, dtype=np.float64)
+        # Update the timestamp from the last row
+        barindex = len(timeframe.dataset) - 1
+        self.lastUpdatedTimestamp = int(timeframe.dataset[barindex, c.DF_TIMESTAMP])
 
-            # raise ValueError( f"REACHED {self.name}" )
-
-            if self.column_index == -1:
-                self.column_index = timeframe.dataset_createColumn()
-                if self.name not in timeframe.generatedSeries.keys():
-                    timeframe.generatedSeries[self.name] = self
-
-            # Only assign values where not nan (mimicking dropna)
-            # mask = ~np.isnan(values)
-            # timeframe.dataset[mask, self.column_index] = values[mask]
-            timeframe.dataset[:, self.column_index] = values
-
-            # Find the timestamp column index
-            self.lastUpdatedTimestamp = int(timeframe.dataset[barindex, c.DF_TIMESTAMP])
-
-            if timeframe.stream.initializing:
-                print(f"Initialized {self.name}. Elapsed time: {time.time() - start_time:.2f} seconds")
+        if timeframe.stream.initializing:
+            print(f"Initialized {self.name} ({self.column_index}). Elapsed time: {time.time() - start_time:.2f} seconds")
 
     def update( self, source ):
         if not self.func:
@@ -1536,7 +1552,7 @@ class generatedSeries_c:
 
         # if non existent or needs reset, initialize
         if self.alwaysReset or self.lastUpdatedTimestamp == 0:
-            self.initialize(source)
+            self.calculate_full(source)
             return
 
         # slice the required block for current calculation
