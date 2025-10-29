@@ -451,30 +451,6 @@ def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.
     sma[period-1:] = (cumsum[period:] - cumsum[:-period]) / period
     return sma
 
-def _generatedseries_calculate_sma2(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
-        return talib.SMA(source, period)
-    
-    source = np.asarray(source, dtype=np.float64)
-    if period < 1 or period > source.shape[0]:
-        return np.full_like(source, np.nan)
-
-    sma = np.full_like(source, np.nan)
-    cumsum = np.cumsum(np.insert(source, 0, 0))
-    sma[period-1:] = (cumsum[period:] - cumsum[:-period]) / period
-    return sma
-
-def _generatedseries_calculate_sma3(source: np.ndarray, period: int) -> np.ndarray:
-    """Calculates Simple Moving Average (SMA) using the rolling window helper."""
-    if period < 1:
-        return np.full_like(source, np.nan)
-    
-    # Function to apply to each window: calculate the mean (average)
-    def mean_func(window):
-        return np.mean(window, axis=1)
-
-    return _rolling_window_apply_optimized(source, period, mean_func)
-
 # _ema_250. Elapsed time: 0.03 seconds (a little slow, but it's the only reliable one. Talib is also unreliable)
 def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if talib_available:
@@ -2259,14 +2235,6 @@ def barsWhileFalseSeries(source: generatedSeries_c, period: int = None) -> gener
 def SMA( source: generatedSeries_c, period: int )->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries('sma', _ensure_object_array(source), period, _generatedseries_calculate_sma )
-
-def SMA2( source: generatedSeries_c, period: int )->generatedSeries_c:
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries('sma2', _ensure_object_array(source), period, _generatedseries_calculate_sma2, always_reset= True )
-
-def SMA3( source: generatedSeries_c, period: int )->generatedSeries_c:
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries('sma2', _ensure_object_array(source), period, _generatedseries_calculate_sma3, always_reset= False )
 
 def EMA( source: generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
