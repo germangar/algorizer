@@ -765,46 +765,25 @@ def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np
 
 
 # _stdev250. Elapsed time: 0.02 seconds (talib 0.00 seconds)
-def _generatedseries_calculate_stdev_talib(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param:float=1.0) -> np.ndarray:
+def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param:float=1.0) -> np.ndarray:
     if talib_available:
         return talib.STDDEV(series, period) * param
 
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
-
-    # Create rolling windows
-    windows = sliding_window_view(series, window_shape=period)
-
-    # Compute sample standard deviation (ddof=1) for each window
-    # Use nan-aware std to be robust to NaNs in incremental/update slices
-    try:
-        stdev = np.nanstd(windows, axis=1, ddof=1) * param
-    except Exception:
-        # Fallback: compute per-window to avoid shape issues
-        stdev = np.array([np.nanstd(w, ddof=0) * param for w in windows], dtype=np.float64)
-
-    # Pad with NaNs for the first period - 1 values
-    result = np.full(length, np.nan)
-    result[period - 1:] = stdev
-
-    return result
-
-# _stdev250. Elapsed time: 0.02 seconds (talib 0.00 seconds)
-def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param:float=1.0) -> np.ndarray:
-    # if talib_available:
-    #     return talib.STDDEV(series, period) * param
-
-    length = len(series)
-    if length < period:
-        return np.full(length, np.nan)
     
     ddof = 0
+    
+    # Single window case (incremental updates)
+    if length == period:
+        # Calculate std dev directly without rolling windows
+        return np.nanstd(series, ddof=ddof) * param
 
-    # Create rolling windows
+    # Create rolling windows (full dataset initialization case)
     windows = sliding_window_view(series, window_shape=period)
 
-    # Compute sample standard deviation (ddof=1) for each window
+    # Compute sample standard deviation (ddof=0) for each window
     # Use nan-aware std to be robust to NaNs in incremental/update slices
     try:
         stdev = np.nanstd(windows, axis=1, ddof=ddof) * param
@@ -815,235 +794,6 @@ def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: n
     # Pad with NaNs for the first period - 1 values
     result = np.full(length, np.nan)
     result[period - 1:] = stdev
-
-    return result
-
-
-def _generatedseries_calculate_stdev2(series: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param:float= 1.0) -> np.ndarray:
-    """
-    Calculate rolling sample standard deviation using either TA-Lib or NumPy.
-    Compatible with both historical (full array) and incremental updates.
-    """
-
-    series = np.asarray(series, dtype=np.float64)
-    length = len(series)
-
-    if length == 0 or period < 2:
-        return np.full(length, np.nan)
-    
-    ddof = 0
-
-    # Historical / full array mode
-    if length > period * 2:
-        try:
-            from numpy.lib.stride_tricks import sliding_window_view
-            windows = sliding_window_view(series, window_shape=period)
-            stdev = np.nanstd(windows, axis=1, ddof=ddof)
-            result = np.full(length, np.nan)
-            result[period - 1:] = stdev * param
-            return result
-        except Exception:
-            pass  # fallback below
-
-    # Incremental / realtime mode (short period slice)
-    valid = series[~np.isnan(series)]
-    if len(valid) >= 2:
-        val = np.std(valid[-period:], ddof=ddof)
-    else:
-        val = np.nan
-
-    # Return aligned array (NaNs except last element)
-    result = np.full(length, np.nan)
-    result[-1] = val * param
-    return result
-
-
-def _generatedseries_calculate_stdev3(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=1.0) -> np.ndarray:
-    """
-    Full recalculation version of rolling standard deviation.
-    This function always computes the rolling sample std (ddof=1)
-    over the full-length series. If `series` is a short slice (incremental
-    update), it will try to reconstruct the original full column from
-    `dataset` by matching the tail; if not possible it will pad the
-    slice with NaNs to the full length and compute the rolling std.
-
-    Returns a full-length array (same length as dataset) with NaNs for
-    the first `period-1` positions.
-    """
-    # Defensive conversions
-    series = np.asarray(series, dtype=np.float64)
-    full_len = dataset.shape[0] if dataset is not None and hasattr(dataset, 'shape') else len(series)
-
-    if full_len < period:
-        return np.full(full_len, np.nan)
-
-    # If the provided series already covers the full dataset, use it
-    if len(series) == full_len:
-        full_series = series
-    else:
-        # Try to reconstruct the full column from dataset by matching the tail
-        start_idx = full_len - len(series)
-        full_series = None
-        if dataset is not None and dataset.shape[0] >= full_len:
-            try:
-                # match against tail of each column
-                for col in range(dataset.shape[1]):
-                    col_tail = dataset[start_idx:, col]
-                    if col_tail.shape[0] != len(series):
-                        continue
-                    # compare only non-nan positions
-                    mask = ~np.isnan(series)
-                    if mask.sum() == 0:
-                        # nothing to compare, skip
-                        continue
-                    try:
-                        if np.allclose(col_tail[mask], series[mask], rtol=1e-9, atol=1e-12, equal_nan=True):
-                            full_series = dataset[:, col].astype(np.float64)
-                            break
-                    except Exception:
-                        if np.array_equal(col_tail[mask], series[mask]):
-                            full_series = dataset[:, col].astype(np.float64)
-                            break
-            except Exception:
-                full_series = None
-
-        # If not found, pad with NaNs at the front
-        if full_series is None:
-            pad = np.full(full_len - len(series), np.nan, dtype=np.float64)
-            full_series = np.concatenate((pad, series)).astype(np.float64)
-
-    # Compute rolling windows and sample std (ddof=1)
-    # sliding_window_view will produce (full_len - period + 1, period)
-    windows = sliding_window_view(full_series, window_shape=period)
-    stdev_values = np.empty(windows.shape[0], dtype=np.float64)
-    for i, w in enumerate(windows):
-        valid_count = np.sum(~np.isnan(w))
-        if valid_count <= 1:
-            stdev_values[i] = np.nan
-        else:
-            # ddof=1 for sample standard deviation
-            stdev_values[i] = np.nanstd(w, ddof=0)
-
-    result = np.full(full_len, np.nan, dtype=np.float64)
-    result[period - 1:] = stdev_values * param
-    return result
-
-
-
-# Population STDEV
-# def _generatedseries_calculate_stdev4(series: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param=None) -> np.ndarray:
-#     """Calculates the Population Standard Deviation (STDEV) over a rolling window.
-#     Uses np.std with ddof=0 for consistency with TradingView's ta.stdev().
-#     """
-#     if period < 1:
-#         return np.full_like(series, np.nan)
-
-#     # Function to apply to each window: calculate the Population Standard Deviation (ddof=0)
-#     # The axis=1 tells NumPy to calculate the std along the window dimension
-#     def std_func(window):
-#         # np.std(..., ddof=0) is Population STDEV (divides by N)
-#         return np.std(window, axis=1, ddof=0)
-
-#     # Use the optimized helper to apply this function over the full array
-#     return _rolling_window_apply_optimized(series, period, std_func)
-
-def _generatedseries_calculate_stdev4(
-    source_arr: np.ndarray, 
-    length: int, 
-    dataset: np.ndarray = None, 
-    cindex: int = None, 
-    param:float=1.0
-) -> np.ndarray:
-    """
-    Calculates the Population Standard Deviation (STDEV) over a rolling window.
-    Uses np.std with ddof=0, and always performs a full array calculation 
-    to be consistent with the user's alwaysReset=True initialization flow.
-    Signature is adapted to accept extra arguments from generatedSeries_c.initialize.
-    """
-    # # If the array is too short, return all NaNs, which the full calculation handles
-    # if length < 1 or len(source_arr) < length:
-    #     return np.full_like(source_arr, np.nan)
-
-    # # Function to apply to each window: calculate the Population Standard Deviation (ddof=0)
-    # def std_func(window):
-    #     # np.std(..., ddof=0) is Population STDEV (divides by N)
-    #     return np.std(window, axis=1, ddof=0) * param
-
-    # # Use the optimized helper to apply this function over the full array
-    # return _rolling_window_apply_optimized_axis(source_arr, length, std_func)
-
-    """
-    Calculates the Population Standard Deviation (STDEV) over a rolling window.
-    Uses np.nanstd with ddof=0 (Population STDEV, dividing by N).
-    """
-    
-    # CRITICAL FIX: Always create a new copy of the source data as float64. 
-    source_arr = np.array(source_arr, dtype=np.float64, copy=True)
-    
-    if length < 1 or len(source_arr) < length:
-        return np.full_like(source_arr, np.nan)
-
-    def std_func(window_view: np.ndarray):
-        """
-        Function to apply to the 2D window view array.
-        Calculates Population STDEV (ddof=0) while ignoring NaNs.
-        """
-        
-        # 1. Calculate the Population STDEV, ignoring NaNs. ddof=0 divides by N.
-        stds = np.nanstd(window_view, axis=1, ddof=0) * param
-        
-        # 2. Critical Correction: np.nanstd returns 0.0 when all elements are NaN.
-        all_nan_mask = np.all(np.isnan(window_view), axis=1)
-        # We only want to mask out cases where ALL inputs were NaN.
-        stds[all_nan_mask] = np.nan
-        
-        return stds
-
-    # Use the optimized helper to apply this function over the full array
-    return _rolling_window_apply_optimized_axis(source_arr, length, std_func)
-
-def _generatedseries_calculate_STDEV_POPULATION_SIMPLE(
-    source_arr: np.ndarray, 
-    length: int, 
-    dataset: np.ndarray = None, 
-    cindex: int = None, 
-    param:float=  1.0
-) -> np.ndarray:
-    """
-    Calculates the Population Standard Deviation (STDEV) using a simple, unoptimized
-    Python loop and slicing. Uses np.nanstd with ddof=0 (Population STDEV).
-    
-    This function is suitable for both full array initialization (returning a long 
-    array with leading NaNs) and single bar updates (when passed a short array, 
-    it returns a short array where only the last element is the calculated value).
-    """
-    
-    # 1. Ensure source is a clean, float array copy
-    source_arr = np.array(source_arr, dtype=np.float64, copy=True)
-    n = len(source_arr)
-    
-    if length < 1 or n < length:
-        return np.full_like(source_arr, np.nan)
-    
-    # 2. Initialize result array with NaNs
-    result = np.full(n, np.nan, dtype=np.float64)
-    
-    # 3. Iterate over the array to define the window
-    for i in range(n):
-        if i >= length - 1:
-            # The window runs from (i - length + 1) up to (i + 1)
-            start_index = i - length + 1
-            window = source_arr[start_index : i + 1]
-            
-            # Count non-NaN elements in the window
-            num_valid = np.count_nonzero(~np.isnan(window))
-            
-            if num_valid > 0:
-                # Calculate Population STDEV (ddof=0) on the slice, ignoring NaNs
-                # NOTE: np.nanstd requires at least one non-NaN value, which num_valid > 0 guarantees.
-                stdev = np.nanstd(window, ddof=0) * param
-                result[i] = stdev
-            # If num_valid is 0 (all NaN), result[i] remains NaN from initialization
 
     return result
 
@@ -2558,28 +2308,7 @@ def HMA( source:generatedSeries_c, period:int )->generatedSeries_c:
 
 def STDEV( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
     timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev, param = scalar, always_reset= True )
-
-def STDEVTALIB( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev_talib, param = scalar, always_reset= True )
-
-def STDEV2( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c: # con always_reset parece ok
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev2', _ensure_object_array(source), period, _generatedseries_calculate_stdev2, param = scalar, always_reset= True )
-
-def STDEV3( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c: # Parece funcionar con always_reset. Es lentísima.Sin always_reset es sospechosa
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev3', _ensure_object_array(source), period, _generatedseries_calculate_stdev3, param = scalar, always_reset= True )
-
-def STDEV4( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c: # Muy parecido pero NO lo mismo que en tiempo real
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev4', _ensure_object_array(source), period, _generatedseries_calculate_stdev4, param = scalar, always_reset= True )
-
-def STDEV5( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'stdev5', _ensure_object_array(source), period, _generatedseries_calculate_STDEV_POPULATION_SIMPLE, param = scalar, always_reset= True )
-
+    return timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev, param = scalar, always_reset= talib_available )
 
 def DEV( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
@@ -2732,9 +2461,6 @@ def BollingerBands( source:generatedSeries_c, period:int, mult:float = 2.0 )->tu
         Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
     """
     BBbasis = SMA(source, period)
-    # stdev = STDEV(source, period)
-    # BBupper = BBbasis + (stdev * mult)
-    # BBlower = BBbasis - (stdev * mult)
     stdev = STDEV(source, period, mult)
     BBupper = BBbasis + stdev
     BBlower = BBbasis - stdev
