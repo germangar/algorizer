@@ -614,10 +614,6 @@ class window_c:
             return
         
         if len(self.markers) == 0: # we don't need to worry about sorting
-            if len(addlist) > 500:
-                print( f"* Warning: Very high marker count {len(addlist)}. The chart will take a long time to open")
-            elif len(addlist) > 250:
-                print( f"Hold on. High marker count [{len(addlist)}]")
             for m in addlist:
                 self.createMarker(m)
             return
