@@ -1082,7 +1082,7 @@ async def send_command(socket, command: str, params: str = ""):
                 return
                 
             elif data['type'] == 'dataframe':
-                print("Loading chart", data['timeframe'] )
+                if debug : print(f"Loading chart {data['timeframe']}" )
                 status = CLIENT_LOADING # this status doesn't make sense anymore
                 data['arrays'] = unpack_arrays( data['arrays'] )
                 window.loadChartData( data ) # initialize the window with the dataframe and open it

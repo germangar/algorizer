@@ -13,10 +13,11 @@ from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update
 from . import active
 
+from .prompt import LivePrompt
 
 verbose = False
 VERIFY_CLOSED_CANDLES = True # Asks the exchange to send the full candle. Prevents mismatches between backtest and realtime, but it's half a second slower at updating and running closeCandle
-
+caption = "> "
 
 class plot_c:
     def __init__( self, source:float|int|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, ptype = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
@@ -235,7 +236,7 @@ class timeframe_c:
 
 
     def parseCandleUpdate( self, rows ): # rows is a 2D numpy array now
-
+        global caption
         active.timeframe = self
         is_fetch = self.timeframeStr == self.stream.timeframeFetch
 
@@ -443,6 +444,9 @@ class timeframe_c:
 
             if not self.stream.initializing:
                 push_row_update( self )
+
+
+            caption = f"{self.barindex}>"
         
 
     def dataset_createColumn( self )->int:
@@ -695,7 +699,10 @@ class stream_c:
 
     def run(self, backtest_only = False ):
         self.isRunning = True
-        tasks.registerTask( 'cli', cli_task, self )
+        # live console
+        lp = LivePrompt( getCaption )
+        tasks.registerTask("cli", lp.run)
+        # candle updates
         if not backtest_only and not self.cache_only : tasks.registerTask( 'fetch', self.fetchCandleUpdates )
         asyncio.run( tasks.runTasks() )
 
@@ -711,7 +718,11 @@ class stream_c:
                 #print(response)
 
             except Exception as e:
-                print( 'Exception raised at fetchCandleupdates: Reconnecting', e, type(e) )
+                # Exception raised at fetchCandleupdates: Reconnecting Connection closed by remote server, closing code 1006 <class 'ccxt.base.errors.NetworkError'>
+                if isinstance(e, ccxt.OnMaintenance) or isinstance(e, ccxt.NetworkError):
+                    print( "fetchCandleupdates: Connection lost. Reconnecting..." )
+                else:
+                    print( 'Exception raised at fetchCandleupdates: Reconnecting', e, type(e) )
                 await self.exchange.close()
                 await asyncio.sleep(1.0)
                 continue
@@ -818,6 +829,7 @@ class stream_c:
         if timeframeStr not in self.timeframes.keys():
             print( f"Available timeframes: {list(self.timeframes.keys())}" )
             return
+        print( "loading chart" )
         start_window_server( timeframeStr )
 
 
@@ -866,6 +878,10 @@ def getPrecision()->float:
 def getFees()->tuple[float,float]:
     return active.timeframe.stream.fee_maker, active.timeframe.stream.fee_taker
 
+
+def getCaption()->str:
+    return caption
+
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''
     if not timestamp : 
@@ -877,34 +893,4 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
     
 def isInitializing():
     return active.timeframe.stream.initializing
-
-
-import aioconsole
-async def cli_task(stream: 'stream_c'): # Added type hint for clarity
-    while True:
-        message = await aioconsole.ainput()  # Non-blocking input
-
-        # Split the message into command and arguments
-        parts = message.split(' ', 1) # Split only on the first space
-        command = parts[0].lower()
-        args = parts[1] if len(parts) > 1 else '' # Get args if they exist
-
-        if command == 'chart' or command == 'c':
-            stream.createWindow( args )
-
-        elif command == 'close':
-            # TODO: Function to send a command to the client to shutdown
-            print('closing chart')
-
-        else:
-            stream.event_callback(stream, "cli_command", (command, args), 2)
-
-        await asyncio.sleep(0.05)
-
-
-
-
-    
-
-
 

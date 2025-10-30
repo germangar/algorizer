@@ -6,8 +6,8 @@ from .constants import c
 from . import active
 
 EPSILON = 1e-9
-COLOR_BULL = "#3bd818"
-COLOR_BEAR = "#ed3535"
+COLOR_BULL = "#68b45c"
+COLOR_BEAR = "#d44a4a"
 
 def round_to_tick_size(value, tick_size):
     """Rounds a value to the nearest tick_size."""
@@ -334,6 +334,7 @@ class position_c:
         order_type = c.BUY if self.type == c.SHORT else c.SELL
         price = getRealtimeCandle().close
         self.execute_order(order_type, price, self.size, self.leverage)
+        marker(self)
 
     def check_stoploss(self, stoploss_order, candle:candle_c)->bool:
         price = stoploss_order.get('price')
@@ -571,9 +572,9 @@ def marker( pos:position_c, message = None, prefix = '', reversal:bool = False )
         if not message:
             if closedposition:
                 pnl = pos.calculate_realized_pnl_from_history() - pos.calculate_fees_from_history()
-                if not prefix:
-                    prefix = '🚩' if pnl < 0.0 else '💲'
-                message = f"pnl:{pnl:.2f}"
+                if prefix == '':
+                    prefix = 'Close '
+                message = f"{'🚩' if pnl < 0.0 else '💲'} pnl:{pnl:.2f}"
             else:
                 order_name = 'buy' if order_type == c.BUY else 'sell'
                 message = f"{order_name}:${abs(order_cost):.2f} (pos:{pos.size:.3f})"
@@ -663,14 +664,12 @@ def close(pos_type: int = None):
         pos = strategy.get_active_position()
         if pos:
             pos.close()
-            marker(pos)
     elif mode == 'HEDGE':
         if pos_type not in (c.LONG, c.SHORT):
             raise ValueError("Invalid position type")
         pos = strategy.get_active_position(pos_type)
         if pos:
             pos.close()
-            marker(pos)
 
 
 def createFakePosition( entry_price, position_type, quantity, leverage ):
