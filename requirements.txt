@@ -14,4 +14,5 @@ msgpack>=1.0.0
 lightweight-charts>=2.1
 
 # Console
-prompt-toolkit>=3.0.0,<3.1
+aioconsole>=0.6.0
+# prompt-toolkit>=3.0.0,<3.1
