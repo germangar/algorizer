@@ -13,10 +13,9 @@ from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update
 from . import active
 
-from .prompt import LivePrompt, enable_prompt
-
 verbose = False
 VERIFY_CLOSED_CANDLES = True # Asks the exchange to send the full candle. Prevents mismatches between backtest and realtime, but it's half a second slower at updating and running closeCandle
+WATCH_WESOCKETS_ERROR = True # A thread will be checking CCXT's websockets connection didn't crash. If it did it will try to resume operations.
 
 class plot_c:
     def __init__( self, source:float|int|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, ptype = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
@@ -576,10 +575,6 @@ class timeframe_c:
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.top, candle.bottom = ( int(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], row[7] )
         return candle
     
-    def setCaptionMessage( self, message:str ):
-        self.stream.caption = message
-
-
 
 
 class stream_c:
@@ -595,7 +590,6 @@ class stream_c:
         self.cache_only = cache_only
         self.event_callback = event_callback
         self.ws_task = None # watch for ccxt websocket errors
-        self.caption = ""
 
         self.markers:list[marker_c] = []
         self.lines:list[line_c] = []
@@ -699,16 +693,19 @@ class stream_c:
 
     def run(self, backtest_only = False ):
         self.isRunning = True
-        # live console
-        # lp = LivePrompt( getCaption )
-        # tasks.registerTask("cli", lp.run)
-        
-        # candle updates
+
+        # register the tasks
+        tasks.registerTask( 'cli', cli_task, self )
         if not backtest_only and not self.cache_only :
-            enable_prompt()
-            # tasks.registerTask( 'fetch', self.fetchCandleUpdates )
-            tasks.registerTask("websocket", self._run_websocket_forever) # calls fetchCandleUpdates amd restarts on failure
+            ''' This is for relaunching the stream if there's a websockets errror in CCXT.
+                It remains disabled by now until such error happens again'''
+            if WATCH_WESOCKETS_ERROR:
+                tasks.registerTask("websocket", self._run_websocket_forever) # calls fetchCandleUpdates amd restarts on failure
+            else:
+                tasks.registerTask( 'fetch', self.fetchCandleUpdates )
+
         asyncio.run( tasks.runTasks() )
+
 
     async def _restart_websocket(self):
         print("\nWebSocket lost – restarting CCXT connection…")
@@ -914,10 +911,6 @@ def getPrecision()->float:
 def getFees()->tuple[float,float]:
     return active.timeframe.stream.fee_maker, active.timeframe.stream.fee_taker
 
-
-def getCaption()->str:
-    return active.timeframe.stream.caption + "> "
-
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''
     if not timestamp : 
@@ -930,3 +923,26 @@ def requestValue( column_name:str, timeframeName:str = None, timestamp:int = Non
 def isInitializing():
     return active.timeframe.stream.initializing
 
+
+import aioconsole
+
+async def cli_task(stream: 'stream_c'): # Added type hint for clarity
+    while True:
+        message = await aioconsole.ainput()  # Non-blocking input
+
+        # Split the message into command and arguments
+        parts = message.split(' ', 1) # Split only on the first space
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else '' # Get args if they exist
+
+        if command == 'chart' or command == 'c':
+            stream.createWindow( args )
+
+        elif command == 'close':
+            # TODO: Function to send a command to the client to shutdown
+            print('closing chart')
+
+        else:
+            stream.event_callback(stream, "cli_command", (command, args), 2)
+
+        await asyncio.sleep(0.05)
