@@ -13,11 +13,10 @@ from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update
 from . import active
 
-from .prompt import LivePrompt
+from .prompt import LivePrompt, enable_prompt
 
 verbose = False
 VERIFY_CLOSED_CANDLES = True # Asks the exchange to send the full candle. Prevents mismatches between backtest and realtime, but it's half a second slower at updating and running closeCandle
-caption = "> "
 
 class plot_c:
     def __init__( self, source:float|int|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, ptype = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
@@ -236,7 +235,6 @@ class timeframe_c:
 
 
     def parseCandleUpdate( self, rows ): # rows is a 2D numpy array now
-        global caption
         active.timeframe = self
         is_fetch = self.timeframeStr == self.stream.timeframeFetch
 
@@ -444,9 +442,6 @@ class timeframe_c:
 
             if not self.stream.initializing:
                 push_row_update( self )
-
-
-            caption = f"{self.barindex}>"
         
 
     def dataset_createColumn( self )->int:
@@ -580,6 +575,9 @@ class timeframe_c:
         row = self.dataset[index, :]
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.top, candle.bottom = ( int(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], row[7] )
         return candle
+    
+    def setCaptionMessage( self, message:str ):
+        self.stream.caption = message
 
 
 
@@ -596,6 +594,8 @@ class stream_c:
         self.mintick = 0.0
         self.cache_only = cache_only
         self.event_callback = event_callback
+        self.ws_task = None # watch for ccxt websocket errors
+        self.caption = ""
 
         self.markers:list[marker_c] = []
         self.lines:list[line_c] = []
@@ -700,11 +700,47 @@ class stream_c:
     def run(self, backtest_only = False ):
         self.isRunning = True
         # live console
-        lp = LivePrompt( getCaption )
-        tasks.registerTask("cli", lp.run)
+        # lp = LivePrompt( getCaption )
+        # tasks.registerTask("cli", lp.run)
+        
         # candle updates
-        if not backtest_only and not self.cache_only : tasks.registerTask( 'fetch', self.fetchCandleUpdates )
+        if not backtest_only and not self.cache_only :
+            enable_prompt()
+            # tasks.registerTask( 'fetch', self.fetchCandleUpdates )
+            tasks.registerTask("websocket", self._run_websocket_forever) # calls fetchCandleUpdates amd restarts on failure
         asyncio.run( tasks.runTasks() )
+
+    async def _restart_websocket(self):
+        print("\nWebSocket lost – restarting CCXT connection…")
+        try:
+            await self.exchange.close()
+        except Exception:
+            pass
+
+        self.exchange = ccxt.pro.bitget({
+            'apiKey': self.apiKey,
+            'secret': self.secret,
+            'enableRateLimit': True,
+            'options': {
+                'defaultType': 'swap',
+                'ws': {'maxRetries': 0},
+            },
+        })
+        await self._subscribe_ohlcv()
+
+    async def _run_websocket_forever(self):
+        while True:
+            try:
+                await self.fetchCandleUpdates()
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                raise
+            except Exception as e:
+                print(f"WebSocket crashed: {e}")
+                await self._restart_websocket()
+                await asyncio.sleep(2)
+
+    def close(self): # I never really call it, but anyway...
+        tasks.cancelTask("websocket")
 
     def parseCandleUpdateMulti( self, rows ):
         for timeframe in self.timeframes.values():
@@ -880,7 +916,7 @@ def getFees()->tuple[float,float]:
 
 
 def getCaption()->str:
-    return caption
+    return active.timeframe.stream.caption + "> "
 
 def requestValue( column_name:str, timeframeName:str = None, timestamp:int = None ):
     '''Request a value from the dataframe in any timeframe at given timestamp. If timestamp is not provided it will return the latest value'''

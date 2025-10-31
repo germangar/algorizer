@@ -1,4 +1,3 @@
-
 """
 prompt_cli.py
 Always-on-bottom prompt that pulls its caption via a user-supplied callback.
@@ -10,6 +9,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML
 from typing import Callable
 from . import active
+from . import tasks
 
 
 # --------------------------------------------------------------------------- #
@@ -72,3 +72,15 @@ class LivePrompt:
             stream.createWindow(args)
         else:
             stream.event_callback(stream, "cli_command", (command, args), 2)
+
+
+_prompt_started = False
+
+def enable_prompt():
+    global _prompt_started
+    if _prompt_started:
+        return
+    _prompt_started = True
+
+    prompt = LivePrompt(lambda: (active.timeframe.stream.caption + " > " if active.timeframe and hasattr(active.timeframe, 'stream') and hasattr(active.timeframe.stream, 'caption') else " > "))
+    tasks.registerTask("live_prompt", prompt.run)

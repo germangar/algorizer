@@ -61,8 +61,8 @@ async def runTasks():
     watcher_task.set_name("task_watcher")
     tasks.append(watcher_task)
 
-    # Wait for all tasks to complete
-    await asyncio.gather(*tasks)
+    # Let tasks run forever instead of waiting for completion
+    await asyncio.Event().wait()
     
 
 def findTask(taskname):
