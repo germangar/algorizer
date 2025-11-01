@@ -4,7 +4,92 @@ Uses Colorama for VT support (no registry needed).
 Integrated with tasks.py manager.
 Call enable_prompt() BEFORE stream.run().
 """
-''
+
+"""
+prompt.py – Bottom status line using 'blessed'.
+Call enable_prompt() BEFORE stream.run().
+"""
+'''
+import asyncio
+import sys
+from . import tasks
+
+# --------------------------------------------------------------------------- #
+# Blessed terminal
+# --------------------------------------------------------------------------- #
+from blessed import Terminal
+_term = Terminal()
+
+# --------------------------------------------------------------------------- #
+# Global state (module-level)
+# --------------------------------------------------------------------------- #
+_caption: str = ">> "  # ← Initialized here
+_lock = asyncio.Lock()
+_redraw_event = asyncio.Event()
+
+# --------------------------------------------------------------------------- #
+# Public API
+# --------------------------------------------------------------------------- #
+def set_caption(text: str) -> None:
+    """Change the status line text."""
+    
+    async def _set():
+        global _caption  # ← Explicitly reference global
+        async with _lock:
+            if _caption != text:
+                _caption = text
+                _redraw_event.set()
+
+    # Fire and forget
+    asyncio.create_task(_set())
+
+def get_caption() -> str:
+    return _caption
+
+# --------------------------------------------------------------------------- #
+# Background task
+# --------------------------------------------------------------------------- #
+async def _status_line_task() -> None:
+    print(_term.clear_eos, end="")        # Clear screen below
+    print(_term.hide_cursor, end="")
+
+    while True:
+        await _redraw_event.wait()
+        await asyncio.sleep(0.05)         # Debounce
+        async with _lock:
+            _redraw_event.clear()
+            caption = _caption or "ready"
+
+        with _term.location(0, _term.height - 1):
+            print(_term.clear_eol + f"{caption}" + _term.clear_eol, end="")
+        sys.stdout.flush()
+
+# --------------------------------------------------------------------------- #
+# Task registration
+# --------------------------------------------------------------------------- #
+_prompt_task_registered = False
+
+def enable_prompt(initial_caption: str = "") -> None:
+    global _prompt_task_registered, _caption
+    if _prompt_task_registered:
+        return
+    _prompt_task_registered = True
+
+    _caption = initial_caption
+    tasks.registerTask("status_line", _status_line_task)
+
+# --------------------------------------------------------------------------- #
+# Shutdown
+# --------------------------------------------------------------------------- #
+def disable_prompt() -> None:
+    tasks.cancelTask("status_line")
+    print(_term.normal + _term.show_cursor, end="")
+    sys.stdout.flush()
+
+'''
+
+
+'''
 import asyncio
 import sys
 from typing import Callable
@@ -106,7 +191,7 @@ def disable_prompt() -> None:
     _stdout.write("\033[?25h")
     _stdout.flush()
 
-''
+'''
 
 
 """

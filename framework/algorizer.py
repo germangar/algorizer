@@ -15,8 +15,74 @@ from . import active
 
 verbose = False
 VERIFY_CLOSED_CANDLES = True # Asks the exchange to send the full candle. Prevents mismatches between backtest and realtime, but it's half a second slower at updating and running closeCandle
-WATCH_WESOCKETS_ERROR = True # A thread will be checking CCXT's websockets connection didn't crash. If it did it will try to resume operations.
+WATCH_WESOCKETS_ERROR = False # A thread will be checking CCXT's websockets connection didn't crash. If it did it will try to resume operations.
 
+
+
+# --- STATUS LINE MANAGEMENT ---
+# FIXME: I probably should move this to its own file
+import aioconsole
+import sys
+from colorama import init as colorama_init
+
+status_line_active = False
+
+# without using a task. Just delete before running parseCandleUpdateMulti and write it back after
+def delete_last_line():
+    """
+    Deletes the last line of text printed to the console.
+    Requires colorama to be initialized for Windows compatibility.
+    """
+    global status_line_active
+    
+
+    # Code Sequence	Name	Action
+    # \033[ or \x1B[	CSI (Control Sequence Introducer)	Signals the start of an ANSI command.
+    # \033[1A	CUU (Cursor Up)	Moves the cursor up one line.
+    # \r	CR (Carriage Return)	Moves the cursor to the beginning of the current line.
+    # \033[K	EL (Erase in Line)	Clears all characters from the current cursor position to the end of the line.
+    
+    # 1. Move cursor UP one line: '\033[1A'
+    # 2. Move cursor to start of line: '\r'
+    # 3. Clear line from cursor to end: '\033[K'
+    
+    # Combined sequence:
+    if status_line_active:
+        sys.stdout.write('\033[1A\r\033[K')
+        sys.stdout.flush()
+    status_line_active = False
+
+def print_status_line():
+    global status_line_active
+    if not status_line_active : print( f"{active.timeframe.stream.caption}")
+    status_line_active = True
+    
+
+async def cli_task(stream: 'stream_c'): # Added type hint for clarity
+    while True:
+        message = await aioconsole.ainput()  # Non-blocking input
+
+        # Split the message into command and arguments
+        parts = message.split(' ', 1) # Split only on the first space
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else '' # Get args if they exist
+
+        delete_last_line()
+        if command == 'chart' or command == 'c':
+            stream.createWindow( args )
+
+        elif command == 'close':
+            # TODO: Function to send a command to the client to shutdown
+            print('closing chart')
+
+        else:
+            stream.event_callback(stream, "cli_command", (command, args), 2)
+        print_status_line()
+
+        await asyncio.sleep(0.05)
+
+
+# --- PLOTS ---
 class plot_c:
     def __init__( self, source:float|int|generatedSeries_c, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1, ptype = c.PLOT_LINE, hist_margin_top = 0.0, hist_margin_bottom = 0.0, screen_name:str= None ):
         '''name, color, style, width
@@ -575,6 +641,9 @@ class timeframe_c:
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.top, candle.bottom = ( int(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], row[7] )
         return candle
     
+    def setStatusLineMsg( self, message:str ):
+        self.stream.setStatusLineMsg(message)
+    
 
 
 class stream_c:
@@ -594,6 +663,8 @@ class stream_c:
         self.markers:list[marker_c] = []
         self.lines:list[line_c] = []
         self.registeredPanels:dict = {}
+
+        self.caption = ""
 
         #################################################
         # Validate de timeframes list and find 
@@ -692,6 +763,10 @@ class stream_c:
  
 
     def run(self, backtest_only = False ):
+        # status line
+        colorama_init() 
+        print_status_line()
+        
         self.isRunning = True
 
         # register the tasks
@@ -740,8 +815,10 @@ class stream_c:
         tasks.cancelTask("websocket")
 
     def parseCandleUpdateMulti( self, rows ):
+        delete_last_line()
         for timeframe in self.timeframes.values():
             timeframe.parseCandleUpdate(rows)
+        print_status_line()
 
     async def fetchCandleUpdates( self ):
         maxRows = 20
@@ -865,6 +942,10 @@ class stream_c:
         print( "loading chart" )
         start_window_server( timeframeStr )
 
+    def setStatusLineMsg( self, message:str ):
+        if message:
+            self.caption = f"{message}> "
+
 
 
 def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
@@ -924,25 +1005,5 @@ def isInitializing():
     return active.timeframe.stream.initializing
 
 
-import aioconsole
 
-async def cli_task(stream: 'stream_c'): # Added type hint for clarity
-    while True:
-        message = await aioconsole.ainput()  # Non-blocking input
 
-        # Split the message into command and arguments
-        parts = message.split(' ', 1) # Split only on the first space
-        command = parts[0].lower()
-        args = parts[1] if len(parts) > 1 else '' # Get args if they exist
-
-        if command == 'chart' or command == 'c':
-            stream.createWindow( args )
-
-        elif command == 'close':
-            # TODO: Function to send a command to the client to shutdown
-            print('closing chart')
-
-        else:
-            stream.event_callback(stream, "cli_command", (command, args), 2)
-
-        await asyncio.sleep(0.05)

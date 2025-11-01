@@ -21,8 +21,21 @@ def event( stream:stream_c, event:str, param, numparams ):
         realtime : boolean. True for realtime, false for backtesting.
         '''
         candle, realtime = param
-        if not realtime:
-            return
+        if not realtime : return
+
+        ## Show remaining candle time and open position info on the console status line.
+        candle.updateRemainingTime()
+        message = f"{stream.symbol.split(':')[0]} [{candle.remainingTimeStr()}]"
+        longpos = trade.getActivePosition(c.LONG)
+        if longpos:
+            moreMsg = f" long:{longpos.collateral:.1f}({longpos.get_unrealized_pnl_percentage():.1f}%)"
+            message += moreMsg
+        shortpos = trade.getActivePosition(c.SHORT)
+        if shortpos:
+            moreMsg = f" short:{shortpos.collateral:.1f}({shortpos.get_unrealized_pnl_percentage():.1f}%)"
+            message += moreMsg
+        stream.setStatusLineMsg( message )
+        return
 
     # This event will be called when the strategy executes an order in real time. Not when backtesting.
     elif event == "broker_event":

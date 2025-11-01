@@ -12,6 +12,20 @@ def event( stream:stream_c, event:str, param, numparams ):
         candle, realtime = param
         if not realtime : return
 
+        ## Show remaining candle time and open position info on the console status line.
+        candle.updateRemainingTime()
+        message = f"{stream.symbol.split(':')[0]} [{candle.remainingTimeStr()}]"
+        longpos = trade.getActivePosition(c.LONG)
+        if longpos:
+            moreMsg = f" long:{longpos.collateral:.1f}({longpos.get_unrealized_pnl_percentage():.1f}%)"
+            message += moreMsg
+        shortpos = trade.getActivePosition(c.SHORT)
+        if shortpos:
+            moreMsg = f" short:{shortpos.collateral:.1f}({shortpos.get_unrealized_pnl_percentage():.1f}%)"
+            message += moreMsg
+        stream.setStatusLineMsg( message )
+        return
+
     elif event == "cli_command":
         cmd, args = param
         if cmd == 'echo': # command will always be lower case
@@ -41,12 +55,13 @@ def event( stream:stream_c, event:str, param, numparams ):
             message = f"{account} {stream.symbol} {order} {quantity_dollars:.4f}$ {leverage}x"
         if url:
             req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
+            print( f"Alert sent:  Status: {req.status_code}  Response: {req.text}" )
 
 
 def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
     barindex = timeframe.barindex
     calc.SMA(close, 200).plot()
-    calc.RSI(close, 14).plot('rsi_subpanel')
+    calc.RSI(close, 14).plot('subpanel')
 
 
 if __name__ == '__main__':
@@ -63,7 +78,7 @@ if __name__ == '__main__':
     
     stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['1h'], [runCloseCandle], event, 25000 )
 
-    stream.registerPanel('rsi_subpanel', 1.0, 0.2 )
+    stream.registerPanel('subpanel', 1.0, 0.2, background_color="#313131ac" )
 
     stream.createWindow( '1h' )
 
