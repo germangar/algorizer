@@ -41,6 +41,7 @@ def delete_last_line( count=1):
     # \033[1A	CUU (Cursor Up)	Moves the cursor up one line.
     # \r	CR (Carriage Return)	Moves the cursor to the beginning of the current line.
     # \033[K	EL (Erase in Line)	Clears all characters from the current cursor position to the end of the line.
+    # "\033[1B" move down by 1 lines
     
     # 1. Move cursor UP one line: '\033[1A'
     # 2. Move cursor to start of line: '\r'
@@ -49,14 +50,16 @@ def delete_last_line( count=1):
     # Combined sequence:
     if status_line_active:
         assert( count > 0 )
-        acode = ("\033[1A" * count) + '\r\033[K'
-        sys.stdout.write(acode)
+        
+        for i in range(count):
+            sys.stdout.write(f"\033[1A\r\033[K")
         sys.stdout.flush()
     status_line_active = False
 
 def print_status_line():
     global status_line_active
-    if not status_line_active : print( f"{active.timeframe.stream.caption}")
+    if not status_line_active : 
+        print( f"{active.timeframe.stream.caption}")
     status_line_active = True
     
 
@@ -65,12 +68,15 @@ async def cli_task(stream: 'stream_c'): # Added type hint for clarity
         message = await aioconsole.ainput()  # Non-blocking input
 
         if message:
-            # Split the message into command and arguments
+            # status line shenanigans
+            delete_last_line(2)
+            print(message) # restore the user input we deleted from the console
+
+            # do the commands dance.
             parts = message.split(' ', 1) # Split only on the first space
             command = parts[0].lower()
             args = parts[1] if len(parts) > 1 else '' # Get args if they exist
 
-            delete_last_line(2)
             if command == 'chart' or command == 'c':
                 stream.createWindow( args )
 
