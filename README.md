@@ -14,14 +14,18 @@ I will provide basic documentation later on, but as of now there is a ['example_
 
 You can use template.py as base to write scripts.
 
-**Warning** When accesing old candle data directly from a series/array don't use relative indexing (don't do close[-2]). **During the backtest the barindex will not be at the end of the series.** Use always absolute indexing (close[barindex-1]). If you are accessing a generatedSeries (aka, a calc.* function generated series) you can use relative indexing when you use its iloc/value method, but not directly at the series (rsi14.iloc(-2) good, rsi14.series()[-2] bad). In general **using always absolute indexing is the safe path** both at direct series access and the methods.
+Changes since the original readme:
+- The strategy code supports now both liquidation and take profit/stoploss orders.
+- Old values in arrays can be accesed with relative indexing now, but only as long as the array is a generatedSeries_c (which will be the case unless you use a workaround and declare your own numpy array).
+- You can retrieve data from a generatedSeries_c from a different timeframe with relative indexing too (timestamp is preferable, tho).
+- When backtesting the fast timeframe the index of the slow timeframe will be adjustes to the fast timeframe timestamp (timeframes aren't calculated simultaneously in backtesting, but this allows to use some generatedSeries_c features like retrieving by relative indexing)
+In general series calculations can be used 'naturally' now, but be always careful when combining timeframes. Remember they aren't calculated simoultaneously in backtests.
 
 ![algorizer screenshot](https://github.com/user-attachments/assets/7079f703-fdb5-49b4-816b-d8161eb8090d)
 
 
 ### Future plans (aka to do list) ###
 - Add more indicators and drawing options, and improve the code interoperability in general.
-- Add stoploss capability to the strategy (realtime triggered).
 - Add inputs with ranges and steps for future batch-backtesting
 - Direct broker connection with the exchange for the strategy code to confirm operations
 - Make the chart load bars in modular blocks so it doesn't take so long on high bar count.
