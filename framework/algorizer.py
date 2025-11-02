@@ -28,7 +28,7 @@ from colorama import init as colorama_init
 status_line_active = False
 
 # without using a task. Just delete before running parseCandleUpdateMulti and write it back after
-def delete_last_line():
+def delete_last_line( count=1):
     """
     Deletes the last line of text printed to the console.
     Requires colorama to be initialized for Windows compatibility.
@@ -48,7 +48,9 @@ def delete_last_line():
     
     # Combined sequence:
     if status_line_active:
-        sys.stdout.write('\033[1A\r\033[K')
+        assert( count > 0 )
+        acode = ("\033[1A" * count) + '\r\033[K'
+        sys.stdout.write(acode)
         sys.stdout.flush()
     status_line_active = False
 
@@ -62,22 +64,23 @@ async def cli_task(stream: 'stream_c'): # Added type hint for clarity
     while True:
         message = await aioconsole.ainput()  # Non-blocking input
 
-        # Split the message into command and arguments
-        parts = message.split(' ', 1) # Split only on the first space
-        command = parts[0].lower()
-        args = parts[1] if len(parts) > 1 else '' # Get args if they exist
+        if message:
+            # Split the message into command and arguments
+            parts = message.split(' ', 1) # Split only on the first space
+            command = parts[0].lower()
+            args = parts[1] if len(parts) > 1 else '' # Get args if they exist
 
-        delete_last_line()
-        if command == 'chart' or command == 'c':
-            stream.createWindow( args )
+            delete_last_line(2)
+            if command == 'chart' or command == 'c':
+                stream.createWindow( args )
 
-        elif command == 'close':
-            # TODO: Function to send a command to the client to shutdown
-            print('closing chart')
+            elif command == 'close':
+                # TODO: Function to send a command to the client to shutdown
+                print('closing chart')
 
-        else:
-            stream.event_callback(stream, "cli_command", (command, args), 2)
-        print_status_line()
+            else:
+                stream.event_callback(stream, "cli_command", (command, args), 2)
+            print_status_line()
 
         await asyncio.sleep(0.05)
 
@@ -933,13 +936,10 @@ class stream_c:
         """Create and show a window for the given timeframe"""
         if not timeframeStr:
             timeframeStr = self.timeframeFetch
-        if not tools.validateTimeframeName( timeframeStr ):
-            print( f"{timeframeStr} is not a valid timeframe name" )
-            return
         if timeframeStr not in self.timeframes.keys():
-            print( f"Available timeframes: {list(self.timeframes.keys())}" )
+            print( f"'{timeframeStr}' is not a valid timeframe. Available timeframes: {list(self.timeframes.keys())}" )
             return
-        print( "loading chart" )
+        print( f"loading chart {timeframeStr}" )
         start_window_server( timeframeStr )
 
     def setStatusLineMsg( self, message:str ):
