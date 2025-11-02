@@ -15,6 +15,7 @@ I will provide basic documentation later on, but as of now there is a ['example_
 You can use template.py as base to write scripts.
 
 Changes since the original readme:
+- The strategy code supports now both liquidation and take profit/stoploss orders.
 - Old values in arrays can be accesed with relative indexing now, but only as long as the array is a generatedSeries_c (which will be the case unless you use a workaround and declare your own numpy array).
 - You can retrieve data from a generatedSeries_c from a different timeframe with relative indexing too (timestamp is preferable, tho).
 - When backtesting the fast timeframe the index of the slow timeframe will be adjustes to the fast timeframe timestamp (timeframes aren't calculated simultaneously in backtesting, but this allows to use some generatedSeries_c features like retrieving by relative indexing)
