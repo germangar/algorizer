@@ -1439,7 +1439,7 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
 
 class generatedSeries_c:
     
-    def __init__(self, name: str, source: np.ndarray, period: int, func=None, param=None, always_reset: bool = False):
+    def __init__(self, name: str, source: np.ndarray, period:int= 1, func=None, param=None, always_reset:bool= False):
 
         timeframe = active.timeframe
         
@@ -1497,7 +1497,6 @@ class generatedSeries_c:
         # create a column and register it
         self.column_index = timeframe.dataset_createColumn()
         timeframe.generatedSeries[self.name] = self
-        # print( f"Column created at index {self.column_index} for {self.name}")
         
         
     def calculate_full( self, source ):
@@ -1601,28 +1600,31 @@ class generatedSeries_c:
             return self.timeframe.dataset[:,self.column_index]
         except Exception as e:
             raise ValueError( "series() method couldn't produce an array" )
-        return series
     
     def __getitem__(self, key):
-        if self.timeframe != active.timeframe :
+        if isinstance(key, slice):
+            start, stop, step = key.indices(len(self))
+            key = slice(start, stop, step)
+        else:
             if key < 0:
-                key = active.timeframe.barindex + 1 + key
-            timestamp = active.timeframe.timestamp - ( (active.timeframe.barindex - key) * active.timeframe.timeframeMsec )
-            return self.timeframe.valueAtTimestamp( self.name, timestamp )
-        # Original iloc logic for other indices
-        if key < 0:
-            key = self.timeframe.barindex + 1 + key
-        if key < 0 or key >= len(self.timeframe.dataset):
-            return np.nan # Return NaN for out-of-bounds access
-        return self.timeframe.dataset[:, self.column_index][key]
+                key = self.timeframe.barindex + 1 + key
+            if key < 0 or key >= len(self.timeframe.dataset):
+                return np.nan # Return NaN for out-of-bounds access
+        
+        return self.timeframe.dataset[key, self.column_index]
 
     def __setitem__(self, key, value):
-        self.series()[key] = value # This is going to be denied
+        if isinstance(key, slice):
+            # Handle slice keys like [0:5]
+            start, stop, step = key.indices(len(self))
+            key = slice(start, stop, step)
+        elif key < 0:
+            key = self.timeframe.barindex + 1 + key
+        
+        # Allow both scalar and array assignment
+        self.timeframe.dataset[key, self.column_index] = value
 
     def __len__(self):
-        # print( f"LEN {self.name}" )
-        # if not self.timeframe.backtesting:
-        #     raise ValueError( f"STOP HERE {self.name}" )
         return self.timeframe.dataset.shape[0]
     
     def _lenError(self, other):
