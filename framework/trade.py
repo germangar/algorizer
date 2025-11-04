@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from .candle import candle_c
-from .algorizer import getRealtimeCandle, createMarker, isInitializing, getCandle, getMintick, getPrecision, getFees
+from .algorizer import getRealtimeCandle, createMarker, createLine, isInitializing, getCandle, getMintick, getPrecision, getFees
 from .constants import c
 from . import active
 
@@ -164,6 +164,8 @@ class position_c:
         self.was_liquidated = False
         self.stoploss_orders = []
         self.takeprofit_orders = []
+        self.liquidationLine = None
+        self.oldLiquidationPrice = 0
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
@@ -255,6 +257,9 @@ class position_c:
             if quantity != self.size:
                 quantity = round_to_tick_size(quantity, getPrecision())
             collateral_change = (-quantity * price) / leverage
+            if collateral_change > self.collateral:
+                collateral_change = self.collateral
+                print( "Warning: collateral_change > self.collateral" )
 
         if quantity < EPSILON:
             return None
@@ -501,12 +506,22 @@ class position_c:
         if not quantity:
             reduce_pct = min(100.0, max(1.0, reduce_pct)) if reduce_pct else 100.0
 
-        # create the stoploss item
+        # see if we have another TP in the same price
+        # if we do we update it with the new values and return it
+        for tp in self.takeprofit_orders:
+            if abs( tp['price'] - price ) < EPSILON:
+                tp['quantity'] = quantity
+                tp['quantity_pct'] = reduce_pct
+                tp ['win_pct'] = win_pct
+            return tp
+
+        # create the takeprofit item
         tp_order = {
             'price': price,
             'quantity': quantity,
             'quantity_pct': reduce_pct,
-            'win_pct': win_pct
+            'win_pct': win_pct,
+            'line': None
         }
 
         self.takeprofit_orders.append( tp_order )
@@ -533,16 +548,82 @@ class position_c:
         if not quantity:
             reduce_pct = min(100.0, max(1.0, reduce_pct)) if reduce_pct else 100.0
 
+        # see if we have another SL in the same price
+        # if we do we update it with the new values and return it
+        for sl in self.stoploss_orders:
+            if abs( sl['price'] - price ) < EPSILON:
+                sl['quantity'] = quantity
+                sl['quantity_pct'] = reduce_pct
+                sl ['loss_pct'] = loss_pct
+            return sl
+
         # create the stoploss item
         stoploss_order = {
             'price': price,
             'quantity': quantity,
             'quantity_pct': reduce_pct,
-            'loss_pct': loss_pct
+            'loss_pct': loss_pct,
+            'line': None
         }
 
         self.stoploss_orders.append( stoploss_order )
         return stoploss_order
+    
+    def drawStoploss( self, color= "#e38100", style = 'dotted', width= 2 ):
+        if self.stoploss_orders:
+            for sl in self.stoploss_orders: # the script doesn't do more than one at a time, but just in case I change it
+                stoplossprice = sl.get("price")
+                line = sl.get("line")
+                if line is None:
+                    line = createLine( active.barindex,
+                                        stoplossprice, 
+                                        active.barindex + 5,
+                                        stoplossprice,
+                                        color= color,
+                                        style= style,
+                                        width= width )
+                    sl['line'] = line
+
+                # keep updating it
+                if line and active.barindex >= line.x2:
+                    line.x2 = active.barindex + 1
+
+    def drawTakeprofit( self, color= "#17c200", style = 'dotted', width= 2 ):
+        if self.takeprofit_orders:
+            for tp in self.takeprofit_orders: # the script doesn't do more than one at a time, but just in case I change it
+                takeprofitprice = tp.get("price")
+                line = tp.get("line")
+                if line is None:
+                    line = createLine( active.barindex,
+                                        takeprofitprice, 
+                                        active.barindex + 5,
+                                        takeprofitprice,
+                                        color= color,
+                                        style= style,
+                                        width= width )
+                    tp['line'] = line
+
+                # keep updating it
+                if line and active.barindex >= line.x2:
+                    line.x2 = active.barindex + 1
+
+    def drawLiquidation(self, color= "#a00000", style = 'dotted', width= 2):
+        if not self.active:
+            return
+        
+        if self.leverage > 0:
+            if self.liquidationLine == None or self.oldLiquidationPrice != self.liquidation_price:
+                self.liquidationLine = createLine( self.order_history[-1]['barindex'],
+                                                    self.liquidation_price, 
+                                                    active.barindex + 5,
+                                                    self.liquidation_price,
+                                                    color = "#a00000",
+                                                    style='dotted',
+                                                    width=2 )
+                self.oldLiquidationPrice = self.liquidation_price
+            # keep updating it
+            if active.barindex >= self.liquidationLine.x2:
+                self.liquidationLine.x2 = active.barindex + 1
 
 
 strategy = strategy_c(currency_mode='USD')
