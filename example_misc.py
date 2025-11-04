@@ -280,7 +280,7 @@ if __name__ == '__main__':
 
 
     # Execute this call only if you want to check the chart. It's not neccesary to run the strategy.
-    # You can also open the chart using the command 'chart' in the console.
+    # You can also open the chart using the command 'chart' in the console, and select the timeframe by adding the timeframe name ('1h') to the command.
     # opening the chart is often way slower than calculating the strategy results. Don't look at me. Blame lightweight-charts.
     stream.createWindow()
 
