@@ -922,7 +922,7 @@ class stream_c:
         if line:
             self.lines.remove(line)
 
-    def createWindow( self, timeframeStr ):
+    def createWindow( self, timeframeStr = None ):
         """Create and show a window for the given timeframe"""
         if not timeframeStr:
             timeframeStr = self.timeframeFetch
