@@ -519,21 +519,11 @@ class timeframe_c:
         self.dataset = np.hstack([self.dataset, new_col])
         index = self.dataset.shape[1] - 1
         return index
-
-
-    def createGeneratedSeriesColumn( self, name, assignable = True )->generatedSeries_c:
-        if name in self.generatedSeries.keys():
-            raise ValueError( f"column [{name}] already exists" )
-
-        index = self.dataset_createColumn()
-        self.generatedSeries[name] = generatedSeries_c( name, index, 1 )
-        return self.generatedSeries[name]
     
     def columnsList( self )->list:
         return list( self.generatedSeries.keys() )
 
     def indexForTimestamp( self, timestamp:int, caller_timeframe_msec:int = 0 ) -> int:
-        # Adjust timestamp to account for caller's candle close time
         adjusted_timestamp = timestamp + caller_timeframe_msec
         baseTimestamp = self.dataset[0, c.DF_TIMESTAMP]
         index = int((adjusted_timestamp - baseTimestamp) // self.timeframeMsec) - 1
