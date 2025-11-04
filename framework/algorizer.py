@@ -346,14 +346,8 @@ class timeframe_c:
                     if not lt.ready or lt.backtesting:
                         continue
                     # figure out the other timeframe barindex and timestamp for this candle barindex and timestamp
-                    lt.barindex = lt.indexForTimestamp( newrow_timestamp )
-                    # if lt.barindex == -1: print( f"newrow_timestamp: {newrow_timestamp}" )
-                    # assert(lt.barindex != -1)
+                    lt.barindex = lt.indexForTimestamp( newrow_timestamp, self.timeframeMsec )
                     lt.timestamp = lt.timestampAtIndex( lt.barindex ) if lt.barindex >= 0 else 0
-                    # if self.barindex < 500: 
-                    #     tstamp = int(self.timestamp*0.00001)
-                    #     ltstamp = int(lt.timestamp*0.00001)
-                    #     print( f"barindex:{self.barindex} timestamp:{tstamp} close:{newrow_close} big TF barindex:{lt.barindex} timestamp:{ltstamp} close:{lt.dataset[lt.barindex, c.DF_CLOSE]}")
 
                 # Execute the user-defined callback for each historical candle.
                 if self.lastTimestampExecuted == self.dataset[self.barindex, c.DF_TIMESTAMP]:
@@ -538,12 +532,12 @@ class timeframe_c:
     def columnsList( self )->list:
         return list( self.generatedSeries.keys() )
 
-    def indexForTimestamp( self, timestamp:int )->int:
-        # Estimate the index by dividing the offset by the time difference between rows
+    def indexForTimestamp( self, timestamp:int, caller_timeframe_msec:int = 0 ) -> int:
+        # Adjust timestamp to account for caller's candle close time
+        adjusted_timestamp = timestamp + caller_timeframe_msec
         baseTimestamp = self.dataset[0, c.DF_TIMESTAMP]
-        index = int((timestamp - baseTimestamp) // self.timeframeMsec) - 1
-        return max(-1, index) # Return the previous index or -1 if not found
-    
+        index = int((adjusted_timestamp - baseTimestamp) // self.timeframeMsec) - 1
+        return max(-1, index)
 
     def timestampAtIndex( self, index:int )->int:
         return int( self.dataset[index, c.DF_TIMESTAMP] )
