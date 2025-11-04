@@ -164,8 +164,10 @@ class position_c:
         self.was_liquidated = False
         self.stoploss_orders = []
         self.takeprofit_orders = []
-        self.liquidationLine = None
-        self.oldLiquidationPrice = 0
+        self.drawInfo = {
+            'oldliquidation': 0,
+            'liquidationLine': None
+        }
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
@@ -612,18 +614,23 @@ class position_c:
             return
         
         if self.leverage > 0:
-            if self.liquidationLine == None or self.oldLiquidationPrice != self.liquidation_price:
-                self.liquidationLine = createLine( self.order_history[-1]['barindex'],
+            liquidationLine = self.drawInfo['liquidationLine']
+            oldLiquidationPrice = self.drawInfo['oldliquidation']
+
+            if liquidationLine == None or oldLiquidationPrice != self.liquidation_price:
+                liquidationLine = createLine( self.order_history[-1]['barindex'],
                                                     self.liquidation_price, 
                                                     active.barindex + 5,
                                                     self.liquidation_price,
                                                     color = "#a00000",
                                                     style='dotted',
                                                     width=2 )
-                self.oldLiquidationPrice = self.liquidation_price
+                self.drawInfo['liquidationLine'] = liquidationLine
+                self.drawInfo['oldliquidation'] = self.liquidation_price
+
             # keep updating it
-            if active.barindex >= self.liquidationLine.x2:
-                self.liquidationLine.x2 = active.barindex + 1
+            if active.barindex >= liquidationLine.x2:
+                liquidationLine.x2 = active.barindex + 1
 
 
 strategy = strategy_c(currency_mode='USD')
