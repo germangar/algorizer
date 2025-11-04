@@ -97,7 +97,15 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     barindex = timeframe.barindex # for simplicity
 
     # bollinger bands returns 3 generatedSeries
-    BBbasis, BBupper, BBlower = calc.BollingerBands( close, 350 )
+    # BBbasis, BBupper, BBlower = calc.BollingerBands( close, 350 )
+
+    # There's a calc.BollingerBands function, but I'm doin'g it this
+    # way to demonstrate you can freely operate with series.
+    BBbasis = calc.SMA(close, 350)
+    stdev = calc.STDEV(close, 350, 2.0)
+    BBupper = BBbasis + stdev
+    BBlower = BBbasis - stdev
+
     # You can plot generatedSeries directly with their plot method.
     BBbasis.plot( color = "#769EB4AC", width=2 )
     BBupper.plot( style='dotted' )
@@ -107,19 +115,13 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     plot( 80, 'overbought', 'rsi', color="#CECECE8B", style='dotted', width=1 )
     plot( 20, 'oversold', 'rsi', color="#CECECE8B", style='dotted', width=1 )
 
-    # can request values from a different timeframe with this function
-    # invRSI = requestValue( rsiSlow.name, '1d' ) 
 
-    # but in this case it's easier to use the generatedSeries object to retrieve it.
-    # You can read its value here, but not operate with the object nor use the plot method
-    # since this object belongs to a different timeframe.
-    
-    # These all do the same, but negative indexing should only be used in the iloc() method:
-    invRSI = rsiSlow[barindex]
-    # invRSI = rsiSlow.current()
-    # invRSI = rsiSlow.iloc(barindex)
-    # invRSI = rsiSlow.iloc(-1)
-    #invRSI = rsiSlow.series()[barindex]
+    # You can read the array from a different timeframe, but be careful because
+    # the barindexes don't match. You can use relative indexing or use its own
+    # barindex accesting its own timeframe from inside the series class
+    invRSI = rsiSlow[ rsiSlow.timeframe.barindex ]
+    # invRSI = rsiSlow[-1] # also does the job
+
 
     # We convert the -1/+1 value to the scale of standard rsi so they can share the same panel.
     if invRSI is not None:
