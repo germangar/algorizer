@@ -89,7 +89,7 @@ def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, 
     # This plot will only show when charting this timeframe.
     # the main logic resides in the 'fast' timeframe, so you most likely will never see it unless
     # you want to check this timeframe.
-    rsiSlow.plot('rsi')
+    rsiSlow.plot('subpanel')
 
 
 def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
@@ -101,38 +101,42 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
 
     # There's a calc.BollingerBands function, but I'm doin'g it this
     # way to demonstrate you can freely operate with series.
+    mult = 2.0
     BBbasis = calc.SMA(close, 350)
-    stdev = calc.STDEV(close, 350, 2.0)
-    BBupper = BBbasis + stdev
-    BBlower = BBbasis - stdev
+    stdev = calc.STDEV(close, 350, 1.0)     # You can feed the multiplier in the STDEV function directly
+    BBupper = BBbasis + (stdev * mult)      # but again, for demosntrative purposes I calculate it here
+    BBlower = BBbasis - (stdev * mult)
 
-    # You can plot generatedSeries directly with their plot method.
-    BBbasis.plot( color = "#769EB4AC", width=2 )
+    BBbasis.plot( color = "#769EB4AC", width=2 ) # You can plot series directly with their plot method.
     BBupper.plot( style='dotted' )
     BBlower.plot( style='dotted' )
 
-    # I didn't add horizontal lines yet
-    plot( 80, 'overbought', 'rsi', color="#CECECE8B", style='dotted', width=1 )
-    plot( 20, 'oversold', 'rsi', color="#CECECE8B", style='dotted', width=1 )
+
+    # I didn't add horizontal lines yet so I'm plotting constant floats here
+    plot( 80, 'overbought', 'subpanel', color="#CECECE8B", style='dotted', width=1 )
+    plot( 20, 'oversold', 'subpanel', color="#CECECE8B", style='dotted', width=1 )
 
 
     # You can read the array from a different timeframe, but be careful because
     # the barindexes don't match. You can use relative indexing or use its own
-    # barindex accesting its own timeframe from inside the series class
+    # barindex accessing its own timeframe from inside the series class
     invRSI = rsiSlow[ rsiSlow.timeframe.barindex ]
     # invRSI = rsiSlow[-1] # also does the job
 
-
-    # We convert the -1/+1 value to the scale of standard rsi so they can share the same panel.
+    # We convert the -1/+1 oscilator to the scale of standard rsi so they can share the same panel.
     if invRSI is not None:
         invRSI = (invRSI * 50) + 50
 
-    # we can plot a float (rsiSlow.current() is a float) using the plot function 
-    # we can't directly plot the rsiSlow object/series-method as it belongs to a different timeframe and the lenght of the dataframes don't match
-    plot( invRSI, 'rsiSlow', 'rsi', color="#ef38cd44", width=10 ) # The rsi panel was created by us. See below.
+    # InvRSI is a float result of the operations now.
+    # we can't directly plot the rsiSlow object as it belongs to a different timeframe
+    # but we can plot the current value we obtain from the operation.
+    # When plotting floats the plot class will create a series that you will be 
+    # filling every time you call it.
+    plot( invRSI, 'rsiSlow', 'subpanel', color="#ef38cd44", width=10 ) # The subpanel panel was created by us. See below.
 
     # standard rsi
-    rsi14 = calc.RSI(close, 14).plot( 'rsi' )
+    rsi14 = calc.RSI(close, 14).plot( 'subpanel' )
+
 
     # There's a built-in pivot indicator which is performance savy.
     # 'top' and 'bottom' are columns in the dataframe containing
@@ -146,8 +150,6 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
             createMarker('▽', 'above', color = "#BDBDBD", timestamp=thisPivot.timestamp)
         else:
             createMarker('△', 'below', color = "#BDBDBD", timestamp=thisPivot.timestamp)
-
-
 
     # MACD in one go
     macd_line, signal_line, histo = calc.MACD(close)
@@ -273,7 +275,7 @@ if __name__ == '__main__':
     # screen the subpanel will take. The order of creation will determine which one
     # is above or below.
     stream.registerPanel('macd', 1.0, 0.1, show_timescale=False ) # usually you only want the one at the bottom to show the timescale
-    stream.registerPanel('rsi', 1.0, 0.2, background_color="#292a2cac" )
+    stream.registerPanel('subpanel', 1.0, 0.2, background_color="#292a2cac" )
 
     # Some options to print the results. The first one prints all orders so it's disabled for being spammy
     # trade.print_strategy_stats()
