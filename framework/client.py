@@ -129,6 +129,14 @@ def hx2rgba(hex_color):
 
     return r, g, b, a
 
+def count_decimal_places(num):
+    """Count significant decimal places, ignoring trailing zeros"""
+    if isinstance(num, float):
+        # Handle float precision issues
+        num = format(num, '.15f').rstrip('0')
+    num_str = str(num).rstrip('0')
+    return len(num_str.split('.')[1]) if '.' in num_str else 0
+
 from dataclasses import dataclass
 @dataclass
 class plot_c:
@@ -366,6 +374,8 @@ class window_c:
                           entire_text_only=False, 
                           ticks_visible=True,
                           visible=True )
+        
+        chart.precision( count_decimal_places( self.config["mintick"] ) )
 
         self.legend = f"{self.config['symbol']}"
         chart.legend( visible=False, ohlc=False, percent=False, font_size=self.panels['main']['fontsize']+2, text=self.legend, color=self.textColor )
@@ -436,8 +446,8 @@ class window_c:
         self.newTick( descriptor.get('tick'), force = True )
         self.lastCandle.index = time_df.index[-1]
         self.lastCandle.updateRemainingTime()
-        tasks.registerTask('clocks', self.update_clocks)
 
+        tasks.registerTask('clocks', self.update_clocks)
         tasks.registerTask('window', chart.show_async)
 
         del time_df

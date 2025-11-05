@@ -218,6 +218,7 @@ def create_config_message():
         "type": "config",
         "symbol": stream.symbol,
         "timeframes": list(stream.timeframes.keys()),
+        "mintick": stream.mintick,
         "panels": stream.registeredPanels
     }
     return msgpack.packb(message, use_bin_type=True)
