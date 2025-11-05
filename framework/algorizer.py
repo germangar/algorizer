@@ -69,8 +69,9 @@ async def cli_task(stream: 'stream_c'): # Added type hint for clarity
 
         if message:
             # status line shenanigans
-            delete_last_line(2)
-            print(message) # restore the user input we deleted from the console
+            if stream.running:
+                delete_last_line(2)
+                print(message) # restore the user input we deleted from the console
 
             # do the commands dance.
             parts = message.split(' ', 1) # Split only on the first space
@@ -86,7 +87,9 @@ async def cli_task(stream: 'stream_c'): # Added type hint for clarity
 
             else:
                 stream.event_callback(stream, "cli_command", (command, args), 2)
-            print_status_line()
+            
+            if stream.running:
+                print_status_line()
 
         await asyncio.sleep(0.05)
 
@@ -643,7 +646,7 @@ class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, event_callback = None, max_amount = 5000, cache_only = False ):
         self.symbol = symbol # FIXME: add verification
         self.initializing = True
-        self.isRunning = False
+        self.running = False
         self.timeframeFetch = None
         self.timestampFetch = -1
         self.timeframes: dict[str, timeframe_c] = {}
@@ -760,7 +763,7 @@ class stream_c:
         colorama_init() 
         print_status_line()
         
-        self.isRunning = True
+        self.running = True
 
         # register the tasks
         tasks.registerTask( 'cli', cli_task, self )
@@ -845,11 +848,15 @@ class stream_c:
         if active.timeframe.timeframeStr != self.timeframeFetch :
            return
 
+        if self.running:
+            delete_last_line()
         if self.event_callback:
             self.event_callback( self, "tick", (candle, realtime), 2 )
 
         from .trade import newTick
         newTick(candle, realtime)
+        if self.running:
+            print_status_line()
 
     def broker_event( self, order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
         '''
@@ -862,7 +869,11 @@ class stream_c:
         leverage (Leverage of the Order)
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
+        if self.running:
+            delete_last_line()
         self.event_callback( self, "broker_event", (order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage), 8 )
+        if self.running:
+            print_status_line()
 
     
     def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False, background_color= None, text_color= None ):
