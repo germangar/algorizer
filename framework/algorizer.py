@@ -12,86 +12,11 @@ from .candle import candle_c
 from .calcseries import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update
 from . import active
+from . import console
 
 verbose = False
 VERIFY_CLOSED_CANDLES = True # Asks the exchange to send the full candle. Prevents mismatches between backtest and realtime, but it's half a second slower at updating and running closeCandle
 WATCH_WESOCKETS_ERROR = False # A thread will be checking CCXT's websockets connection didn't crash. If it did it will try to resume operations.
-
-
-
-# --- STATUS LINE MANAGEMENT ---
-# FIXME: I probably should move this to its own file
-import aioconsole
-import sys
-from colorama import init as colorama_init
-
-status_line_active = False
-
-# without using a task. Just delete before running parseCandleUpdateMulti and write it back after
-def delete_last_line( count=1):
-    """
-    Deletes the last line of text printed to the console.
-    Requires colorama to be initialized for Windows compatibility.
-    """
-    global status_line_active
-    
-
-    # Code Sequence	Name	Action
-    # \033[ or \x1B[	CSI (Control Sequence Introducer)	Signals the start of an ANSI command.
-    # \033[1A	CUU (Cursor Up)	Moves the cursor up one line.
-    # \r	CR (Carriage Return)	Moves the cursor to the beginning of the current line.
-    # \033[K	EL (Erase in Line)	Clears all characters from the current cursor position to the end of the line.
-    # "\033[1B" move down by 1 lines
-    
-    # 1. Move cursor UP one line: '\033[1A'
-    # 2. Move cursor to start of line: '\r'
-    # 3. Clear line from cursor to end: '\033[K'
-    
-    # Combined sequence:
-    if status_line_active:
-        assert( count > 0 )
-        
-        for i in range(count):
-            sys.stdout.write(f"\033[1A\r\033[K")
-        sys.stdout.flush()
-    status_line_active = False
-
-def print_status_line():
-    global status_line_active
-    if not status_line_active : 
-        print( f"{active.timeframe.stream.caption}")
-    status_line_active = True
-    
-
-async def cli_task(stream: 'stream_c'): # Added type hint for clarity
-    while True:
-        message = await aioconsole.ainput()  # Non-blocking input
-
-        if message:
-            # status line shenanigans
-            if stream.running:
-                delete_last_line(2)
-                print(message) # restore the user input we deleted from the console
-
-            # do the commands dance.
-            parts = message.split(' ', 1) # Split only on the first space
-            command = parts[0].lower()
-            args = parts[1] if len(parts) > 1 else '' # Get args if they exist
-
-            if command == 'chart' or command == 'c':
-                stream.createWindow( args )
-
-            elif command == 'close':
-                # TODO: Function to send a command to the client to shutdown
-                print('closing chart')
-
-            else:
-                stream.event_callback(stream, "cli_command", (command, args), 2)
-            
-            if stream.running:
-                print_status_line()
-
-        await asyncio.sleep(0.05)
 
 
 # --- PLOTS ---
@@ -660,8 +585,6 @@ class stream_c:
         self.lines:list[line_c] = []
         self.registeredPanels:dict = {}
 
-        self.caption = ""
-
         #################################################
         # Validate de timeframes list and find 
         # the smallest for fetching the data
@@ -760,13 +683,14 @@ class stream_c:
 
     def run(self, backtest_only = False ):
         # status line
-        colorama_init() 
-        print_status_line()
+        console.init_colorama()
+        console.status_line_text = f"{self.symbol.split(':')[0]}"
+        console.print_status_line()
         
         self.running = True
 
         # register the tasks
-        tasks.registerTask( 'cli', cli_task, self )
+        tasks.registerTask( 'cli', console.cli_task, self )
         if not backtest_only and not self.cache_only :
             ''' This is for relaunching the stream if there's a websockets errror in CCXT.
                 It remains disabled by now until such error happens again'''
@@ -811,10 +735,10 @@ class stream_c:
         tasks.cancelTask("websocket")
 
     def parseCandleUpdateMulti( self, rows ):
-        delete_last_line()
+        console.delete_last_line()
         for timeframe in self.timeframes.values():
             timeframe.parseCandleUpdate(rows)
-        print_status_line()
+        console.print_status_line()
 
     async def fetchCandleUpdates( self ):
         maxRows = 20
@@ -849,14 +773,14 @@ class stream_c:
            return
 
         if self.running:
-            delete_last_line()
+            console.delete_last_line()
         if self.event_callback:
             self.event_callback( self, "tick", (candle, realtime), 2 )
 
         from .trade import newTick
         newTick(candle, realtime)
         if self.running:
-            print_status_line()
+            console.print_status_line()
 
     def broker_event( self, order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage ):
         '''
@@ -870,10 +794,10 @@ class stream_c:
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
         if self.running:
-            delete_last_line()
+            console.delete_last_line()
         self.event_callback( self, "broker_event", (order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage), 8 )
         if self.running:
-            print_status_line()
+            console.print_status_line()
 
     
     def registerPanel( self, name:str, width:float, height:float, fontsize = 14, show_candles:bool = False, show_timescale = True, show_volume = False, show_labels = False, show_priceline = False, show_plotnames = False, background_color= None, text_color= None ):
@@ -945,7 +869,7 @@ class stream_c:
 
     def setStatusLineMsg( self, message:str ):
         if message:
-            self.caption = f"{message}> "
+            console.status_line_text = f"{message}"
 
 
 
