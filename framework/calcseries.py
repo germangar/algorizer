@@ -237,13 +237,13 @@ def _generatedseries_calculate_scalar_divide_series(source: np.ndarray, period: 
 
 def _generatedseries_calculate_scalar_power_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return np.power(param, source) # Note the order: scalar (param) first, then series (source)
-
+'''
 def _generatedseries_calculate_scalar_min_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return np.minimum(param, source)
 
 def _generatedseries_calculate_scalar_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return np.maximum(param, source)
-
+'''
 def _generatedseries_calculate_scalar_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param == source
 
@@ -1962,34 +1962,6 @@ def powerSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | N
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_power_series, param= colB)
 
-def minSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
-    timeframe = active.timeframe
-
-    colA = timeframe.seriesFromMultiObject( colA )
-    if isinstance( colB, NumericScalar ):
-        name = f"min_{colA.column_index}_{colB}"
-    else:
-        colB = timeframe.seriesFromMultiObject( colB )
-        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
-        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
-            raise ValueError("Operands must have the same shape for element-wise addition.")
-        
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, param= colB)
-
-def maxSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
-    timeframe = active.timeframe
-
-    colA = timeframe.seriesFromMultiObject( colA )
-    if isinstance( colB, NumericScalar ):
-        name = f"max_{colA.column_index}_{colB}"
-    else:
-        colB = timeframe.seriesFromMultiObject( colB )
-        name = f"max_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
-        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
-            raise ValueError("Operands must have the same shape for element-wise addition.")
-        
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, param= colB)
-
 def equalSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
@@ -2081,6 +2053,7 @@ def notSeries(source: str | generatedSeries_c) ->generatedSeries_c:
     name = f"not_{source.column_index}"
     return timeframe.calcGeneratedSeries( name, source, 1, _generatedseries_calculate_logical_not, None )
 
+
 #
 ########## SCALARS By SERIES
 #
@@ -2131,24 +2104,6 @@ def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> gener
     name = f"pow_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_power_series, param= scalar)
 
-def minScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
-    """
-    Factory function for min(scalar, series).
-    """
-    timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
-    name = f"min_{scalar}_{series.column_index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_min_series, param= scalar)
-
-def maxScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
-    """
-    Factory function for max(scalar, series).
-    """
-    timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
-    name = f"max_{scalar}_{series.column_index}" # Consistent naming for scalar first
-    return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_max_series, param= scalar)
-
 def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar == series."""
     timeframe = active.timeframe
@@ -2191,6 +2146,49 @@ def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) ->
     name = f"le_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_lessequal_series, param= scalar)
 
+
+################### Other operations NOT for magic methods #######################
+
+
+def MIN( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
+        return min( colA, colB )
+    
+    timeframe = active.timeframe
+    if isinstance( colA, NumericScalar ): # swap them if the scalar is first
+        scalar = colA
+        colA = timeframe.seriesFromMultiObject(colB)
+        colB = scalar
+    
+    if isinstance( colB, NumericScalar ):
+        name = f"min_{colA.column_index}_{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject(colB)
+        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise operations.")
+    
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, param= colB)
+
+def MAX( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
+        return min( colA, colB )
+    
+    timeframe = active.timeframe
+    if isinstance( colA, NumericScalar ): # swap them if the scalar is first
+        scalar = colA
+        colA = timeframe.seriesFromMultiObject(colB)
+        colB = scalar
+    
+    if isinstance( colB, NumericScalar ):
+        name = f"min_{colA.column_index}_{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject(colB)
+        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise operations.")
+        
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, param= colB)
 
 
 ###################### ANALITIC TOOLS #################################
