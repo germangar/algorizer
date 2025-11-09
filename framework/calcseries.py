@@ -276,7 +276,7 @@ def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset:
     if talib_available:
         return talib.MAX(source, period)
     source = np.asarray(source, dtype=np.float64)
-    return _rolling_window_apply_optimized(source, period, lambda x: np.max(x))
+    return _rolling_window_apply_optimized(source, period, lambda x: np.nanmax(x))
 
 def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
@@ -285,7 +285,7 @@ def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: 
     if talib_available:
         return talib.MIN(source, period)
     source = np.asarray(source, dtype=np.float64)
-    return _rolling_window_apply_optimized(source, period, lambda x: np.min(x))
+    return _rolling_window_apply_optimized(source, period, lambda x: np.nanmin(x))
 
 # _highestbars250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -447,7 +447,7 @@ def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.
         return np.full_like(source, np.nan)
 
     sma = np.full_like(source, np.nan)
-    cumsum = np.cumsum(np.insert(source, 0, 0))
+    cumsum = np.nancumsum(np.insert(source, 0, 0))
     sma[period-1:] = (cumsum[period:] - cumsum[:-period]) / period
     return sma
 
@@ -511,7 +511,7 @@ def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.
 
     # Compute initial SMA using sliding_window_view
     windows = sliding_window_view(series, window_shape=period)
-    rma[period - 1] = np.mean(windows[0], axis=-1)
+    rma[period - 1] = np.nanmean(windows[0], axis=-1)
 
     # Compute RMA iteratively
     alpha = 1.0 / period
@@ -538,7 +538,7 @@ def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.
     windows = sliding_window_view(series, window_shape=period)
 
     # Compute WMA for all windows
-    weighted_sums = np.sum(windows * weights, axis=1)  # Element-wise multiplication and sum
+    weighted_sums = np.nansum(windows * weights, axis=1)  # Element-wise multiplication and sum
     wma = weighted_sums / weight_sum
 
     # Pad with NaNs for the first period - 1 values
@@ -569,8 +569,8 @@ def _generatedseries_calculate_linreg(series: np.ndarray, period: int, dataset: 
     n = period
 
     # Compute sums for regression
-    y_sum = np.sum(windows, axis=1)
-    ty_sum = np.sum(windows * t, axis=1)
+    y_sum = np.nansum(windows, axis=1)
+    ty_sum = np.nansum(windows * t, axis=1)
 
     # Compute slope (b) and intercept (a) vectorized
     denominator = n * t_sq_sum - t_sum ** 2
@@ -621,10 +621,10 @@ def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.
     tp_windows = sliding_window_view(tp, window_shape=period)
 
     # Compute SMA
-    sma = np.mean(tp_windows, axis=1)
+    sma = np.nanmean(tp_windows, axis=1)
 
     # Compute MAD
-    mad = np.mean(np.abs(tp_windows - sma[:, np.newaxis]), axis=1)
+    mad = np.nanmean(np.abs(tp_windows - sma[:, np.newaxis]), axis=1)
 
     # Compute CCI
     cci = np.full(length, np.nan)
@@ -652,8 +652,8 @@ def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.
     n = period
 
     # Compute sums for regression
-    y_sum = np.sum(windows, axis=1)  # Sum of y_i for each window
-    ty_sum = np.sum(windows * t, axis=1)  # Sum of t_i * y_i for each window
+    y_sum = np.nansum(windows, axis=1)  # Sum of y_i for each window
+    ty_sum = np.nansum(windows * t, axis=1)  # Sum of t_i * y_i for each window
 
     # Compute slope (b) and intercept (a) vectorized
     denominator = n * t_sq_sum - t_sum ** 2
@@ -784,11 +784,11 @@ def _generatedseries_calculate_dev(series: np.ndarray, period: int, dataset: np.
     windows = sliding_window_view(series, window_shape=period)
 
     # Compute mean for each window
-    means = np.mean(windows, axis=1)
+    means = np.nanmean(windows, axis=1)
 
     # Compute mean absolute deviation: Σ(|x - mean|) / period
     abs_deviations = np.abs(windows - means[:, np.newaxis])
-    dev = np.sum(abs_deviations, axis=1) / period
+    dev = np.nansum(abs_deviations, axis=1) / period
 
     # Pad with NaNs for the first period - 1 values
     result = np.full(length, np.nan)
@@ -813,8 +813,8 @@ def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, datas
     # Compute rolling highest high and lowest low
     high_windows = sliding_window_view(high, window_shape=period)
     low_windows = sliding_window_view(low, window_shape=period)
-    highest_high = np.max(high_windows, axis=1)
-    lowest_low = np.min(low_windows, axis=1)
+    highest_high = np.nanmax(high_windows, axis=1)
+    lowest_low = np.nanmin(low_windows, axis=1)
 
     # Compute Williams %R
     numerator = highest_high - close[period - 1:]  # Align close with window ends
@@ -886,9 +886,9 @@ def _generatedseries_calculate_slope(series: np.ndarray, period: int, dataset: n
 
     # Compute slopes for all windows
     y = windows  # Shape: (length - period + 1, period)
-    y_mean = np.mean(y, axis=1)[:, np.newaxis]  # Shape: (length - period + 1, 1)
+    y_mean = np.nanmean(y, axis=1)[:, np.newaxis]  # Shape: (length - period + 1, 1)
     y_centered = y - y_mean  # Shape: (length - period + 1, period)
-    numerator = np.sum(y_centered * x_centered, axis=1)  # Shape: (length - period + 1,)
+    numerator = np.nansum(y_centered * x_centered, axis=1)  # Shape: (length - period + 1,)
     
     # Compute slopes, handle division by zero
     slopes = np.where(denominator != 0, numerator / denominator, 0.0)
@@ -907,8 +907,8 @@ def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np
 
     # Step 1: Compute rolling maximum and minimum
     windows = sliding_window_view(series, window_shape=period)
-    highest = np.max(windows, axis=1)
-    lowest = np.min(windows, axis=1)
+    highest = np.nanmax(windows, axis=1)
+    lowest = np.nanmin(windows, axis=1)
 
     # Pad with NaNs at the beginning to match original length
     highest_padded = np.concatenate([np.full(period - 1, np.nan), highest])
@@ -922,7 +922,7 @@ def _generatedseries_calculate_vhma(series: np.ndarray, period: int, dataset: np
 
     # Step 4: Compute rolling sum of change and vhf
     change_windows = sliding_window_view(change, window_shape=period)
-    rolling_sum_change = np.sum(change_windows, axis=1)
+    rolling_sum_change = np.nansum(change_windows, axis=1)
     rolling_sum_change_padded = np.concatenate([np.full(period - 1, np.nan), rolling_sum_change])
     
     vhf = R / rolling_sum_change_padded
@@ -958,8 +958,8 @@ def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.
     gains_windows = sliding_window_view(gains, window_shape=period)
     losses_windows = sliding_window_view(losses, window_shape=period)
     
-    avg_gain_initial = np.mean(gains_windows[0], axis=-1)
-    avg_loss_initial = np.mean(losses_windows[0], axis=-1)
+    avg_gain_initial = np.nanmean(gains_windows[0], axis=-1)
+    avg_loss_initial = np.nanmean(losses_windows[0], axis=-1)
 
     # Initialize arrays for SMMA
     avg_gains = np.full(length, np.nan)
@@ -1024,8 +1024,8 @@ def _generatedseries_calculate_fisher(series: np.ndarray, period: int, dataset: 
 
     for i in range(period-1, length):
         window = med[i - period + 1:i + 1]
-        min_ = np.min(window)
-        max_ = np.max(window)
+        min_ = np.nanmin(window)
+        max_ = np.nanmax(window)
         if max_ == min_:
             norm = 0
         else:
@@ -1076,7 +1076,7 @@ def _generatedseries_calculate_ao(series: np.ndarray, period: int, dataset: np.n
         ret = np.full_like(arr, np.nan, dtype=np.float64)
         if window > len(arr):
             return ret
-        cumsum = np.cumsum(np.insert(arr, 0, 0))
+        cumsum = np.nancumsum(np.insert(arr, 0, 0))
         ret[window-1:] = (cumsum[window:] - cumsum[:-window]) / window
         return ret
 
@@ -1105,7 +1105,7 @@ def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.n
         ret = np.full_like(arr, np.nan, dtype=np.float64)
         if window > len(arr):
             return ret
-        cumsum = np.cumsum(np.insert(arr, 0, 0))
+        cumsum = np.nancumsum(np.insert(arr, 0, 0))
         ret[window-1:] = cumsum[window:] - cumsum[:-window]
         return ret
 
@@ -1131,7 +1131,7 @@ def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.n
         ret = np.full_like(arr, np.nan, dtype=np.float64)
         if window > len(arr):
             return ret
-        cumsum = np.cumsum(np.insert(arr, 0, 0))
+        cumsum = np.nancumsum(np.insert(arr, 0, 0))
         ret[window-1:] = cumsum[window:] - cumsum[:-window]
         return ret
 
@@ -1154,11 +1154,11 @@ def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.n
         if np.all(np.isnan(window)):
             continue
         weights = np.arange(1, period + 1)[::-1]  # period .. 1
-        denominator = np.sum(window)
+        denominator = np.nansum(window)
         if denominator == 0:
             cg[i] = np.nan
         else:
-            cg[i] = np.sum(window * weights) / denominator
+            cg[i] = np.nansum(window * weights) / denominator
     return cg
 
 #
@@ -1202,8 +1202,8 @@ def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, da
 
     # Calculate Highest High (HH) and Lowest Low (LL) over the `k_period`
     # `_rolling_window_apply_optimized` will produce an array of length `current_input_len`
-    hh_values = _rolling_window_apply_optimized(high_values_slice, period, lambda x: np.max(x))
-    ll_values = _rolling_window_apply_optimized(low_values_slice, period, lambda x: np.min(x))
+    hh_values = _rolling_window_apply_optimized(high_values_slice, period, lambda x: np.nanmax(x))
+    ll_values = _rolling_window_apply_optimized(low_values_slice, period, lambda x: np.nanmin(x))
 
     # Initialize the %K array with NaNs, matching the `source_close` length
     k_line = np.full_like(source_close, np.nan)
@@ -1508,6 +1508,7 @@ class generatedSeries_c:
         assert self.timeframe == active.timeframe
         assert self.column_index != -1
         assert self.name in self.timeframe.generatedSeries.keys()
+        assert self.source_name in self.timeframe.generatedSeries.keys()
         
         if len(source) < self.period:
             return
@@ -1555,12 +1556,7 @@ class generatedSeries_c:
             return
 
         # slice the required block for current calculation
-        # period_slice = source[-self.period:]
         period_slice = timeframe.dataset[-self.period:, source.column_index]
-
-        # source = source.series()
-        # source = np.asarray(source, dtype=np.float64)
-        # period_slice = source[-self.period:]
 
         # func should return a 1D array or scalar; we want the most recent value
         newval = self.func(period_slice, self.period, timeframe.dataset, self.column_index, self.param)
@@ -1600,6 +1596,9 @@ class generatedSeries_c:
             return self.timeframe.dataset[:,self.column_index]
         except Exception as e:
             raise ValueError( "series() method couldn't produce an array" )
+        
+    def tolist(self)->list:
+        return self.timeframe.dataset[:,self.column_index].tolist()
     
     def __getitem__(self, key):
         if isinstance(key, slice):
