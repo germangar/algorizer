@@ -15,6 +15,13 @@ def round_to_tick_size(value, tick_size):
         return value
     return round(value / tick_size) * tick_size
 
+def floor_to_tick_size(value, tick_size):
+    import math
+    """Rounds a value to the nearest tick_size."""
+    if tick_size == 0:
+        return value
+    return math.floor(value / tick_size) * tick_size
+
 from dataclasses import dataclass
 @dataclass
 class strategy_stats_c:
@@ -44,6 +51,7 @@ class strategy_c:
         self.currency_mode = currency_mode.upper()
         self.leverage_long = leverage_long
         self.leverage_short = leverage_short
+        self.liquidation_enabled = True
         self.maintenance_margin_rate = 0.0066
         self.hedged = True
         self.show_markers = True
@@ -171,6 +179,8 @@ class position_c:
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
+        if self.size < EPSILON:
+            return 0.0
         for order_data in self.order_history:
             collateral += order_data.get('collateral_change', 0.0)
         return collateral
@@ -216,7 +226,7 @@ class position_c:
         if self.size < EPSILON or not self.active:
             return 0.0
         
-        if self.leverage <= 1: #FIXME? we assume leverage 1 is spot. It may not be correct, but who would use leverage 1 in futures?
+        if not self.strategy_instance.liquidation_enabled or self.leverage < EPSILON :
             return 0.0
         
         MAINTENANCE_MARGIN_RATE = self.strategy_instance.maintenance_margin_rate
@@ -237,6 +247,8 @@ class position_c:
             quantity *= leverage
         if quantity < EPSILON:
             return None
+        
+        fee = 0.0
 
         # Determine if order increases or reduces position
         is_increasing = False
@@ -251,8 +263,14 @@ class position_c:
         if is_increasing:
             if (quantity * price) / leverage > self.strategy_instance.liquidity:
                 quantity = (self.strategy_instance.liquidity * leverage) / price # liquidity and collateral always in USD
-            quantity = round_to_tick_size(quantity, getPrecision())
+            quantity = floor_to_tick_size(quantity, getPrecision())
             collateral_change = (quantity * price) / leverage
+
+            if quantity < EPSILON:
+                return None
+            
+            fee = self.calculate_fee_taker(price, quantity)
+        
         else:
             # Clamp quantity if reducing position
             quantity = min(quantity, self.size)
@@ -263,11 +281,15 @@ class position_c:
                 collateral_change = self.collateral
                 print( "Warning: collateral_change > self.collateral" )
 
-        if quantity < EPSILON:
-            return None
+            if quantity < EPSILON:
+                return None
+            
+            fee = self.calculate_fee_taker(price, quantity)
+
+        
 
         # Calculate PNL and fees
-        fee = self.calculate_fee_taker(price, quantity)
+        
         fee = 0
         pnl_q = 0.0
         pnl_pct = 0.0
@@ -307,6 +329,10 @@ class position_c:
             'pnl_percentage': pnl_pct,
         }
         self.order_history.append(order_info)
+
+
+        # fixme: something is going wrong with the collateral so let's brute force a full recalculation
+        self.collateral = self.calculate_collateral_from_history()
 
         # Broker event
         if not isInitializing():
@@ -461,6 +487,7 @@ class position_c:
         
         # check liquidation
         #
+        
         self.liquidation_price = self.calculate_liquidation_price()
         if self.liquidation_price > EPSILON:
             if (self.type == c.LONG and candle.low < self.liquidation_price) or \
@@ -610,7 +637,7 @@ class position_c:
                     line.x2 = active.barindex + 1
 
     def drawLiquidation(self, color= "#a00000", style = 'dotted', width= 2):
-        if not self.active:
+        if not self.active or not self.strategy_instance.liquidation_enabled:
             return
         
         if self.leverage > 0:
@@ -812,9 +839,10 @@ def print_summary_stats():
 
 
 
-def print_pnl_by_period_summary():
+def print_pnl_by_period_summary( quarter_pnl_relative_to_max_position = False ):
     """
     Print realized PnL by month and year using stats.pnl_history. Does not include unrealized PnL.
+    quarter_pnl_relative_to_max_position : If false it will be relative to initial liquidity
     """
     print("\n--- PnL By Period (Realized Only) ---")
     pnl_history = strategy.pnl_history
@@ -822,26 +850,70 @@ def print_pnl_by_period_summary():
         print("No closed positions to report PnL by period.")
         return
     
-    numQuarters = 0
-    allQuarters = 0.0
-
-    # Print by year, quarters and total in one line
-    # Print header
-    print(f"{'Year':<5} {f'PnL {strategy.currency_mode}':>12} | {'Q1':>12} {'Q2':>12} {'Q3':>12} {'Q4':>12} ")
+    # Flatten all quarters into a list of (year, quarter_index, pnl, months)
+    quarters = []
     for year in sorted(pnl_history.keys()):
         months = pnl_history[year]
-        q1 = sum(months[0:3])
-        q2 = sum(months[3:6])
-        q3 = sum(months[6:9])
-        q4 = sum(months[9:12])
-        total = sum(months)
-        if q1 != 0.0: numQuarters += 1; allQuarters += q1
-        if q2 != 0.0: numQuarters += 1; allQuarters += q2
-        if q3 != 0.0: numQuarters += 1; allQuarters += q3
-        if q4 != 0.0: numQuarters += 1; allQuarters += q4
+        quarters.append((year, 1, sum(months[0:3]), months[0:3]))
+        quarters.append((year, 2, sum(months[3:6]), months[3:6]))
+        quarters.append((year, 3, sum(months[6:9]), months[6:9]))
+        quarters.append((year, 4, sum(months[9:12]), months[9:12]))
+
+    # Find first quarter with nonzero pnl
+    first_trade_idx = None
+    for i, (_, _, pnl, _) in enumerate(quarters):
+        if abs(pnl) > EPSILON:
+            first_trade_idx = i
+            break
+
+    # Find last quarter with any trade (nonzero pnl)
+    last_trade_idx = None
+    for i in range(len(quarters)-1, -1, -1):
+        if abs(quarters[i][2]) > EPSILON:
+            last_trade_idx = i
+            break
+
+    # If no trades, print nothing
+    if first_trade_idx is None or last_trade_idx is None:
+        print("No closed positions to report PnL by period.")
+        return
+
+    # Optionally skip last quarter from average unless it's in the third month
+    last_q_months = quarters[last_trade_idx][3]
+    last_quarter_incomplete = abs(last_q_months[2]) < EPSILON
+    last_idx_to_use = last_trade_idx
+
+    # Print header
+    print(f"{'Year':<5} {f'PnL {strategy.currency_mode}':>12} | {'Q1':>12} {'Q2':>12} {'Q3':>12} {'Q4':>12} ")
+
+    # Print by year, quarters and total in one line
+    # Also collect stats for average
+    numQuarters = 0
+    allQuarters = 0.0
+    year_quarter_pnls = {}
+    for i in range(first_trade_idx, last_idx_to_use+1):
+        year, qidx, pnl, months = quarters[i]
+        if year not in year_quarter_pnls:
+            year_quarter_pnls[year] = [None, None, None, None]
+        year_quarter_pnls[year][qidx-1] = pnl
+        # Only include in average if not the last (incomplete) quarter
+        if not (last_quarter_incomplete and i == last_idx_to_use):
+            numQuarters += 1
+            allQuarters += pnl
+
+    # Print each year
+    for year in sorted(year_quarter_pnls.keys()):
+        qpnls = year_quarter_pnls[year]
+        total = sum([p if p is not None else 0.0 for p in qpnls])
+        q1 = qpnls[0] if qpnls[0] is not None else 0.0
+        q2 = qpnls[1] if qpnls[1] is not None else 0.0
+        q3 = qpnls[2] if qpnls[2] is not None else 0.0
+        q4 = qpnls[3] if qpnls[3] is not None else 0.0
         print(f"{year:<5} {total:12.2f} | {q1:12.2f} {q2:12.2f} {q3:12.2f} {q4:12.2f}")
     print("-----------------------------")
-    avgq = allQuarters/numQuarters
-    avgqpct = (avgq / strategy.max_position_size) * 100
-    print(f"Average PnL per quarter: {avgq:.2f} ({avgqpct:.1f}% relative to max position size)")
+    avgq = allQuarters/numQuarters if numQuarters > 0 else 0.0
+    base = strategy.max_position_size if quarter_pnl_relative_to_max_position else strategy.stats.initial_liquidity
+    text = 'max_position_size' if quarter_pnl_relative_to_max_position else 'initial_liquidity'
+    avgqpct = (avgq / base) * 100 if base > EPSILON else 0.0
+    print(f"Average PnL per quarter: {avgq:.2f} ({avgqpct:.1f}% relative to {text})")
     print("-----------------------------")
