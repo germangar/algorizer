@@ -21,7 +21,8 @@ Changes since the original readme:
 - When backtesting the fast timeframe the index of the slow timeframe will be adjustes to the fast timeframe timestamp (timeframes aren't calculated simultaneously in backtesting, but this allows to use some generatedSeries_c features like retrieving by relative indexing)
 In general series calculations can be used 'naturally' now, but be always careful when combining timeframes. Remember they aren't calculated simoultaneously in backtests.
 
-![algorizer screenshot](https://github.com/user-attachments/assets/7079f703-fdb5-49b4-816b-d8161eb8090d)
+<img width="2413" height="1258" alt="image" src="https://github.com/user-attachments/assets/fdb1d619-8e97-4a5d-ba6e-34c1faa8bb0b" />
+
 
 
 ### Future plans (aka to do list) ###
