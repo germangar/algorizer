@@ -775,7 +775,7 @@ class stream_c:
         if self.running:
             console.delete_last_line()
         if self.event_callback:
-            self.event_callback( self, "tick", (candle, realtime), 2 )
+            self.event_callback( self, "tick", candle, 1 )
 
         from .trade import newTick
         newTick(candle, realtime)

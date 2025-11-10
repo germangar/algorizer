@@ -9,8 +9,10 @@ def event( stream:stream_c, event:str, param, numparams ):
         candle : a cancle_c containing the OHLCV values of the latest price.
         realtime : boolean. True for realtime, false for backtesting.
         '''
-        candle, realtime = param
-        if not realtime : return
+        if not stream.running:
+            return
+        
+        candle = param
 
         ## Show remaining candle time and open position info on the console status line.
         candle.updateRemainingTime()
@@ -23,13 +25,8 @@ def event( stream:stream_c, event:str, param, numparams ):
         if shortpos:
             moreMsg = f" short:{shortpos.collateral:.1f}({shortpos.get_unrealized_pnl_percentage():.1f}%)"
             message += moreMsg
-        stream.setStatusLineMsg( message )
+        stream.setStatusLineMsg(message)
         return
-
-    elif event == "cli_command":
-        cmd, args = param
-        if cmd == 'echo': # command will always be lower case
-            print( 'Echo ', args )
 
     elif event == "broker_event":
         '''
@@ -42,20 +39,28 @@ def event( stream:stream_c, event:str, param, numparams ):
         leverage (Leverage of the Order)
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
+        if not stream.running: # is backtesting
+            return
+        
         import requests
         order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage = param
 
         # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = ""
-        url = ''
+        url = 'http://localhost:80/whook'
         if position_size_base == 0:
             message = f"{account} {stream.symbol} close"
         else:
             order = 'buy' if order_type == c.LONG else 'sell'
             message = f"{account} {stream.symbol} {order} {quantity_dollars:.4f}$ {leverage}x"
-        if url:
+        if url and message:
             req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
             print( f"Alert sent:  Status: {req.status_code}  Response: {req.text}" )
+
+    elif event == "cli_command":
+        cmd, args = param
+        if cmd == 'echo': # command will always be lower case
+            print('Echo ', args)
 
 
 def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
@@ -70,19 +75,17 @@ if __name__ == '__main__':
     # the backtest will happen at stream initialization
     trade.strategy.hedged = False
     trade.strategy.currency_mode = 'USD' # 'BASE' for base currency mode
-    trade.strategy.liquidity = 10000
     trade.strategy.order_size = 1000
     trade.strategy.max_position_size = 2000
+    trade.strategy.liquidity = 10000
     trade.strategy.leverage_long = 1
     trade.strategy.leverage_short = 1
     
     stream = stream_c( 'BTC/USDT:USDT', 'bitget', ['1h'], [runCloseCandle], event, 25000 )
 
     stream.registerPanel('subpanel', 1.0, 0.2, background_color="#313131ac" )
-
     stream.createWindow( '1h' )
 
-    # trade.print_strategy_stats() # prints every order
     trade.print_summary_stats()
     trade.print_pnl_by_period_summary()
 

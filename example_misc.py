@@ -15,13 +15,14 @@ def event( stream:stream_c, event:str, param, numparams ):
             print( 'Echo ', args )
 
     elif event == "tick":
-        assert( isinstance(param, tuple) and len(param) == numparams)
         '''
         candle : a cancle_c containing the OHLCV values of the latest price.
         realtime : boolean. True for realtime, false for backtesting.
         '''
-        candle, realtime = param
-        if not realtime : return
+        if not stream.running:
+            return
+        
+        candle = param
 
         ## Show remaining candle time and open position info on the console status line.
         candle.updateRemainingTime()
@@ -95,9 +96,6 @@ def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, 
 def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
 
     barindex = timeframe.barindex # for simplicity
-
-    # bollinger bands returns 3 generatedSeries
-    # BBbasis, BBupper, BBlower = calc.BollingerBands( close, 350 )
 
     # There's a calc.BollingerBands function, but I'm doin'g it this
     # way to demonstrate you can freely operate with series.
