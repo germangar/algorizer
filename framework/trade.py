@@ -469,7 +469,7 @@ class position_c:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
                     self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
-                marker( self, prefix='SL⛔' )
+                marker( self, prefix='Stoploss ⛔' )
                 if self.type == c.SHORT:
                     self.strategy_instance.stats.total_short_stoploss += 1
                 else:
@@ -689,13 +689,16 @@ def marker( pos:position_c, message = None, prefix = '', reversal:bool = False )
                 pnl = pos.calculate_realized_pnl_from_history() - pos.calculate_fees_from_history()
                 if prefix == '':
                     prefix = 'Close '
-                message = f"{'🚩' if pnl < 0.0 else '💲'} pnl:{pnl:.2f}"
+                if '💀' in prefix or '⛔' in prefix:
+                    message = f" pnl:{pnl:.2f}"
+                else:
+                    message = f"{'🚩' if pnl < 0.0 else '💲'} pnl:{pnl:.2f}"
             else:
                 order_name = 'buy' if order_type == c.BUY else 'sell'
                 message = f"{order_name}:${abs(order_cost):.2f} (pos:{pos.size:.3f})"
 
         location = 'below' if order_type == c.BUY else 'above'
-        if pos.was_liquidated:
+        if pos.was_liquidated or '💀' in prefix or '⛔' in prefix:
             location = 'below' if order_type == c.SHORT else 'above'
         
         createMarker( prefix + message,
