@@ -104,31 +104,6 @@ def _rolling_window_apply_optimized_axis(arr: np.ndarray, window: int, func) -> 
 NumericScalar = Union[float, int]
 OperandType = Union[np.ndarray, NumericScalar]
 
-def _prepare_param_for_op2( param, src_len ):
-    # if isinstance(param, (float, int)):
-    #     return param
-    if np.isscalar(param):
-        val = float(param)
-        return np.full(src_len, val, dtype=np.float64)
-    
-    p_len = param.shape[0]
-
-    if src_len == 1:
-        if p_len == 0: # If param is empty, result is NaN
-            return np.array([np.nan], dtype=np.float64)
-        # Use the most recent value from param (tail)
-        param = param[-1]
-
-    if src_len == p_len: # for thinking delete me later
-        param = np.asarray(param, dtype=np.float64)
-
-    elif p_len > src_len:
-        param_arr = np.asarray(param, dtype=np.float64)
-        param = param_arr[-src_len:]
-
-    return param
-
-
 def _prepare_param_for_op(param, src_len: int, dataset) -> np.ndarray:
     """
     Normalize 'param' into a 1-D np.float64 array of length src_len aligned to the tail.
@@ -237,13 +212,7 @@ def _generatedseries_calculate_scalar_divide_series(source: np.ndarray, period: 
 
 def _generatedseries_calculate_scalar_power_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return np.power(param, source) # Note the order: scalar (param) first, then series (source)
-'''
-def _generatedseries_calculate_scalar_min_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
-    return np.minimum(param, source)
 
-def _generatedseries_calculate_scalar_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
-    return np.maximum(param, source)
-'''
 def _generatedseries_calculate_scalar_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param == source
 
@@ -829,19 +798,23 @@ def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, datas
 
 # _tr250. Elapsed time: 0.00 seconds 
 def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
-        return talib.TRANGE(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE])
-    
     length = dataset.shape[0]
-    if length < 1:
-        return np.array([])
+    if length < period:
+        return np.full(length, np.nan)
+    
+    high = None; low = None
+    if isinstance(param, tuple) and len(param) == 2:
+        high, low = param
 
-    # Extract high, low, close from dataset
-    high = dataset[:, c.DF_HIGH]
-    low = dataset[:, c.DF_LOW]
-    close = dataset[:, c.DF_CLOSE]
+    if high == None: high = dataset[:, c.DF_HIGH]
+    if low == None: low = dataset[:, c.DF_LOW]
+    high = _prepare_param_for_op( high, len(series), dataset )
+    low = _prepare_param_for_op( low, len(series), dataset )
+    close = series
 
-    # Compute high - low
+    if talib_available:
+        return talib.TRANGE(high, low, close)
+
     high_low = high - low
 
     # Compute |high - close_prev| and |low - close_prev|
@@ -857,12 +830,26 @@ def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.n
 
 # _atr250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    length = dataset.shape[0]
+    if length < period:
+        return np.full(length, np.nan)
+    
     if talib_available:
-        return talib.ATR(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE], period)
+        if isinstance(param, tuple) and len(param) == 2:
+            high, low = param
+            assert(type(high)==generatedSeries_c and type(low)==generatedSeries_c)
+            high = dataset[:, high.column_index]
+            low = dataset[:, low.column_index]
+            series = dataset[:, c.DF_CLOSE]
+        else:
+            high = dataset[:, c.DF_HIGH]
+            low = dataset[:, c.DF_LOW]
+            series = dataset[:, c.DF_CLOSE]
+        return talib.ATR(high, low, series, period)
     
     # Compute RMA of True Range
     tr = _generatedseries_calculate_tr(series, period, dataset, cindex, param)
-    atr = _generatedseries_calculate_rma(tr, period, dataset, cindex, param)
+    atr = _generatedseries_calculate_rma(tr, period, dataset, cindex)
 
     return atr
 
@@ -2302,15 +2289,25 @@ def WILLR( period:int )->generatedSeries_c:
     source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
-def TR( period:int )->generatedSeries_c:
+def TR( period:int, high:generatedSeries_c= None, low:generatedSeries_c= None )->generatedSeries_c:
     timeframe = active.timeframe
-    source = _ensure_object_array(timeframe.generatedSeries['close'])
-    return timeframe.calcGeneratedSeries( 'tr', source, period, _generatedseries_calculate_tr )
+    source = timeframe.generatedSeries['close']
+    if high is None: high = timeframe.generatedSeries["high"]
+    if low is None: low = timeframe.generatedSeries["low"]
+    name = 'tr'
+    if high.column_index != c.DF_HIGH or low.column_index != c.DF_LOW:
+        name += f"{high.column_index}{low.column_index}"
+    return timeframe.calcGeneratedSeries( name, source, period, _generatedseries_calculate_tr, param= (high, low) )
 
-def ATR( period:int )->generatedSeries_c:
+def ATR( period:int, high:generatedSeries_c= None, low:generatedSeries_c= None )->generatedSeries_c:
     timeframe = active.timeframe
-    source = _ensure_object_array(timeframe.generatedSeries['close'])
-    return timeframe.calcGeneratedSeries( 'atr', source, period, _generatedseries_calculate_atr )
+    source = timeframe.generatedSeries['close']
+    if high is None: high = timeframe.generatedSeries["high"]
+    if low is None: low = timeframe.generatedSeries["low"]
+    name = 'atr'
+    if high.column_index != c.DF_HIGH or low.column_index != c.DF_LOW:
+        name += f"{high.column_index}{low.column_index}"
+    return timeframe.calcGeneratedSeries( name, source, period, _generatedseries_calculate_atr, param= (high, low), always_reset= True )  # rma requires always_reset, so atr also must
 
 def SLOPE( source:generatedSeries_c, period:int )->generatedSeries_c:
     timeframe = active.timeframe
