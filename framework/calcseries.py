@@ -295,16 +295,12 @@ def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: 
 
 # _highestbars250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    # if talib_available:
-    #     return talib.MAXINDEX(source, period)
     source = np.asarray(source, dtype=np.float64)
 
     return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmax(x))
 
 # _lowestbars250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    # if talib_available:
-    #     return talib.MININDEX(source, period)
     source = np.asarray(source, dtype=np.float64)
 
     return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmin(x))
@@ -1458,6 +1454,8 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
     return laguerre_oscillator
 
 
+def _generatedseries_calculate_sum(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    return _rolling_window_apply_optimized(source, period, np.nansum)
 
 
 
@@ -2571,6 +2569,10 @@ def OBV( timeframe=None ) -> generatedSeries_c:
 def LAGUERRE(source: Union[str, generatedSeries_c], gamma: float = 0.7)->generatedSeries_c:
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'lagerre', _ensure_object_array(source), 1, _generatedseries_calculate_laguerre, gamma, always_reset=True )
+
+def SUM( source:generatedSeries_c, period:int ) -> generatedSeries_c:
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'sum', _ensure_object_array(source), period, _generatedseries_calculate_sum )
 
 
 # # #
