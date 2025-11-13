@@ -68,7 +68,7 @@ class plot_c:
         timeframe.registeredPlots[self.name] = self
 
     def update(self, source, timeframe):
-        if source is None or isinstance(source, (float, int)):
+        if source is None or np.isscalar(source):
             source = np.nan if source is None else float(source)
             timeframe.dataset[timeframe.barindex, self.column_index] = source
 
