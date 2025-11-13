@@ -191,9 +191,24 @@ def _generatedseries_calculate_less_series(source: np.ndarray, period: int, data
 def _generatedseries_calculate_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return np.asarray(source, dtype=np.float64) <= _prepare_param_for_op( param, source.shape[0], dataset )
 
-def _generatedseries_calculate_logical_not(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    return ~np.asarray(source, dtype=np.float64)
+def _generatedseries_calculate_bitwise_and_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param= None) -> np.ndarray:
+    param_array = _prepare_param_for_op( param, source.shape[0], dataset )
+    int_result = np.bitwise_and(source.astype(np.int64), param_array.astype(np.int64)) # to int
+    return int_result.astype(np.float64) # back to float
 
+def _generatedseries_calculate_bitwise_or_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param) -> np.ndarray:
+    param_array = _prepare_param_for_op( param, source.shape[0], dataset )
+    int_result = np.bitwise_or(source.astype(np.int64), param_array.astype(np.int64))
+    return int_result.astype(np.float64)
+
+def _generatedseries_calculate_bitwise_xor_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param) -> np.ndarray:
+    param_array = _prepare_param_for_op( param, source.shape[0], dataset )
+    int_result = np.bitwise_xor(source.astype(np.int64), param_array.astype(np.int64))
+    return int_result.astype(np.float64)
+
+def _generatedseries_calculate_bitwise_not_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param) -> np.ndarray:
+    int_result = np.bitwise_not(source.astype(np.int64))
+    return int_result.astype(np.float64)
 
 ##### scalars by series
 
@@ -231,7 +246,29 @@ def _generatedseries_calculate_scalar_less_series(source: np.ndarray, period: in
 def _generatedseries_calculate_scalar_lessequal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
     return param <= source
 
+def _generatedseries_calculate_scalar_bitwise_and_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
+    """
+    Performs element-wise bitwise AND operation: scalar & series.
+    Casts result to np.float64 for storage compatibility.
+    """
+    int_result = np.bitwise_and(param, source.astype(np.int64)) # to int
+    return int_result.astype(np.float64) # back to float
 
+def _generatedseries_calculate_scalar_bitwise_or_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
+    """
+    Performs element-wise bitwise OR operation: scalar | series.
+    Casts operands to np.int64 for the bitwise operation, and the result back to np.float64.
+    """
+    int_result = np.bitwise_or(param, source.astype(np.int64))
+    return int_result.astype(np.float64)
+
+def _generatedseries_calculate_scalar_bitwise_xor_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: NumericScalar) -> np.ndarray:
+    """
+    Performs element-wise bitwise XOR operation: scalar ^ series.
+    Casts operands to np.int64 for the bitwise operation, and the result back to np.float64.
+    """
+    int_result = np.bitwise_xor(param, source.astype(np.int64))
+    return int_result.astype(np.float64)
 
 
 ################################ ANALYSIS TOOLS #####################################
@@ -1742,8 +1779,50 @@ class generatedSeries_c:
             return notEqualScalar(self, other)
         return NotImplemented
     
+    def __and__(self, other):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other) # Assuming _lenError is available
+            return bitwiseAndSeries(self, other)
+        # Delegate to standard Python if 'other' has a higher precedence __rand__ method
+        return NotImplemented 
+
+    def __rand__(self, other):
+        if isinstance(other, NumericScalar):
+            # Only handle if 'other' is a simple scalar, otherwise NotImplemented
+            return bitwiseAndScalar(other, self)
+        return NotImplemented
+    
+    def __or__(self, other):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other) # Assuming _lenError is available
+            return bitwiseOrSeries(self, other)
+        # Delegate to standard Python if 'other' has a higher precedence __rand__ method
+        return NotImplemented 
+
+    def __ror__(self, other):
+        if isinstance(other, NumericScalar):
+            # Only handle if 'other' is a simple scalar, otherwise NotImplemented
+            return bitwiseOrScalar(other, self)
+        return NotImplemented
+    
+    def __xor__(self, other):
+        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
+            if not isinstance(other, NumericScalar) and len(self) != len(other):
+                self._lenError(other) # Assuming _lenError is available
+            return bitwiseXorSeries(self, other)
+        # Delegate to standard Python if 'other' has a higher precedence __rand__ method
+        return NotImplemented 
+
+    def __rxor__(self, other):
+        if isinstance(other, NumericScalar):
+            # Only handle if 'other' is a simple scalar, otherwise NotImplemented
+            return bitwiseXorScalar(other, self)
+        return NotImplemented
+
     def __invert__(self):
-        return notSeries(self)
+        return bitwiseNotSeries(self)
     
     '''
     def __and__(self, other):
@@ -2033,12 +2112,70 @@ def lessOrEqualSeries(colA: str | generatedSeries_c, colB: str | generatedSeries
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_lessequal_series, param= colB)
 
-def notSeries(source: str | generatedSeries_c) ->generatedSeries_c:
+def bitwiseAndSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    """
+    Factory function for Series & (Series | Scalar).
+    The resulting series will represent the element-wise bitwise AND of the two operands.
+    """
     timeframe = active.timeframe
+    colA = timeframe.seriesFromMultiObject( colA )
+    
+    if np.isscalar( colB ):
+        name = f"and_{colA.column_index}_s{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"and_{colA.column_index}_{colB.column_index}"
+        if len(colA) != len(colB):
+            raise ValueError("Operands must have the same shape for element-wise bitwise AND.")
 
-    source = timeframe.seriesFromMultiObject( source )
-    name = f"not_{source.column_index}"
-    return timeframe.calcGeneratedSeries( name, source, 1, _generatedseries_calculate_logical_not, None )
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_and_series, param= colB )
+
+def bitwiseOrSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    """
+    Factory function for Series | (Series | Scalar).
+    The resulting series will represent the element-wise bitwise OR of the two operands.
+    """
+    timeframe = active.timeframe
+    colA = timeframe.seriesFromMultiObject( colA )
+    
+    if np.isscalar( colB ):
+        name = f"or_{colA.column_index}_s{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"or_{colA.column_index}_{colB.column_index}"
+        if len(colA) != len(colB):
+            raise ValueError("Operands must have the same shape for element-wise bitwise OR.")
+
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_or_series, param= colB )
+
+
+def bitwiseXorSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    """
+    Factory function for Series ^ (Series | Scalar).
+    The resulting series will represent the element-wise bitwise XOR of the two operands.
+    """
+    timeframe = active.timeframe
+    colA = timeframe.seriesFromMultiObject( colA )
+    
+    if np.isscalar( colB ):
+        name = f"xor_{colA.column_index}_s{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject( colB )
+        name = f"xor_{colA.column_index}_{colB.column_index}"
+        if len(colA) != len(colB):
+            raise ValueError("Operands must have the same shape for element-wise bitwise XOR.")
+
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_xor_series, param= colB )
+
+def bitwiseNotSeries(colA: str | generatedSeries_c) -> generatedSeries_c:
+    """
+    Factory function for ~Series (unary operation).
+    """
+    timeframe = active.timeframe
+    colA = timeframe.seriesFromMultiObject( colA )
+    # The name only needs the index of the single operand
+    name = f"not_{colA.column_index}"
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_not_series, param= None )
 
 
 #
@@ -2132,6 +2269,41 @@ def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) ->
     series = timeframe.seriesFromMultiObject( series )
     name = f"le_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_lessequal_series, param= scalar)
+
+def bitwiseAndScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+    """
+    Factory function for Scalar & Series (reversed operation).
+    Retained for symmetry with __rand__.
+    """
+    timeframe = active.timeframe
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"and_{scalar}_{series.column_index}" 
+    
+    return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_bitwise_and_series, param= scalar )
+
+def bitwiseOrScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+    """
+    Factory function for Scalar | Series (reversed operation).
+    Retained for symmetry with __ror__.
+    """
+    timeframe = active.timeframe
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"or_{scalar}_{series.column_index}" 
+    
+    return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_bitwise_or_series, param= scalar )
+
+
+def bitwiseXorScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+    """
+    Factory function for Scalar ^ Series (reversed operation).
+    Retained for symmetry with __rxor__.
+    """
+    timeframe = active.timeframe
+    series = timeframe.seriesFromMultiObject( series )
+    name = f"xor_{scalar}_{series.column_index}" 
+    
+    return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_bitwise_xor_series, param= scalar )
+
 
 
 ################### Other operations NOT for magic methods #######################
