@@ -43,17 +43,17 @@ def event( stream:stream_c, event:str, param, numparams ):
         assert( isinstance(param, tuple) and len(param) == numparams)
         '''
         order_type (Buy/Sell): represented as the constants c.LONG (1) and c.SHORT (-1)
-        quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.01 BTC).
-        quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD (e.g., if you buy 0.001 BTC at $60,000, this would be $60).
+        quantity (Order Quantity in Base Currency): The order amount of the base asset already leveraged.
+        quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD already leveraged.
         position_type (New Position Type: Long/Short/Flat)
-        position_size_base (New Position Size in Base Currency): The total quantity of the base asset currently held (signed for long/short).
-        position_size_dollars (New Position Size in Dollars, Leveraged): This represents the total notional exposure of the position, including the effect of leverage.
+        position_size_base (New Position Size in Base Currency): Total quantity of the base asset currently held (signed for long/short) leveraged.
+        position_size_dollars Total notional exposure of the position, including the effect of leverage, in dollars.
         leverage (Leverage of the Order)
         position_collateral_dollars (Un-leveraged Capital in Position)
         '''
         import requests
         
-        order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage = param
+        order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price = param
 
         # this is an example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = "blabla"

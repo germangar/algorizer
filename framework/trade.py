@@ -348,7 +348,8 @@ class position_c:
                 position_size_base=position_size_base,
                 position_size_dollars=position_size_dollars,
                 position_collateral_dollars=position_collateral_dollars,
-                leverage=leverage
+                leverage=leverage,
+                price=price
             )
         
         if self.size < EPSILON: # The order has emptied the position
@@ -554,6 +555,26 @@ class position_c:
         }
 
         self.takeprofit_orders.append( tp_order )
+
+        # Broker event
+        if not isInitializing():
+            order_type = c.TAKEPROFIT
+            quantity_dollars = quantity * price
+            position_size_base = self.size
+            position_size_dollars = self.size * price
+            position_collateral_dollars = self.collateral
+            active.timeframe.stream.broker_event(
+                order_type=order_type,
+                quantity=quantity,
+                quantity_dollars=quantity_dollars,
+                position_type=self.type,
+                position_size_base=position_size_base,
+                position_size_dollars=position_size_dollars,
+                position_collateral_dollars=position_collateral_dollars,
+                leverage=self.leverage,
+                price=price
+            )
+
         return tp_order
     
     def createStoploss(self, price:float = None, quantity:float = None, loss_pct:float = None, reduce_pct = None)->dict:
@@ -596,6 +617,26 @@ class position_c:
         }
 
         self.stoploss_orders.append( stoploss_order )
+
+        # Broker event
+        if not isInitializing():
+            order_type = c.STOPLOSS
+            quantity_dollars = quantity * price
+            position_size_base = self.size
+            position_size_dollars = self.size * price
+            position_collateral_dollars = self.collateral
+            active.timeframe.stream.broker_event(
+                order_type=order_type,
+                quantity=quantity,
+                quantity_dollars=quantity_dollars,
+                position_type=self.type,
+                position_size_base=position_size_base,
+                position_size_dollars=position_size_dollars,
+                position_collateral_dollars=position_collateral_dollars,
+                leverage=self.leverage,
+                price=price
+            )
+
         return stoploss_order
     
     def drawStoploss( self, color= "#e38100", style = 'dotted', width= 2 ):

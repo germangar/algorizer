@@ -9,6 +9,8 @@ class c(IntEnum):  # Ultra-short class name
 
     BUY = 1
     SELL = -1
+    TAKEPROFIT = 2
+    STOPLOSS = 3
 
     PIVOT_HIGH = 1
     PIVOT_LOW = -1

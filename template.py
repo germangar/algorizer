@@ -43,7 +43,7 @@ def event( stream:stream_c, event:str, param, numparams ):
             return
         
         import requests
-        order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage = param
+        order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price = param
 
         # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = ""
