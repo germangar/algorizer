@@ -167,12 +167,6 @@ def _generatedseries_calculate_divide_series(source: np.ndarray, period: int, da
 def _generatedseries_calculate_power_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return np.power(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
 
-def _generatedseries_calculate_min_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return np.minimum(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
-
-def _generatedseries_calculate_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    return np.maximum(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
-
 def _generatedseries_calculate_equal_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return np.asarray(source, dtype=np.float64) == _prepare_param_for_op( param, source.shape[0], dataset )
 
@@ -269,6 +263,10 @@ def _generatedseries_calculate_scalar_bitwise_xor_series(source: np.ndarray, per
     """
     int_result = np.bitwise_xor(param, source.astype(np.int64))
     return int_result.astype(np.float64)
+
+def _generatedseries_calculate_abs_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: None) -> np.ndarray:
+    return np.abs(source)
+
 
 
 ################################ ANALYSIS TOOLS #####################################
@@ -441,6 +439,16 @@ def _generatedseries_calculate_barswhilefalse(series: np.ndarray, period: int = 
 
 
 ########################### INDICATORS #################################
+
+def _generatedseries_calculate_min_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
+    return np.minimum(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
+
+def _generatedseries_calculate_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
+    return np.maximum(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
+
+
+def _generatedseries_calculate_sum(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    return _rolling_window_apply_optimized(source, period, np.nansum)
 
 #
 def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -1454,10 +1462,6 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
     return laguerre_oscillator
 
 
-def _generatedseries_calculate_sum(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    return _rolling_window_apply_optimized(source, period, np.nansum)
-
-
 
 class generatedSeries_c:
     
@@ -1821,6 +1825,10 @@ class generatedSeries_c:
 
     def __invert__(self):
         return bitwiseNotSeries(self)
+    
+    def __abs__(self):
+        return ABS(self)
+
     
     '''
     def __and__(self, other):
@@ -2302,53 +2310,13 @@ def bitwiseXorScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> 
     
     return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_bitwise_xor_series, param= scalar )
 
-
-
-################### Other operations NOT for magic methods #######################
-
-
-def MIN( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
-    if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
-        return min( colA, colB )
-    
+def ABS(source: generatedSeries_c)->generatedSeries_c:
     timeframe = active.timeframe
-    if isinstance( colA, NumericScalar ): # swap them if the scalar is first
-        scalar = colA
-        colA = timeframe.seriesFromMultiObject(colB)
-        colB = scalar
-    
-    if isinstance( colB, NumericScalar ):
-        name = f"min_{colA.column_index}_{colB}"
-    else:
-        colB = timeframe.seriesFromMultiObject(colB)
-        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
-        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
-            raise ValueError("Operands must have the same shape for element-wise operations.")
-    
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, param= colB)
-
-def MAX( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
-    if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
-        return min( colA, colB )
-    
-    timeframe = active.timeframe
-    if isinstance( colA, NumericScalar ): # swap them if the scalar is first
-        scalar = colA
-        colA = timeframe.seriesFromMultiObject(colB)
-        colB = scalar
-    
-    if isinstance( colB, NumericScalar ):
-        name = f"min_{colA.column_index}_{colB}"
-    else:
-        colB = timeframe.seriesFromMultiObject(colB)
-        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
-        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
-            raise ValueError("Operands must have the same shape for element-wise operations.")
-        
-    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, param= colB)
+    return timeframe.calcGeneratedSeries( "abs", source, 1, _generatedseries_calculate_abs_series )
 
 
 ###################### ANALITIC TOOLS #################################
+
 
 def highest(source: generatedSeries_c, period: int) -> generatedSeries_c:
     timeframe = active.timeframe
@@ -2403,6 +2371,101 @@ def barsWhileFalseSeries(source: generatedSeries_c, period: int = None) -> gener
 
 
 ########################## INDICATORS #################################
+
+def MIN( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
+        return min( colA, colB )
+    
+    timeframe = active.timeframe
+    if isinstance( colA, NumericScalar ): # swap them if the scalar is first
+        scalar = colA
+        colA = timeframe.seriesFromMultiObject(colB)
+        colB = scalar
+    
+    if isinstance( colB, NumericScalar ):
+        name = f"min_{colA.column_index}_{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject(colB)
+        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise operations.")
+    
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, param= colB)
+
+def MAX( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
+        return min( colA, colB )
+    
+    timeframe = active.timeframe
+    if isinstance( colA, NumericScalar ): # swap them if the scalar is first
+        scalar = colA
+        colA = timeframe.seriesFromMultiObject(colB)
+        colB = scalar
+    
+    if isinstance( colB, NumericScalar ):
+        name = f"min_{colA.column_index}_{colB}"
+    else:
+        colB = timeframe.seriesFromMultiObject(colB)
+        name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
+        if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
+            raise ValueError("Operands must have the same shape for element-wise operations.")
+        
+    return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, param= colB)
+
+def _generatedseries_calculate_shift(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None)->np.ndarray:
+    """
+    Calculates the element-wise shifted (lagged/leaded) version of the source series.
+
+    Args:
+        source (np.ndarray): The base series data to be shifted.
+        period (int): The number of bars to shift.
+                      Positive (e.g., 1): Lag (looks to the past, fills start with NaN).
+                      Negative (e.g., -1): Lead (looks to the future, fills end with NaN).
+        dataset, cindex, param: Standard parameters (unused for a simple shift).
+    
+    Returns:
+        np.ndarray: The resulting shifted series.
+    """
+    shift = period
+    n = len(source)
+    # Initialize the result array with NaNs, same shape as source
+    result = np.full_like(source, np.nan, dtype=np.float64)
+
+    if shift == 0:
+        return source.copy()
+    
+    # Positive shift (Lag: C[i] = C[i-shift])
+    if shift > 0:
+        result[shift:] = source[:-shift]
+    
+    # Negative shift (Lead: C[i] = C[i-shift]) where shift is negative
+    elif shift < 0:
+        abs_shift = abs(shift)
+        result[:-abs_shift] = source[abs_shift:]
+        
+    return result
+
+
+def SHIFT(source:generatedSeries_c, offset: int)->generatedSeries_c:
+    """
+    A positive 'offset' (e.g., 1) lags the series (C[i] takes the value of C[i-1]).
+    A negative 'offset' (e.g., -1) leads the series (C[i] takes the value of C[i+1]).
+    
+    Args:
+        source (generatedSeries_c): The input series to shift.
+        length (int): The number of bars to shift.
+    
+    Returns:
+        generatedSeries_c: A new series representing the shifted values.
+    """
+    if offset == 0:
+        return source
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'shift', _ensure_object_array(source), offset, _generatedseries_calculate_shift )
+
+def SUM( source:generatedSeries_c, period:int )->generatedSeries_c:
+    timeframe = active.timeframe
+    return timeframe.calcGeneratedSeries( 'sum', _ensure_object_array(source), period, _generatedseries_calculate_sum )
 
 def SMA( source: generatedSeries_c, period: int )->generatedSeries_c:
     timeframe = active.timeframe
@@ -2570,9 +2633,7 @@ def LAGUERRE(source: Union[str, generatedSeries_c], gamma: float = 0.7)->generat
     timeframe = active.timeframe
     return timeframe.calcGeneratedSeries( 'lagerre', _ensure_object_array(source), 1, _generatedseries_calculate_laguerre, gamma, always_reset=True )
 
-def SUM( source:generatedSeries_c, period:int ) -> generatedSeries_c:
-    timeframe = active.timeframe
-    return timeframe.calcGeneratedSeries( 'sum', _ensure_object_array(source), period, _generatedseries_calculate_sum )
+
 
 
 # # #
