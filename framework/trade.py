@@ -276,7 +276,7 @@ class position_c:
             quantity = min(quantity, self.size)
             if quantity != self.size:
                 quantity = round_to_tick_size(quantity, getPrecision())
-            collateral_change = (-quantity * price) / leverage
+            collateral_change = (-quantity * self.priceAvg) / self.leverage
             if collateral_change > self.collateral:
                 collateral_change = self.collateral
                 print( "Warning: collateral_change > self.collateral" )
@@ -332,7 +332,8 @@ class position_c:
 
 
         # fixme: something is going wrong with the collateral so let's brute force a full recalculation
-        self.collateral = self.calculate_collateral_from_history()
+        # The incremental collateral calculation was fixed, this should not be needed anymore.
+        # self.collateral = self.calculate_collateral_from_history()
 
         # Broker event
         if not isInitializing():
@@ -532,9 +533,17 @@ class position_c:
                 reduce_pct = None
             else:
                 quantity = None
-        
-        if not quantity:
+
+        if reduce_pct and quantity == None:
             reduce_pct = min(100.0, max(1.0, reduce_pct)) if reduce_pct else 100.0
+            if reduce_pct < 100.0:
+                quantity = round_to_tick_size( self.size * (reduce_pct / 100.0), getPrecision() )
+            else:
+                quantity = self.size
+        else:
+            quantity = self.size
+
+        
 
         # see if we have another TP in the same price
         # if we do we update it with the new values and return it
@@ -594,9 +603,15 @@ class position_c:
                 reduce_pct = None
             else:
                 quantity = None
-        
-        if not quantity:
+
+        if reduce_pct and quantity == None:
             reduce_pct = min(100.0, max(1.0, reduce_pct)) if reduce_pct else 100.0
+            if reduce_pct < 100.0:
+                quantity = round_to_tick_size( self.size * (reduce_pct / 100.0), getPrecision() )
+            else:
+                quantity = self.size
+        else:
+            quantity = self.size
 
         # see if we have another SL in the same price
         # if we do we update it with the new values and return it

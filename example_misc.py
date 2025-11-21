@@ -55,6 +55,13 @@ def event( stream:stream_c, event:str, param, numparams ):
         
         order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price = param
 
+        # These events happen when the strategy creates a takeprofit or a stoploss.
+        # Use them to create them in your broker if you think it's convenient.
+        # The trade code will also create a close event when the takeprofit or stoploss are
+        # triggered that you will need to skip in that case
+        if order_type == c.TAKEPROFIT or order_type == c.STOPLOSS:
+            return
+
         # this is an example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = "blabla"
         url = 'https://webhook.site/ae09b310-eab0-4086-a0d1-2da80ab722d1'

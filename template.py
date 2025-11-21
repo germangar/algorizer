@@ -45,6 +45,9 @@ def event( stream:stream_c, event:str, param, numparams ):
         import requests
         order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price = param
 
+        if order_type == c.TAKEPROFIT or order_type == c.STOPLOSS:
+            return
+
         # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = ""
         url = 'http://localhost:80/whook'
