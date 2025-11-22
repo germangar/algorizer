@@ -1718,7 +1718,7 @@ class generatedSeries_c:
     
     def __rlt__(self, other):
         if isinstance(other, (float, int)):
-            return lessScalar(self, other)
+            return lessScalar(other, self)
         raise ValueError("Unsupported reversed operand for <")
 
     def __le__(self, other):
@@ -1730,7 +1730,7 @@ class generatedSeries_c:
     
     def __rle__(self, other):
         if isinstance(other, (float, int)):
-            return lessOrEqualScalar(self, other)
+            return lessOrEqualScalar(other, self)
         raise ValueError("Unsupported reversed operand for <=")
 
     def __gt__(self, other):
