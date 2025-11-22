@@ -647,6 +647,53 @@ def _generatedseries_calculate_bias(source: np.ndarray, period: int, dataset: np
 
 # _cci250. Elapsed time: 0.04 seconds (talib 0.01 seconds)
 def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    current_input_len = len(series)
+    
+    if current_input_len < period: 
+        return np.full(current_input_len, np.nan)
+    
+    # Derive corresponding slices for high, low from the full dataset
+    full_dataset_len = dataset.shape[0]
+    # Calculate the start index in the full dataset for the current series slice
+    start_index_in_dataset = max(0, full_dataset_len - current_input_len)
+    end_index_in_dataset = start_index_in_dataset + current_input_len
+
+    high_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_HIGH]
+    low_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_LOW]
+    close_slice = series # 'series' here is already the slice of close price
+
+    if talib_available:
+        # Pass the sliced data to talib. It should produce the correct result for this slice.
+        # If talib.CCI behaves unexpectedly with slices (e.g., assumes full history),
+        # this might still behave like a full recalculation internally within talib,
+        # but the wrapper passes only the relevant data.
+        return talib.CCI(high_slice, low_slice, close_slice, period)
+
+    # Compute Typical Price using the slices
+    tp_slice = (high_slice + low_slice + close_slice) / 3.0
+
+    # Create sliding windows on the derived tp_slice
+    # The output of sliding_window_view will have length (len(tp_slice) - period + 1)
+    tp_windows = sliding_window_view(tp_slice, window_shape=period)
+
+    # Compute SMA and MAD over these windows
+    sma_values = np.nanmean(tp_windows, axis=1)
+    mad_values = np.nanmean(np.abs(tp_windows - sma_values[:, np.newaxis]), axis=1)
+
+    # Compute CCI on the calculated rolling values
+    cci_calculated = np.full(len(sma_values), np.nan) # Initialize with NaN, length (current_input_len - period + 1)
+    denominator = 0.015 * mad_values
+    
+    # Perform element-wise division. np.where handles division by zero or NaN denominator.
+    cci_calculated = np.where(denominator > 1e-10, (tp_slice[period - 1:] - sma_values) / denominator, np.nan)
+
+    # Pad with NaNs at the beginning to match the original input slice length
+    result_with_padding = np.concatenate((np.full(period - 1, np.nan), cci_calculated))
+
+    return result_with_padding
+'''
+# _cci250. Elapsed time: 0.04 seconds (talib 0.01 seconds)
+def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
     if length < period:
         return np.full(length, np.nan)
@@ -672,7 +719,7 @@ def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.
     cci[period - 1:] = np.where(denominator > 1e-10, (tp[period - 1:] - sma) / denominator, np.nan)
 
     return cci
-
+'''
 # 0.02
 def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
@@ -838,34 +885,42 @@ def _generatedseries_calculate_dev(series: np.ndarray, period: int, dataset: np.
 
 # _wpr250. Elapsed time: 0.01 seconds (talib 0.0 secods)
 def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
-        return talib.WILLR(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], series, period)
+    current_input_len = len(series)
     
-    length = dataset.shape[0]
-    if length < period:
-        return np.full(length, np.nan)
+    if current_input_len < period:
+        return np.full(current_input_len, np.nan)
 
-    # Extract high, low, close from dataset
-    high = dataset[:, c.DF_HIGH]
-    low = dataset[:, c.DF_LOW]
-    close = series
+    full_dataset_len = dataset.shape[0]
+    start_index_in_dataset = max(0, full_dataset_len - current_input_len)
+    end_index_in_dataset = start_index_in_dataset + current_input_len
 
-    # Compute rolling highest high and lowest low
-    high_windows = sliding_window_view(high, window_shape=period)
-    low_windows = sliding_window_view(low, window_shape=period)
+    high_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_HIGH]
+    low_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_LOW]
+    close_slice = series # 'series' is already the correct close price slice
+
+    if talib_available:
+        return talib.WILLR(high_slice, low_slice, close_slice, period)
+    
+    # Compute rolling highest high and lowest low over the slices
+    high_windows = sliding_window_view(high_slice, window_shape=period)
+    low_windows = sliding_window_view(low_slice, window_shape=period)
     highest_high = np.nanmax(high_windows, axis=1)
     lowest_low = np.nanmin(low_windows, axis=1)
 
-    # Compute Williams %R
-    numerator = highest_high - close[period - 1:]  # Align close with window ends
+    # Compute Williams %R using the derived slices
+    # Align close_slice with window ends for calculation
+    # The length of highest_high and lowest_low is (current_input_len - period + 1)
+    # So close_slice also needs to be sliced to align for element-wise operations.
+    numerator = highest_high - close_slice[period - 1:]
     denominator = highest_high - lowest_low
-    williams_r = np.where(denominator != 0, (numerator / denominator) * -100, np.nan)
+    
+    williams_r_calculated = np.full(len(numerator), np.nan) # length (current_input_len - period + 1)
+    williams_r_calculated = np.where( (denominator != 0) & (~np.isnan(denominator)), (numerator / denominator) * -100, np.nan)
 
-    # Pad with NaNs for the first period - 1 values
-    result = np.full(length, np.nan)
-    result[period - 1:] = williams_r
+    # Pad with NaNs at the beginning to match the original input slice length
+    result_with_padding = np.concatenate((np.full(period - 1, np.nan), williams_r_calculated))
 
-    return result
+    return result_with_padding
 
 # _tr250. Elapsed time: 0.00 seconds 
 def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -1146,19 +1201,36 @@ def _generatedseries_calculate_ao(series: np.ndarray, period: int, dataset: np.n
 #
 def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
-    BR (Buying Pressure Ratio) -- NumPy implementation
+    BR (Buying Pressure Ratio) -- NumPy implementation, optimized for incremental updates.
     BR = SUM(MAX(high - prev_close, 0), N) / SUM(MAX(prev_close - low, 0), N) * 100
     """
-    high = dataset[:, c.DF_HIGH]
-    low = dataset[:, c.DF_LOW]
-    close = dataset[:, c.DF_CLOSE]
+    current_input_len = len(series)
 
-    prev_close = np.roll(close, 1)
-    prev_close[0] = np.nan  # No previous close for the first row
+    # We need 'period' bars for rolling sum, and 1 extra for prev_close if starting from 0,
+    # but the rolling_sum helper handles `window > len(arr)` by returning NaNs.
+    # The 'series' itself is the current close slice.
+    
+    # Derive corresponding slices for high, low from the full dataset
+    full_dataset_len = dataset.shape[0]
+    start_index_in_dataset = max(0, full_dataset_len - current_input_len)
+    end_index_in_dataset = start_index_in_dataset + current_input_len
 
-    br_num = np.maximum(high - prev_close, 0)
-    br_den = np.maximum(prev_close - low, 0)
+    high_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_HIGH]
+    low_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_LOW]
+    close_slice = series # This is already the close price slice
 
+    # Construct prev_close_slice
+    prev_close_slice = np.full_like(close_slice, np.nan)
+    if start_index_in_dataset > 0:
+        # The first element of prev_close_slice is the close of the bar just before current_input_len started
+        prev_close_slice[0] = dataset[start_index_in_dataset - 1, c.DF_CLOSE]
+    # The rest of prev_close_slice comes from shifting the current close_slice
+    prev_close_slice[1:] = close_slice[:-1]
+    
+    br_num = np.maximum(high_slice - prev_close_slice, 0)
+    br_den = np.maximum(prev_close_slice - low_slice, 0)
+
+    # Re-use the existing rolling_sum helper function (defined locally for now)
     def rolling_sum(arr, window):
         ret = np.full_like(arr, np.nan, dtype=np.float64)
         if window > len(arr):
@@ -1167,24 +1239,44 @@ def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.n
         ret[window-1:] = cumsum[window:] - cumsum[:-window]
         return ret
 
+    # These rolling sums will be calculated over the derived slices
     sum_num = rolling_sum(br_num, period)
     sum_den = rolling_sum(br_den, period)
-    br = (sum_num / sum_den) * 100
-    return br
+    
+    # Calculate BR. The length of sum_num and sum_den is (current_input_len - period + 1)
+    br_calculated = np.full(len(sum_num), np.nan)
+    # Handle division by zero or NaN denominator
+    br_calculated = np.where( (sum_den != 0) & (~np.isnan(sum_den)), (sum_num / sum_den) * 100, np.nan)
+
+    # Pad with NaNs at the beginning to match the original input slice length
+    # The padding length should be period - 1 to align with rolling window output
+    result_with_padding = np.concatenate((np.full(period - 1, np.nan), br_calculated))
+
+    return result_with_padding
 
 #
 def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     """
-    AR (Active Ratio) -- NumPy implementation
+    AR (Active Ratio) -- NumPy implementation, optimized for incremental updates.
     AR = SUM(high - open, N) / SUM(open - low, N) * 100
     """
-    high = dataset[:, c.DF_HIGH]
-    low = dataset[:, c.DF_LOW]
-    open_ = dataset[:, c.DF_OPEN]
+    current_input_len = len(series) # This is the length of the slice (e.g., self.period)
 
-    ar_num = high - open_
-    ar_den = open_ - low
+    if current_input_len < period:
+        return np.full(current_input_len, np.nan)
 
+    full_dataset_len = dataset.shape[0]
+    start_index_in_dataset = max(0, full_dataset_len - current_input_len)
+    end_index_in_dataset = start_index_in_dataset + current_input_len
+
+    high_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_HIGH]
+    low_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_LOW]
+    open_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_OPEN]
+
+    ar_num_slice = high_slice - open_slice
+    ar_den_slice = open_slice - low_slice
+
+    # Re-use the existing rolling_sum helper function (defined locally for now)
     def rolling_sum(arr, window):
         ret = np.full_like(arr, np.nan, dtype=np.float64)
         if window > len(arr):
@@ -1193,10 +1285,20 @@ def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.n
         ret[window-1:] = cumsum[window:] - cumsum[:-window]
         return ret
 
-    sum_num = rolling_sum(ar_num, period)
-    sum_den = rolling_sum(ar_den, period)
-    ar = (sum_num / sum_den) * 100
-    return ar
+    # These rolling sums will be calculated over the derived slices
+    sum_num = rolling_sum(ar_num_slice, period)
+    sum_den = rolling_sum(ar_den_slice, period)
+    
+    # Calculate AR. The length of sum_num and sum_den is (current_input_len - period + 1)
+    ar_calculated = np.full(len(sum_num), np.nan)
+    # Handle division by zero or NaN denominator
+    ar_calculated = np.where( (sum_den != 0) & (~np.isnan(sum_den)), (sum_num / sum_den) * 100, np.nan)
+
+    # Pad with NaNs at the beginning to match the original input slice length
+    # The padding length should be period - 1 to align with rolling window output
+    result_with_padding = np.concatenate((np.full(period - 1, np.nan), ar_calculated))
+
+    return result_with_padding
 
 #
 def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
