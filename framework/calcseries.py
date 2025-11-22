@@ -295,13 +295,23 @@ def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: 
 def _generatedseries_calculate_highestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     source = np.asarray(source, dtype=np.float64)
 
-    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmax(x))
+    def nan_safe_argmax(a, window_len):
+        if np.all(np.isnan(a)):
+            return np.nan
+        return (window_len - 1) - np.nanargmax(a)
+
+    return _rolling_window_apply_optimized(source, period, lambda x: nan_safe_argmax(x, period))
 
 # _lowestbars250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_lowestbars(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     source = np.asarray(source, dtype=np.float64)
 
-    return _rolling_window_apply_optimized(source, period, lambda x: (period - 1) - np.argmin(x))
+    def nan_safe_argmin(a, window_len):
+        if np.all(np.isnan(a)):
+            return np.nan
+        return (window_len - 1) - np.nanargmin(a)
+
+    return _rolling_window_apply_optimized(source, period, lambda x: nan_safe_argmin(x, period))
 
 # _falling250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -309,7 +319,7 @@ def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset:
     n = len(source)
 
     if period < 1 or period > n:
-        return np.full_like(source, np.nan, dtype=bool)
+        return np.full_like(source, np.nan, dtype=np.float64)
 
     diffs = np.concatenate(([np.nan], np.diff(source)))
     
@@ -317,20 +327,20 @@ def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset:
 
     if window_for_diffs < 1: # If period is 1, a single value is trivially "falling" if not NaN
         result = ~np.isnan(source) # If period is 1, it's falling if it's not NaN
-        return result.astype(bool)
+        return result.astype(np.float64)
 
     if len(diffs[1:]) < window_for_diffs:
-        return np.full_like(source, np.nan, dtype=bool)
+        return np.full_like(source, np.nan, dtype=np.float64)
 
     windows_of_diffs = sliding_window_view(diffs[1:], window_shape=window_for_diffs)
 
     # Check if all elements in each window are strictly negative
     all_negative = np.all(windows_of_diffs < 0, axis=1)
 
-    result_array = np.full(n, np.nan)
-    result_array[period - 1:] = all_negative
+    result_array = np.full(n, np.nan, dtype=np.float64)
+    result_array[period - 1:] = all_negative.astype(np.float64)
 
-    return result_array.astype(bool)
+    return result_array
 
 # _rising250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -342,7 +352,7 @@ def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: 
     n = len(source)
 
     if period < 1 or period > n:
-        return np.full_like(source, np.nan, dtype=bool) # Use bool dtype for boolean results
+        return np.full_like(source, np.nan, dtype=np.float64)
 
     diffs = np.concatenate(([np.nan], np.diff(source)))
 
@@ -350,20 +360,20 @@ def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: 
     
     if window_for_diffs < 1: # If period is 1, a single value is trivially "rising" if not NaN
         result = ~np.isnan(source) # If period is 1, it's rising if it's not NaN
-        return result.astype(bool)
+        return result.astype(np.float64)
 
     # Create sliding window view on `diffs` starting from the second element
     if len(diffs[1:]) < window_for_diffs:
-        return np.full_like(source, np.nan, dtype=bool)
+        return np.full_like(source, np.nan, dtype=np.float64)
 
     windows_of_diffs = sliding_window_view(diffs[1:], window_shape=window_for_diffs)
     all_positive = np.all(windows_of_diffs > 0, axis=1)
 
-    result_array = np.full(n, np.nan)
-    result_array[period - 1:] = all_positive
+    result_array = np.full(n, np.nan, dtype=np.float64)
+    result_array[period - 1:] = all_positive.astype(np.float64)
 
     # Convert to boolean, NaNs will remain as NaN, althought they will be converted to float64 in the dataset
-    return result_array.astype(bool)
+    return result_array
 
 #
 def _generatedseries_calculate_barssince(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -488,7 +498,10 @@ def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.
     # Compute EMA iteratively
     for i in range(start_idx + 1, length):
         if not np.isnan(series[i]):
-            result[i] = alpha * series[i] + beta * result[i - 1]
+            if np.isnan(result[i - 1]):
+                result[i] = series[i] # Restart EMA if previous value was NaN
+            else:
+                result[i] = alpha * series[i] + beta * result[i - 1]
         else:
             result[i] = np.nan
 
@@ -518,16 +531,33 @@ def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.
 
     # Initialize output array
     rma = np.full(length, np.nan)
-
-    # Compute initial SMA using sliding_window_view
-    windows = sliding_window_view(series, window_shape=period)
-    rma[period - 1] = np.nanmean(windows[0], axis=-1)
+    
+    # Find the first window with enough data
+    first_valid_window_idx = -1
+    for i in range(period - 1, length):
+        window = series[i - period + 1 : i + 1]
+        if not np.all(np.isnan(window)):
+            rma[i] = np.nanmean(window)
+            first_valid_window_idx = i
+            break
+            
+    if first_valid_window_idx == -1:
+        return rma # Return all NaNs if no valid window found
 
     # Compute RMA iteratively
     alpha = 1.0 / period
     one_minus_alpha = 1.0 - alpha
-    for i in range(period, length):
-        rma[i] = alpha * series[i] + one_minus_alpha * rma[i - 1]
+    for i in range(first_valid_window_idx + 1, length):
+        if np.isnan(series[i]):
+            rma[i] = np.nan
+            continue
+        
+        if np.isnan(rma[i - 1]):
+            # Previous RMA is NaN, try to re-seed with a new SMA
+            window = series[i - period + 1 : i + 1]
+            rma[i] = np.nanmean(window)
+        else:
+            rma[i] = alpha * series[i] + one_minus_alpha * rma[i - 1]
 
     return rma
 
@@ -1309,7 +1339,7 @@ def _generatedseries_calculate_obv(source: np.ndarray, period: int, dataset: np.
         result = np.full(length, np.nan, dtype=np.float64)
 
         # Determine if update mode (source is slice, period=2)
-        is_update = source_length == 2 and cindex >= 0 and cindex < dataset.shape[1]
+        is_update = source_length >= 2 and cindex >= 0 and cindex < dataset.shape[1]
         barindex = length - 1
 
         # Update mode: compute single new OBV value
@@ -1412,52 +1442,66 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
 
     # Initialize L0, L1, L2, L3 at the first valid point
     L0[start_idx] = (1 - gamma) * price[start_idx]
-    L1[start_idx] = -gamma * L0[start_idx] + L0[start_idx] # L0_prev is 0 here
-    L2[start_idx] = -gamma * L1[start_idx] + L1[start_idx] # L1_prev is 0 here
-    L3[start_idx] = -gamma * L2[start_idx] + L2[start_idx] # L2_prev is 0 here
+    L1[start_idx] = -gamma * L0[start_idx] + L0[start_idx] 
+    L2[start_idx] = -gamma * L1[start_idx] + L1[start_idx]
+    L3[start_idx] = -gamma * L2[start_idx] + L2[start_idx]
 
     # Calculate for subsequent bars
     for i in range(start_idx + 1, n):
         if np.isnan(price[i]):
             # If current price is NaN, propagate NaNs for L0-L3 and Laguerre
-            L0[i] = np.nan
-            L1[i] = np.nan
-            L2[i] = np.nan
-            L3[i] = np.nan
+            L0[i], L1[i], L2[i], L3[i] = np.nan, np.nan, np.nan, np.nan
+            laguerre_oscillator[i] = np.nan
+            continue
+
+        # Safely get previous values, re-seed if NaN
+        l0_prev = L0[i-1]
+        l1_prev = L1[i-1]
+        l2_prev = L2[i-1]
+        l3_prev = L3[i-1]
+
+        # Calculate L0
+        if np.isnan(l0_prev):
+            L0[i] = (1 - gamma) * price[i]
         else:
-            # Calculate L0
-            L0[i] = (1 - gamma) * price[i] + gamma * L0[i-1] if not np.isnan(L0[i-1]) else (1 - gamma) * price[i]
+            L0[i] = (1 - gamma) * price[i] + gamma * l0_prev
 
-            # Calculate L1, L2, L3
-            L1[i] = -gamma * L0[i] + L0[i-1] + gamma * L1[i-1] if not np.isnan(L0[i-1]) and not np.isnan(L1[i-1]) else np.nan
-            L2[i] = -gamma * L1[i] + L1[i-1] + gamma * L2[i-1] if not np.isnan(L1[i-1]) and not np.isnan(L2[i-1]) else np.nan
-            L3[i] = -gamma * L2[i] + L2[i-1] + gamma * L3[i-1] if not np.isnan(L2[i-1]) and not np.isnan(L3[i-1]) else np.nan
+        # Calculate L1
+        if np.isnan(l0_prev) or np.isnan(l1_prev):
+            L1[i] = -gamma * L0[i] + L0[i]
+        else:
+            L1[i] = -gamma * L0[i] + l0_prev + gamma * l1_prev
 
-            # Handle cases where previous L values might be NaN (e.g., at the very start)
-            # If any previous L is NaN, the current L should also be NaN.
-            # The conditional assignments above already handle this, but explicit check for final calculation.
-            if np.isnan(L0[i]) or np.isnan(L1[i]) or np.isnan(L2[i]) or np.isnan(L3[i]):
-                laguerre_oscillator[i] = np.nan
-                continue
+        # Calculate L2
+        if np.isnan(l1_prev) or np.isnan(l2_prev):
+            L2[i] = -gamma * L1[i] + L1[i]
+        else:
+            L2[i] = -gamma * L1[i] + l1_prev + gamma * l2_prev
 
-            # Calculate CU and CD
-            CU = 0.0
-            CD = 0.0
+        # Calculate L3
+        if np.isnan(l2_prev) or np.isnan(l3_prev):
+            L3[i] = -gamma * L2[i] + L2[i]
+        else:
+            L3[i] = -gamma * L2[i] + l2_prev + gamma * l3_prev
 
-            if L0[i] > L1[i]: CU += (L0[i] - L1[i])
-            else: CD += (L1[i] - L0[i])
+        # Calculate CU and CD
+        cu = 0.0
+        cd = 0.0
 
-            if L1[i] > L2[i]: CU += (L1[i] - L2[i])
-            else: CD += (L2[i] - L1[i])
-            
-            if L2[i] > L3[i]: CU += (L2[i] - L3[i])
-            else: CD += (L3[i] - L2[i])
-            
-            # Calculate Laguerre Oscillator
-            if (CU + CD) == 0:
-                laguerre_oscillator[i] = 0.0 # Or 0.5, or NaN, depending on specific convention for zero range
-            else:
-                laguerre_oscillator[i] = CU / (CU + CD)
+        if L0[i] > L1[i]: cu += L0[i] - L1[i]
+        else: cd += L1[i] - L0[i]
+
+        if L1[i] > L2[i]: cu += L1[i] - L2[i]
+        else: cd += L2[i] - L1[i]
+        
+        if L2[i] > L3[i]: cu += L2[i] - L3[i]
+        else: cd += L3[i] - L2[i]
+        
+        # Calculate Laguerre Oscillator
+        if (cu + cd) == 0:
+            laguerre_oscillator[i] = 0.0
+        else:
+            laguerre_oscillator[i] = cu / (cu + cd)
 
     return laguerre_oscillator
 
