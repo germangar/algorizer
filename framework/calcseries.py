@@ -2054,19 +2054,19 @@ class generatedSeries_c:
             previous_other_val = other.iloc(-2)
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
-            return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
+            return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and not (previous_self_val == previous_other_val and current_self_val == current_other_val) )
         elif isinstance( other, (np.ndarray) ):
             # Use iloc directly from the pd.Series
             if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
-            return ( previous_self_val <= other[active.barindex-1] and current_self_val >= other[active.barindex] and current_self_val != previous_self_val )
+            return ( previous_self_val <= other[active.barindex-1] and current_self_val >= other[active.barindex] and not (previous_self_val == other[active.barindex-1] and current_self_val == other[active.barindex]) )
         else: # assuming float or int
             try:
                 float_other = float(other)
             except ValueError:
                 return False
             # Corrected line: Use previous_self_val in the last condition
-            return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
+            return ( previous_self_val <= float_other and current_self_val >= float_other and not (previous_self_val == float_other and current_self_val == float_other) )
     
     def crossingDown( self, other ):
         current_self_val = self.iloc(-1)
@@ -2079,17 +2079,17 @@ class generatedSeries_c:
             previous_other_val = other.iloc(-2)
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
-            return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
+            return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and not (previous_self_val == previous_other_val and current_self_val == current_other_val) )
         elif isinstance( other, (np.ndarray) ):
             if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
                 return False
-            return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and current_self_val != previous_self_val )
+            return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and not (previous_self_val == other[active.barindex-1] and current_self_val == other[active.barindex]) )
         else: 
             try:
                 float_other = float(other)
             except ValueError:
                 return False
-            return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
+            return ( previous_self_val >= float_other and current_self_val <= float_other and not (previous_self_val == float_other and current_self_val == float_other) )
     
     def crossing( self, other ):
         return self.crossingUp(other) or self.crossingDown(other)
@@ -2932,29 +2932,7 @@ def crossingUp( self:generatedSeries_c|float, other:generatedSeries_c|float ):
         bool: True if a crossing up occurred, False otherwise.
     """
     if isinstance( self, generatedSeries_c ):
-        # Directly use self.iloc(-1) and self.iloc(-2) for current and previous values
-        current_self_val = self.iloc(-1)
-        previous_self_val = self.iloc(-2)
-        if np.isnan(current_self_val) or np.isnan(previous_self_val):
-            return False
-
-        if isinstance( other, generatedSeries_c ):
-            current_other_val = other.iloc(-1)
-            previous_other_val = other.iloc(-2)
-            if np.isnan(current_other_val) or np.isnan(previous_other_val):
-                return False
-            return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, np.ndarray ):
-            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
-                return False
-            return ( previous_self_val <= other[active.barindex-1] and current_self_val >= other[active.barindex] and current_self_val != previous_self_val )
-        else: # assuming float or int
-            try:
-                float_other = float(other)
-            except ValueError:
-                return False
-            # Corrected line: Use previous_self_val in the last condition
-            return ( previous_self_val <= float_other and current_self_val >= float_other and current_self_val != previous_self_val )
+        return self.crossingUp(other)
     
     # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
     if isinstance( self, int ):
@@ -3004,7 +2982,7 @@ def crossingUp( self:generatedSeries_c|float, other:generatedSeries_c|float ):
         else:
             return crossingDown( other, self )
 
-    return ( self_old <= other_old and self_new >= other_new and self_old != self_new )
+    return ( self_old <= other_old and self_new >= other_new and not (self_old == other_old and self_new == other_new) )
 
 
 def crossingDown( self:generatedSeries_c|float, other:generatedSeries_c|float ):
@@ -3019,28 +2997,7 @@ def crossingDown( self:generatedSeries_c|float, other:generatedSeries_c|float ):
         bool: True if a crossing down occurred, False otherwise.
     """
     if isinstance( self, generatedSeries_c ):
-        current_self_val = self.iloc(-1)
-        previous_self_val = self.iloc(-2)
-        if np.isnan(current_self_val) or np.isnan(previous_self_val):
-            return False
-
-        if isinstance( other, generatedSeries_c ):
-            current_other_val = other.iloc(-1)
-            previous_other_val = other.iloc(-2)
-            if np.isnan(current_other_val) or np.isnan(previous_other_val):
-                return False
-            return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and current_self_val != previous_self_val )
-        elif isinstance( other, np.ndarray ):
-            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
-                return False
-            return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and current_self_val != previous_self_val )
-        else: 
-            try:
-                float_other = float(other)
-            except ValueError:
-                return False
-            # Corrected: Changed `previous_other_val` to `previous_self_val` for constant comparison.
-            return ( previous_self_val >= float_other and current_self_val <= float_other and current_self_val != previous_self_val )
+        return self.crossingDown(other)
     
     # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
     if isinstance( self, int ):
@@ -3089,7 +3046,7 @@ def crossingDown( self:generatedSeries_c|float, other:generatedSeries_c|float ):
         else:
             return crossingUp( other, self )
 
-    return ( self_old >= other_old and self_new <= other_new and self_old != self_new )
+    return ( self_old >= other_old and self_new <= other_new and not (self_old == other_old and self_new == other_new) )
 
 def crossing( self, other ):
     """
