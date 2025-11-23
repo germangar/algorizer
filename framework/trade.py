@@ -863,7 +863,7 @@ def print_summary_stats():
     
     # PnL percentage: percent change from initial_liquidity to current balance
     longpos = getActivePosition(c.LONG)
-    shortpos = getActivePosition(c.LONG)
+    shortpos = getActivePosition(c.SHORT)
     balance = strategy.liquidity
     balance += longpos.calculate_collateral_from_history() + longpos.get_unrealized_pnl() if longpos else 0.0
     balance += shortpos.calculate_collateral_from_history() + shortpos.get_unrealized_pnl() if shortpos else 0.0
