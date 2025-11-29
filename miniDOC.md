@@ -115,6 +115,7 @@ In Algorizer, the `trade` object is your assistant for managing orders and posit
 ---
 <br><br>
 
+
 ## Strategy Configuration
 
 **Configure your strategy before initializing `stream_c`** so your settings are used during backtesting and live trading. This control is managed through `trade.strategy`:
@@ -193,7 +194,7 @@ order_info = pos.get_order_by_direction(order_direction, older_than_bar_index=No
 
 ---
 
-## Take Profit and Stoploss Orders
+## Take Profit, Stoploss, and Liquidation Orders
 
 Set takeprofit and stoploss orders directly from the position object:
 
@@ -214,6 +215,8 @@ pos.drawStoploss(color="#e38100", style="dotted", width=2)
 pos.drawLiquidation(color="#a00000", style="dotted", width=2)
 ```
 
+> **Note:** Take profit, stoploss, and liquidation conditions are checked and triggered on every price update (tick), not just on candle close. This allows your risk management to be executed in real time, ensuring your stops and targets respond instantly to market moves.
+
 ---
 
 ## Order Sizing and Pyramiding
@@ -230,6 +233,6 @@ pos.drawLiquidation(color="#a00000", style="dotted", width=2)
 - Careful pre-stream setup of strategy parameters ensures correct backtest and live behavior.
 - All order and risk management is handled with the core public API: `trade.order`, `trade.close`, and position methods.
 - Pyramiding is managed automatically, but can be disabled by matching `order_size` and `max_position_size`.
+- Take profit, stoploss, and liquidation are triggered at every tick, not only at candle close.
 
 ---
-
