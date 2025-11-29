@@ -1,6 +1,8 @@
 # Algorizer documentation.
 ## Writing a Basic Strategy Script.
 
+<br><br><br><br><br>
+
 ---
 
 # Chapter 1. The Core: stream_c – Managing Data and Execution
@@ -8,6 +10,8 @@
 The heart of any strategy in Algorizer is the `stream_c` object. It coordinates data fetching, manages multiple timeframes, and orchestrates both backtesting and live trading logic. Understanding `stream_c` lays the foundation for building robust strategies.
 
 ---
+
+<br><br>
 
 ## What Does `stream_c` Do?
 
@@ -100,4 +104,132 @@ def event(stream: stream_c, event: str, param, numparams):
         if cmd == "echo":
             print('Echo', args)
 ```
-You can expand on this pattern to handle any custom event.
+<br><br><br><br><br>
+
+---
+
+# Chapter 2. Strategy Setup and Trade Management
+
+In Algorizer, the `trade` object is your assistant for managing orders and positions. It offers a standardized interface for placing, closing, and inspecting trades, supporting both live and backtesting modes. Configuring your strategy via `trade.strategy` ensures consistent behavior and accuracy during all stages of execution.
+
+---
+<br><br>
+
+## Strategy Configuration
+
+**Configure your strategy before initializing `stream_c`** so your settings are used during backtesting and live trading. This control is managed through `trade.strategy`:
+
+```python
+trade.strategy.verbose = False              # Enable/disable logging output
+trade.strategy.hedged = False               # 'False' for oneway mode, 'True' for hedged mode
+trade.strategy.currency_mode = 'USD'        # Quoting currency: 'USD' or 'BASE'
+trade.strategy.order_size = 1000            # Default size for new orders
+trade.strategy.max_position_size = 3000     # Maximum overall exposure (pyramiding limit)
+trade.strategy.leverage_long = 5            # Leverage for long trades
+trade.strategy.leverage_short = 5           # Leverage for short trades
+```
+> **Note:** All of these must be set before your call to `stream_c(...)`.
+
+---
+
+## Placing Orders
+
+Use the `trade.order` function to place buy or sell orders.
+
+```python
+trade.order(cmd, target_position_type=None, quantity=None, leverage=None)
+```
+- `cmd`: Either `"buy"` or `"sell"` (string).
+- `target_position_type`: Use `c.LONG` (1) or `c.SHORT` (-1). In hedged mode this must be supplied.
+- `quantity`: Size in base currency (if not given, uses `strategy.order_size`).
+- `leverage`: Overrides default leverage (leave `None` to use strategy defaults).
+
+**Behavior:**
+- If no `quantity` is specified, uses `order_size` and manages pyramiding: new orders will increase position size up to `max_position_size`. 
+- To **disable pyramiding**, set `max_position_size` equal to `order_size`; further orders will not add to position once that limit is reached.
+- In **hedged mode**, you must specify the position type to distinguish between long/short sides.
+
+---
+
+## Closing Positions
+
+To close a current position, use:
+
+```python
+trade.close(pos_type=None)
+```
+- If in oneway mode, no argument is needed; closes any active position.
+- If in hedged mode, you must specify `pos_type` (`c.LONG` or `c.SHORT`).
+
+Alternatively, you can get the active position and call the `.close()` method:
+
+```python
+pos = trade.getActivePosition(pos_type)  # pos_type: c.LONG or c.SHORT
+if pos:
+    pos.close()
+```
+
+---
+
+## Inspecting Positions
+
+To retrieve the current active position:
+
+```python
+pos = trade.getActivePosition(pos_type=None)
+```
+- In oneway mode, `pos_type` is optional (returns the only active position).
+- In hedged mode, supply `c.LONG` or `c.SHORT` to specify side.
+
+Once you have a position object, the following methods are available:
+
+```python
+pnl = pos.get_unrealized_pnl()               # Current absolute PnL
+pnl_pct = pos.get_unrealized_pnl_percentage() # Current PnL as percentage of collateral
+
+order_info = pos.get_order_by_direction(order_direction, older_than_bar_index=None) 
+# Returns info for a specific direction/order
+```
+
+---
+
+## Take Profit and Stoploss Orders
+
+Set takeprofit and stoploss orders directly from the position object:
+
+```python
+tp = pos.createTakeprofit(price=None, quantity=None, win_pct=None, reduce_pct=None)
+sl = pos.createStoploss(price=None, quantity=None, loss_pct=None, reduce_pct=None)
+```
+- `price`: Exact target price, or
+- `win_pct` / `loss_pct`: Desired profit/loss % triggers
+- `quantity` or `reduce_pct`: How much of the position to close (in base currency or by %), defaults to current position size
+
+**Visualizing Orders:**  
+You can plot TP, SL, and liquidation levels on your strategy chart:
+
+```python
+pos.drawTakeprofit(color="#17c200", style="dotted", width=2)
+pos.drawStoploss(color="#e38100", style="dotted", width=2)
+pos.drawLiquidation(color="#a00000", style="dotted", width=2)
+```
+
+---
+
+## Order Sizing and Pyramiding
+
+- If you do **not** pass `quantity` to `trade.order(...)`, the strategy uses `trade.strategy.order_size`.
+- Orders are **pyramided** by default—adding to your position up to `trade.strategy.max_position_size`.
+- To **disable pyramiding** (maintain single-size positions), set `max_position_size` equal to `order_size`.
+
+---
+
+## Summary
+
+- The `trade` object coordinates configuration, order placement, position closing, and position inspection.
+- Careful pre-stream setup of strategy parameters ensures correct backtest and live behavior.
+- All order and risk management is handled with the core public API: `trade.order`, `trade.close`, and position methods.
+- Pyramiding is managed automatically, but can be disabled by matching `order_size` and `max_position_size`.
+
+---
+
