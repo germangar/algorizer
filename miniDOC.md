@@ -236,3 +236,88 @@ pos.drawLiquidation(color="#a00000", style="dotted", width=2)
 - Take profit, stoploss, and liquidation are triggered at every tick, not only at candle close.
 
 ---
+<br><br><br><br><br>
+
+---
+
+# Chapter 3. The timeframe_c Class – Candle Data, Updates, and Timeframe Utilities
+
+The `timeframe_c` class represents and manages a single timeframe within your strategy. Each instance is responsible for hosting the OHLCV candle dataset, for driving candle updates (both in backtest and real time), and for orchestrating your close candle callback logic.
+
+---
+<br><br>
+
+## Responsibilities and Core Logic
+
+- **Candle Hosting:** Each `timeframe_c` manages a dataset, storing all OHLCV rows loaded for its specific timeframe. This includes the columns: timestamp, open, high, low, close, volume, top, bottom.
+- **Update Engine:** On historical data load, the class copies all fully closed candles and prepares internal series. In both backtest mode and live trading, it advances bar-by-bar, updating its internal state and calling user closeCandle callbacks as each candle closes.
+- **Callback Invocation:** When a candle closes for this timeframe, it invokes the matching callback, passing all relevant candle fields directly to your function for strategy logic and indicator calculation.
+
+---
+
+## Structure of the Dataset
+
+- The dataframe (numpy NDArray) stores one row per closed candle.
+- Columns include at least: timestamp, open, high, low, close, volume, top, bottom.
+- Each column is associated with a corresponding `generatedSeries_c` object, which enables you to create calculations, plots, and run technical analysis logic over any series.
+- For full details of `generatedSeries_c`, see the next chapter.
+
+---
+
+## Timeframe Indexing and Utilities
+
+- **`barindex`**: Indicates the current index within the timeframe dataset, corresponding to the most recent closed candle. Use this for relative indexing and to synchronize with other data series.
+- **`timestamp`**: Time (in ms) of the currently focused bar or candle. This allows for precise synchronization between multi-timeframe logic.
+
+- **`ready`**: True when the timeframe is fully initialized and ready for execution. The backtest is run for each timeframe at once, and they get marked as ready one by one. A timeframe may be "ready" while the backtesting flag is still on as it runs the backtest on the other timeframes.
+- **`backtesting`**: True if running in historical simulation mode (False in live trading).
+
+You can use the following utility methods to retrieve or work with data:
+
+- **`indexForTimestamp(timestamp)`**: Returns the bar index corresponding to a given timestamp. Useful for aligning signals or retrieving data at a specific point in time.
+- **`ValueAtTimestamp(name, timestamp)`**: Retrieves the value of a named column or generatedSeries at a particular timestamp.
+
+Other noteworthy properties:
+- **`realtimeCandle`**: For live mode, represents the currently updating (not closed) OHLCV candle.
+
+---
+
+## Visual Elements: Plots, Histograms, Markers, and Lines
+
+Plots and histograms are always **associated to a specific timeframe**. When you use `.plot()` or create a histogram in your closeCandle logic, these elements are tied directly to the timeframe, appearing only when the chart is displaying it.
+
+Markers and lines, in contrast, are **independent of timeframe**; they can be placed universally on the chart and aren't bound to one dataset.
+
+Example of plotting series in your callback:
+```python
+calc.SMA(close, 200).plot()           # Associated to the timeframe
+histogram(rsi, "rsiPanel")            # Associated to the timeframe
+# Markers/lines (createMarker, createLine) – not tied to timeframe
+```
+
+---
+
+## Typical Usage in a Strategy
+
+In practice, you use `timeframe_c` objects via your closeCandle callbacks. You access raw price arrays, plot indicators, and retrieve historical values with utility methods:
+```python
+def runCloseCandle(timeframe: timeframe_c, open, high, low, close, volume, top, bottom):
+    barindex = timeframe.barindex
+    # Compute indicators, plot series, reference previous price points
+    value = timeframe.ValueAtTimestamp("close", some_timestamp)
+    idx = timeframe.indexForTimestamp(some_timestamp)
+```
+You can also safely access and operate on the `dataset` and its generatedSeries objects for indicator calculations.
+
+---
+
+## Summary
+
+- `timeframe_c` encapsulates candle data, state, update logic, and closeCandle callback execution for a single timeframe.
+- It organizes all base columns and generated series for price, volume, and derived indicators.
+- Provides bar and timestamp indexing utilities for robust multi-timeframe logic.
+- Plots and histograms are bound to a timeframe; markers and lines are chart-wide.
+- Utility methods like `ValueAtTimestamp` and `indexForTimestamp` empower precise data access within your strategy.
+- Properties `ready` and `backtesting` help you distinguish mode and execution state.
+
+---
