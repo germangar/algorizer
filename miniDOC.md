@@ -142,7 +142,7 @@ trade.order(cmd, target_position_type=None, quantity=None, leverage=None)
 ```
 - `cmd`: Either `"buy"` or `"sell"` (string).
 - `target_position_type`: Use `c.LONG` (1) or `c.SHORT` (-1). In hedged mode this must be supplied.
-- `quantity`: Size in base currency (if not given, uses `strategy.order_size`).
+- `quantity`: Size in base currency when trade.strategy.currency_mode is 'BASE' or in quote currency when trade.strategy.currency_mode is 'USD'  (if not given, uses `strategy.order_size`).
 - `leverage`: Overrides default leverage (leave `None` to use strategy defaults).
 
 **Behavior:**
