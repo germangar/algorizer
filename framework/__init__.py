@@ -1,5 +1,5 @@
 from .constants import c
-from .algorizer import stream_c, timeframe_c, marker_c, line_c, plot, histogram, createMarker, removeMarker, createLine, removeLine
+from .stream import stream_c, timeframe_c, marker_c, line_c, plot, histogram, createMarker, removeMarker, createLine, removeLine
 from . import calcseries as calc
 from .calcseries import generatedSeries_c
 from .candle import candle_c
