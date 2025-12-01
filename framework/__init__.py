@@ -1,7 +1,7 @@
 from .constants import c
 from .stream import stream_c, timeframe_c, marker_c, line_c, plot, histogram, createMarker, removeMarker, createLine, removeLine
-from . import calcseries as calc
-from .calcseries import generatedSeries_c
+from . import series as calc
+from .series import generatedSeries_c
 from .candle import candle_c
 from .pivots import pivots_c, pivot_c
 from . import trade

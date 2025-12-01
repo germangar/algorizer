@@ -9,7 +9,7 @@ from . import tasks
 from . import tools
 from .fetcher import ohlcvs_c
 from .candle import candle_c
-from .calcseries import generatedSeries_c # just for making lives easier
+from .series import generatedSeries_c # just for making lives easier
 from .server import start_window_server, push_row_update, push_tick_update
 from . import active
 from . import console

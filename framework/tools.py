@@ -1,5 +1,5 @@
 import numpy as np
-from .calcseries import generatedSeries_c
+from .series import generatedSeries_c
 
 def get_column_index_from_array( dataset:np.ndarray, candidate_col:np.ndarray ):
     # Try to find the index of the candidate_col in the dataset columns
