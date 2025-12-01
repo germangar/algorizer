@@ -190,6 +190,20 @@ pnl_pct = pos.get_unrealized_pnl_percentage() # Current PnL as percentage of col
 
 order_info = pos.get_order_by_direction(order_direction, older_than_bar_index=None) 
 # Returns info for a specific direction/order
+# order_info is stored in the position for every executed order and it looks like this:
+
+order_info = {
+            'type': order_type,
+            'price': price,
+            'quantity': quantity,
+            'collateral_change': collateral_change,
+            'leverage': leverage,
+            'barindex': active.barindex,
+            'timestamp': active.timeframe.timestamp,
+            'fees_cost': fee,
+            'pnl': pnl_q,
+            'pnl_percentage': pnl_pct,
+        }
 ```
 
 ---
