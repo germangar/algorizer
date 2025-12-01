@@ -221,7 +221,7 @@ sl = pos.createStoploss(price=None, quantity=None, loss_pct=None, reduce_pct=Non
 - `quantity` or `reduce_pct`: How much of the position to close (in base currency or by %), defaults to current position size
 
 **Visualizing Orders:**  
-You can plot TP, SL, and liquidation levels on your strategy chart:
+You can use this helpers to draw TP, SL, and liquidation levels on your strategy chart:
 
 ```python
 pos.drawTakeprofit(color="#17c200", style="dotted", width=2)
