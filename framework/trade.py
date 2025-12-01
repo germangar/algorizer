@@ -718,8 +718,7 @@ class position_c:
 
 strategy = strategy_c(currency_mode='USD')
 
-def getActivePosition(pos_type: int = None) -> 'position_c':
-    return strategy.get_active_position(pos_type)
+
 
 def newTick(candle: candle_c, realtime: bool = True):
     strategy.price_update(candle, realtime)
@@ -762,6 +761,9 @@ def marker( pos:position_c, message = None, prefix = '', reversal:bool = False )
                     shape,
                     COLOR_BULL if pos.type == c.LONG else COLOR_BEAR
                     )
+
+def getActivePosition(pos_type: int = None) -> 'position_c':
+    return strategy.get_active_position(pos_type)
 
 def order(cmd: str, target_position_type: int = None, quantity: float = None, leverage: float = None):
     order_type = c.BUY if cmd.lower() == 'buy' else c.SELL if cmd.lower() == 'sell' else None
