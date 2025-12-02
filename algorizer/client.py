@@ -14,10 +14,9 @@ from typing import Optional, Any
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))  # Add project root to path
 
-# Now use absolute imports
-from framework import tasks
-from framework.constants import c
-from framework.candle import candle_c
+from algorizer import tasks
+from algorizer.constants import c
+from algorizer.candle import candle_c
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
