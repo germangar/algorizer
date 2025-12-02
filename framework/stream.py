@@ -580,6 +580,7 @@ class stream_c:
         self.cache_only = cache_only
         self.event_callback = event_callback
         self.ws_task = None # watch for ccxt websocket errors
+        self.fetchFailedCount = 0
 
         self.markers:list[marker_c] = []
         self.lines:list[line_c] = []
@@ -746,15 +747,20 @@ class stream_c:
             try:
                 response = await self.exchange.watch_ohlcv( self.symbol, self.timeframeFetch, limit = maxRows )
                 #print(response)
+                if self.fetchFailedCount > 5:
+                    print( "fetchCandleupdates: Connection recovered" )
+                self.fetchFailedCount = 0
 
             except Exception as e:
-                # Exception raised at fetchCandleupdates: Reconnecting Connection closed by remote server, closing code 1006 <class 'ccxt.base.errors.NetworkError'>
                 if isinstance(e, ccxt.OnMaintenance) or isinstance(e, ccxt.NetworkError):
-                    print( "fetchCandleupdates: Connection lost. Reconnecting..." )
+                    self.fetchFailedCount += 1
                 else:
                     print( 'Exception raised at fetchCandleupdates: Reconnecting', e, type(e) )
                 await self.exchange.close()
                 await asyncio.sleep(1.0)
+                if self.fetchFailedCount > 5: # Don't spam the console until it becomes bad.
+                    print( "fetchCandleupdates: Connection lost. Reconnecting..." )
+
                 continue
                 
             # extract the data
