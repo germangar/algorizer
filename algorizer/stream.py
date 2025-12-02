@@ -529,22 +529,6 @@ class timeframe_c:
                 continue
             di[plot.name] = plot.descriptor()
         return di
-    
-    def seriesFromMultiObject( self, source: str|generatedSeries_c|np.ndarray )->generatedSeries_c:
-        if isinstance( source, generatedSeries_c ):
-            return source
-        elif isinstance( source, str ):
-            if source in self.generatedSeries.keys():
-                return self.generatedSeries[source]
-            raise ValueError( f"seriesFromMultiObject: {source} is not a registered generatedSeries" )
-        elif isinstance( source, np.ndarray ):
-            # try to guess its index but we won't allow it anyway
-            index = tools.get_column_index_from_array( self.dataset, source )
-            if index:
-                raise ValueError( f"seriesFromMultiObject: Numpy np.ndarray is not a valid object, but array index found [{index}].]" )
-            raise ValueError( "seriesFromMultiObject: Numpy np.ndarray is not a valid object" )
-        else:
-            raise ValueError( "seriesFromMultiObject: Not a recognized series object" )
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
@@ -878,6 +862,7 @@ class stream_c:
             console.status_line_text = f"{message}"
 
 
+# Wrap an expose as functions to the script
 
 def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", style = 'solid', width = 1 )->plot_c:
     '''
@@ -888,7 +873,6 @@ def plot( source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", s
     width: int
     '''
     return active.timeframe.plot( source, name, chart_name, color, style, width )
-
 
 def histogram( source, name:str = None, chart_name:str = None, color = "#4A545D", margin_top = 0.0, margin_bottom = 0.0 )->plot_c:
         return active.timeframe.histogram( source, name, chart_name, color, margin_top, margin_bottom )
@@ -905,8 +889,10 @@ def createLine( x1, y1, x2, y2, color:str = '#c7c7c7', width = 1, style = 'solid
     '''LINE_STYLE = Literal['solid', 'dotted', 'dashed', 'large_dashed', 'sparse_dotted']'''
     return active.timeframe.stream.createLine( x1, y1, x2, y2, color, width, style, chart_name )
 
-def removeLine( marker:marker_c ):
-    active.timeframe.stream.removeLine(marker)
+def removeLine( line:line_c ):
+    active.timeframe.stream.removeLine(line)
+
+# These are used by trade.py but maybe I should better avoid it
 
 def getRealtimeCandle()->candle_c:
     return active.timeframe.realtimeCandle

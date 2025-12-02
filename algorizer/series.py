@@ -456,6 +456,38 @@ def _generatedseries_calculate_min_series(source: np.ndarray, period: int, datas
 def _generatedseries_calculate_max_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
     return np.maximum(np.asarray(source, dtype=np.float64), _prepare_param_for_op( param, source.shape[0], dataset ))
 
+def _generatedseries_calculate_shift(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None)->np.ndarray:
+    """
+    Calculates the element-wise shifted (lagged/leaded) version of the source series.
+
+    Args:
+        source (np.ndarray): The base series data to be shifted.
+        period (int): The number of bars to shift.
+                      Positive (e.g., 1): Lag (looks to the past, fills start with NaN).
+                      Negative (e.g., -1): Lead (looks to the future, fills end with NaN).
+        dataset, cindex, param: Standard parameters (unused for a simple shift).
+    
+    Returns:
+        np.ndarray: The resulting shifted series.
+    """
+    shift = period
+    n = len(source)
+    # Initialize the result array with NaNs, same shape as source
+    result = np.full_like(source, np.nan, dtype=np.float64)
+
+    if shift == 0:
+        return source.copy()
+    
+    # Positive shift (Lag: C[i] = C[i-shift])
+    if shift > 0:
+        result[shift:] = source[:-shift]
+    
+    # Negative shift (Lead: C[i] = C[i-shift]) where shift is negative
+    elif shift < 0:
+        abs_shift = abs(shift)
+        result[:-abs_shift] = source[abs_shift:]
+        
+    return result
 
 def _generatedseries_calculate_sum(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     return _rolling_window_apply_optimized(source, period, np.nansum)
@@ -2098,25 +2130,25 @@ class generatedSeries_c:
 
 def _ensure_object_array( data: generatedSeries_c )-> generatedSeries_c:
     """
-    Helper function to ensure the input is a NumPy array.
+    Helper function to ensure the input is a series object.
     This replaces the initial type checking and conversion logic.
     """
     if isinstance(data, generatedSeries_c):
         return data
     elif isinstance(data, np.ndarray):
-        raise ValueError( "_ensure_object_array: Numpy np.ndarray is not a valid object" )
+        raise TypeError( "_ensure_object_array: Numpy ndarray is not a valid object" )
     else:
-        raise TypeError(f"Unsupported input type: {type(data)}. Expected np.ndarray, pd.Series, or generatedSeries_c.")
+        raise TypeError(f"Unsupported input type: {type(data)}. Expected generatedSeries_c.")
 
 
 
-def addSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def addSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"add_{colA.column_index}_s{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"add_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
@@ -2124,176 +2156,176 @@ def addSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | Num
     # if not timeframe.backtesting:print( "COL A type:", colA.name, "                    COL B type:", colB.name )
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_add_series, param= colB )
 
-def subtractSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def subtractSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"sub_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"sub_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries( name, colA, 1, _generatedseries_calculate_subtract_series, param= colB )
 
-def multiplySeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def multiplySeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"mul_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"mul_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_multiply_series, param= colB)
 
-def divideSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def divideSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"div_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"div_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_divide_series, param= colB)
 
-def powerSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def powerSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"pow_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"pow_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_power_series, param= colB)
 
-def equalSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def equalSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"eq_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"eq_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_equal_series, param= colB)
 
-def notequalSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def notequalSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"neq_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"neq_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_notequal_series, param= colB)
 
-def greaterSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def greaterSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"gr_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"gr_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greater_series, param= colB)
 
-def greaterOrEqualSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def greaterOrEqualSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"gre_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"gre_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_greaterorequal_series, param= colB)
 
-def lessSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def lessSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"lt_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"lt_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_less_series, param= colB)
 
-def lessOrEqualSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def lessOrEqualSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     timeframe = active.timeframe
 
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     if isinstance( colB, NumericScalar ):
         name = f"le_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"le_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise addition.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_lessequal_series, param= colB)
 
-def bitwiseAndSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def bitwiseAndSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     """
     Factory function for Series & (Series | Scalar).
     The resulting series will represent the element-wise bitwise AND of the two operands.
     """
     timeframe = active.timeframe
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     
     if np.isscalar( colB ):
         name = f"and_{colA.column_index}_s{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"and_{colA.column_index}_{colB.column_index}"
         if len(colA) != len(colB):
             raise ValueError("Operands must have the same shape for element-wise bitwise AND.")
 
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_and_series, param= colB )
 
-def bitwiseOrSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def bitwiseOrSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     """
     Factory function for Series | (Series | Scalar).
     The resulting series will represent the element-wise bitwise OR of the two operands.
     """
     timeframe = active.timeframe
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     
     if np.isscalar( colB ):
         name = f"or_{colA.column_index}_s{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"or_{colA.column_index}_{colB.column_index}"
         if len(colA) != len(colB):
             raise ValueError("Operands must have the same shape for element-wise bitwise OR.")
@@ -2301,30 +2333,30 @@ def bitwiseOrSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_or_series, param= colB )
 
 
-def bitwiseXorSeries(colA: str | generatedSeries_c, colB: str | generatedSeries_c | NumericScalar) -> generatedSeries_c:
+def bitwiseXorSeries(colA: generatedSeries_c, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
     """
     Factory function for Series ^ (Series | Scalar).
     The resulting series will represent the element-wise bitwise XOR of the two operands.
     """
     timeframe = active.timeframe
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     
     if np.isscalar( colB ):
         name = f"xor_{colA.column_index}_s{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject( colB )
+        colB = _ensure_object_array( colB )
         name = f"xor_{colA.column_index}_{colB.column_index}"
         if len(colA) != len(colB):
             raise ValueError("Operands must have the same shape for element-wise bitwise XOR.")
 
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_xor_series, param= colB )
 
-def bitwiseNotSeries(colA: str | generatedSeries_c) -> generatedSeries_c:
+def bitwiseNotSeries(colA: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for ~Series (unary operation).
     """
     timeframe = active.timeframe
-    colA = timeframe.seriesFromMultiObject( colA )
+    colA = _ensure_object_array( colA )
     # The name only needs the index of the single operand
     name = f"not_{colA.column_index}"
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_bitwise_not_series, param= None )
@@ -2335,123 +2367,123 @@ def bitwiseNotSeries(colA: str | generatedSeries_c) -> generatedSeries_c:
 #
 
 
-def addScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def addScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar + series.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"add_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_add_series, param= scalar )
 
-def subtractScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def subtractScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar - series.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"sub_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_subtract_series, param= scalar)
 
-def multiplyScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def multiplyScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar * series.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"mul_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_multiply_series, param= scalar)
 
-def divideScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def divideScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar / series.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"div_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_divide_series, param= scalar)
 
-def powerScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def powerScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for scalar ** series.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"pow_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_power_series, param= scalar)
 
-def equalScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def equalScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar == series."""
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"eq_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_equal_series, param= scalar)
 
-def notEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def notEqualScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar != series."""
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"neq_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_notequal_series, param= scalar)
 
-def greaterScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def greaterScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar > series."""
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"gt_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greater_series, param= scalar)
 
-def greaterOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def greaterOrEqualScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar >= series."""
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"ge_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_greaterorequal_series, param= scalar)
 
-def lessScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def lessScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar < series."""
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"lt_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_less_series, param= scalar)
 
-def lessOrEqualScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def lessOrEqualScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """Factory for scalar <= series."""
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"le_{scalar}_{series.column_index}" # Consistent naming for scalar first
     return timeframe.calcGeneratedSeries(name, series, 1, _generatedseries_calculate_scalar_lessequal_series, param= scalar)
 
-def bitwiseAndScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def bitwiseAndScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for Scalar & Series (reversed operation).
     Retained for symmetry with __rand__.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"and_{scalar}_{series.column_index}" 
     
     return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_bitwise_and_series, param= scalar )
 
-def bitwiseOrScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def bitwiseOrScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for Scalar | Series (reversed operation).
     Retained for symmetry with __ror__.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"or_{scalar}_{series.column_index}" 
     
     return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_bitwise_or_series, param= scalar )
 
 
-def bitwiseXorScalar(scalar: NumericScalar, series: str | generatedSeries_c) -> generatedSeries_c:
+def bitwiseXorScalar(scalar: NumericScalar, series: generatedSeries_c) -> generatedSeries_c:
     """
     Factory function for Scalar ^ Series (reversed operation).
     Retained for symmetry with __rxor__.
     """
     timeframe = active.timeframe
-    series = timeframe.seriesFromMultiObject( series )
+    series = _ensure_object_array( series )
     name = f"xor_{scalar}_{series.column_index}" 
     
     return timeframe.calcGeneratedSeries( name, series, 1, _generatedseries_calculate_scalar_bitwise_xor_series, param= scalar )
@@ -2525,13 +2557,13 @@ def MIN( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | Nume
     timeframe = active.timeframe
     if isinstance( colA, NumericScalar ): # swap them if the scalar is first
         scalar = colA
-        colA = timeframe.seriesFromMultiObject(colB)
+        colA = _ensure_object_array(colB)
         colB = scalar
     
     if isinstance( colB, NumericScalar ):
         name = f"min_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject(colB)
+        colB = _ensure_object_array(colB)
         name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise operations.")
@@ -2545,52 +2577,18 @@ def MAX( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | Nume
     timeframe = active.timeframe
     if isinstance( colA, NumericScalar ): # swap them if the scalar is first
         scalar = colA
-        colA = timeframe.seriesFromMultiObject(colB)
+        colA = _ensure_object_array(colB)
         colB = scalar
     
     if isinstance( colB, NumericScalar ):
         name = f"min_{colA.column_index}_{colB}"
     else:
-        colB = timeframe.seriesFromMultiObject(colB)
+        colB = _ensure_object_array(colB)
         name = f"min_{colA.column_index}_{colB.column_index}" # Using resolved indices/names for consistent naming
         if len(colA) != len(colB): # Ensure arrays have compatible shapes for element-wise operation (usually same length)
             raise ValueError("Operands must have the same shape for element-wise operations.")
         
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_max_series, param= colB)
-
-def _generatedseries_calculate_shift(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None)->np.ndarray:
-    """
-    Calculates the element-wise shifted (lagged/leaded) version of the source series.
-
-    Args:
-        source (np.ndarray): The base series data to be shifted.
-        period (int): The number of bars to shift.
-                      Positive (e.g., 1): Lag (looks to the past, fills start with NaN).
-                      Negative (e.g., -1): Lead (looks to the future, fills end with NaN).
-        dataset, cindex, param: Standard parameters (unused for a simple shift).
-    
-    Returns:
-        np.ndarray: The resulting shifted series.
-    """
-    shift = period
-    n = len(source)
-    # Initialize the result array with NaNs, same shape as source
-    result = np.full_like(source, np.nan, dtype=np.float64)
-
-    if shift == 0:
-        return source.copy()
-    
-    # Positive shift (Lag: C[i] = C[i-shift])
-    if shift > 0:
-        result[shift:] = source[:-shift]
-    
-    # Negative shift (Lead: C[i] = C[i-shift]) where shift is negative
-    elif shift < 0:
-        abs_shift = abs(shift)
-        result[:-abs_shift] = source[abs_shift:]
-        
-    return result
-
 
 def SHIFT(source:generatedSeries_c, offset: int)->generatedSeries_c:
     """
