@@ -17,9 +17,8 @@ def event( stream:stream_c, event:str, param, numparams ):
     elif event == "tick":
         '''
         candle : a cancle_c containing the OHLCV values of the latest price.
-        realtime : boolean. True for realtime, false for backtesting.
         '''
-        if not stream.running:
+        if not stream.running: # it's backtesting
             return
         
         candle = param
