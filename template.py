@@ -7,12 +7,13 @@ from algorizer import plot, histogram, createMarker, removeMarker, createLine, r
 def event( stream:stream_c, event:str, param, numparams ):
     if event == "tick":
         '''
+        A realtime price update was received.
         candle : a cancle_c containing the OHLCV values of the latest price.
         '''
         if not stream.running:
             return
         
-        candle = param
+        candle:candle_c = param
 
         ## Show remaining candle time and open position info on the console status line.
         candle.updateRemainingTime()
