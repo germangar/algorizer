@@ -49,14 +49,6 @@ def event( stream:stream_c, event:str, param, numparams ):
     return
 
 if __name__ == '__main__':
-    trade.strategy.hedged = False
-    trade.strategy.currency_mode = 'USD' # 'BASE' for base currency mode
-    trade.strategy.liquidity = 10000
-    trade.strategy.order_size = 1000
-    trade.strategy.max_position_size = 2000
-    trade.strategy.leverage_long = 1
-    trade.strategy.leverage_short = 1
-    
     stream = stream_c( 'LDO/USDT:USDT', 'bitget', ['1m'], [runCloseCandle], event, 25000 )
 
     stream.registerPanel('subpanel', 1.0, 0.2 )
