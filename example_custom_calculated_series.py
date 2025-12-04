@@ -1,6 +1,4 @@
-from algorizer import calc, trade
-from algorizer import stream_c, timeframe_c, marker_c, line_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
-from algorizer import plot, histogram, createMarker, removeMarker, createLine, removeLine
+from algorizer import stream_c, timeframe_c, generatedSeries_c
 
 #
 # This is an example on how you can create your custom auto-calculated generatedSeries_c
