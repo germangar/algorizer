@@ -31,7 +31,7 @@ def CG( source:generatedSeries_c, period:int )->generatedSeries_c:
     """
     Factory function for Center of Gravity (CG) oscillator.
     """
-    # Notice: Same calculations require the array to be recalculated in full with every update. In that case you
+    # Notice: Some calculations require the array to be recalculated in full with every update. In that case you
     # set 'always_reset' to True. In case of doubt always start at false and watch it run realtime for a couple of
     # candles. If it missbehaves in realtime it most likely needs the reset, otherwise it doesn't.
     return source.timeframe.calcGeneratedSeries( 'centergravity', source, period, _generatedseries_calculate_centerofgravity, always_reset = False )
