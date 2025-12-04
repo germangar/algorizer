@@ -335,3 +335,133 @@ You can also safely access and operate on the `dataset` and its generatedSeries 
 - Properties `ready` and `backtesting` help you distinguish mode and execution state.
 
 ---
+<br><br><br><br><br>
+
+---
+
+# Chapter 4. The generatedSeries_c Class – Representing Series in the Dataset
+
+generatedSeries_c objects represent series (columns) inside a timeframe's numpy dataset. They are the building blocks you use to compute indicators, publish plotting values, and store any per-bar derived or user-managed data.
+
+---
+<br><br>
+
+## What generatedSeries_c Is and What It Does
+
+- A generatedSeries_c is a lightweight descriptor that maps a logical series name to a physical column in the timeframe's numpy dataset.
+- It exposes a Python-friendly view over that column so scripts can read values using normal Python indexing (e.g., mySeries[-1], mySeries[barindex]).
+- Some generatedSeries_c instances are "computed" by the engine (indicators such as SMA, RSI, etc.). These computed series automatically produce values as new candles are processed.
+- Other generatedSeries_c instances are "manual" (user-declared): you create them or they are created implicitly by plotting floats/ints, and the script is responsible for updating their last value when appropriate.
+
+Terminology used in this chapter:
+- "Computed series" — automatically calculated indicator series (engine-managed).
+- "Manual series" — user-declared or plot-created series that the script updates explicitly.
+
+---
+
+## Key Properties and Shape
+
+Typical properties accessible on a generatedSeries_c object:
+- name — logical name of the series (string).
+- column_index — integer index of the corresponding column in the timeframe.dataset.
+- timeframe — implicit association to the timeframe that owns the dataset (so series from different timeframes are not directly interoperable).
+
+The underlying storage is a numpy array column inside timeframe.dataset, so reads (indexing) are fast and memory-efficient.
+
+---
+
+## Reading Values (Indexing)
+
+- Use Python-style indexing to read values:
+  - mySeries[-1] → last closed value
+  - mySeries[timeframe.barindex] → value at current barindex (same as -1)
+  - mySeries[i] → arbitrary historical bar
+- The indexing behavior matches normal Python semantics (negative indexes allowed) mapped to the numpy column.
+
+Note: Because generatedSeries_c maps directly to a dataframe column, it is efficient to read entire slices or specific indices for indicator logic.
+
+---
+
+## Computed vs Manual Series
+
+- Computed series (indicators):
+  - Created by the calculation utilities (for example, via functions in the series/calc module).
+  - The engine updates their values automatically at once in backtests and one by one as it advances candles in live runs.
+  - They are the primary mechanism for indicators like SMA, RSI, STDEV, and similar.
+
+- Manual series:
+  - Created implicitly when you plot a scalar with a name, or explicitly by the user.
+  - Your script must assign/update the most recent value on each bar if you want it to persist.
+  - Useful for storing custom signals, state, or any derived number that is not produced by the built-in calculators.
+
+---
+
+## Plotting and Histograms
+
+- generatedSeries_c instances are intended to be used directly as sources when plotting:
+  - series.plot(...) will register a plot tied to the timeframe and use the series column as source.
+- When you call top-level helpers like plot(42.0, 'name', ...), the framework may create a generatedSeries_c behind the scenes and write the float into its last column for display.
+- Plots and histograms created from a generatedSeries_c are bound to the timeframe that owns the series (they appear only when that timeframe is displayed).
+
+---
+
+## Interoperability and Operations
+
+- Series arithmetic and higher-level indicator builders in the project are designed to work with generatedSeries_c objects belonging to the same timeframe (same dataset).
+- You can pass a generatedSeries_c to indicator functions or to other generatedSeries_c-based operations; mixing series from different timeframes is not supported directly and requires alignment through timestamps/index lookups.
+
+---
+
+## Methods of Immediate Interest
+
+- Indexing / value access:
+  - mySeries[i] — read value at index i (supports negative indices and Python-style slicing)
+- Plotting:
+  - mySeries.plot(panel_name=None, color=None, style=None, width=None) — convenience to register a plotted line for this series on the timeframe (plot parameters follow the plotting API used elsewhere in the framework).
+- Cross detection helpers:
+  - mySeries.crossing(otherSeries) — returns boolean/series indicating cross occurrences with another series
+  - mySeries.crossingUp(otherSeries) — detects upward crossings (this crossing from below the other)
+  - mySeries.crossingDown(otherSeries) — detects downward crossings (this crossing from above the other)
+- Introspection:
+  - mySeries.name — readable name
+  - mySeries.column_index — integer column position in the timeframe.dataset
+
+Because the class is a thin wrapper over a dataset column, many interactions are just reading/writing into the dataset; high-level helpers (like .plot() and the crossing methods) exist to simplify common tasks.
+
+---
+
+## Typical Usage Patterns
+
+- Use computed series returned by the calculation utilities:
+  - rsi = calc.RSI(close, 14)
+  - rsi.plot('subpanel')
+- Create or use manual series for ad-hoc values:
+  - mySeries = generatedSeries_c('signal', None)  # 'source = None': manual series have no source. The rest of arguments are not required for manual series)
+  - mySeries[timeframe.barindex] = some_value
+- Operate series within the same timeframe:
+  - bb_mid = calc.SMA(close, 21)
+  - bb_upper = bb_mid + (calc.STDEV(close, 21) * 2)
+- Detect crosses:
+  - cross = fastEMA.crossing(slowEMA)
+  - up = fastEMA.crossingUp(slowEMA)
+  - down = fastEMA.crossingDown(slowEMA)
+
+---
+
+## Practical Notes and Caveats
+
+- Series belong to a single timeframe/dataset. If you need cross-timeframe values, query the other timeframe via its dataset / utility functions (indexForTimestamp / ValueAtTimestamp) and then reference the appropriate series column there.
+- For manual series, remember to update the series on the new bar if persistence is desired — otherwise only the current run-time value remains visible.
+- Because generatedSeries_c maps to numpy columns, vectorized operations and slice reads are efficient; prefer bulk reads when computing multi-bar indicators if you are implementing your own custom calculations.
+
+---
+
+## Summary
+
+- generatedSeries_c is the framework's representation of a column (series) in a timeframe's dataset.
+- There are computed series (indicators) updated automatically by the engine and manual series that you update explicitly.
+- Values are accessed with plain Python indexing and are efficient because they map directly to numpy columns.
+- Use .plot() on series to quickly visualize them on the timeframe's chart; remember series are bound to the timeframe they belong to and interoperate only with series from the same timeframe.
+- Useful helpers include crossing, crossingUp and crossingDown for detecting interactions between two series.
+
+---
