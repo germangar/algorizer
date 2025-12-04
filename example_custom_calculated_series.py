@@ -36,7 +36,7 @@ def CG( source:generatedSeries_c, period:int )->generatedSeries_c:
     # candles. If it missbehaves in realtime it most likely needs the reset, otherwise it doesn't.
     return source.timeframe.calcGeneratedSeries( 'centergravity', source, period, _generatedseries_calculate_centerofgravity, always_reset = False )
 
-# Tip: AIs are pretty good at creating the calculation functions. Provide their context with the series.py and stream.c files.
+# Tip: AIs are pretty good at creating the calculation functions. Provide their context with the series.py and stream.py files.
 # Tell them to analize the code paying special attention to the generatedSeries_c class, specially to the 
 # generatedSeries_c.calculate_full and generatedSeries_c.update methods and to look at the other calculation
 # functions and tell them what calculation function you want them to write. In most cases they'll succeed.

@@ -469,3 +469,54 @@ Because the class is a thin wrapper over a dataset column, many interactions are
 - Useful helpers include crossing, crossingUp and crossingDown for detecting interactions between two series.
 
 ---
+<br><br>
+
+Extension — Creating Custom Computed Series
+---
+<br><br>
+You can create your own computed (auto-calculated) generatedSeries_c instances from a user script without modifying the framework. The pattern consists of two pieces:
+
+- A calculation function that receives raw arrays and computes the resulting numpy array for the full series.
+- A factory function that registers that calculation with the timeframe and returns a generatedSeries_c you can use like any engine-provided indicator.
+
+High-level notes:
+- The calculation function should accept the raw source array and the other arguments the engine expects and return a numpy array of the same length as the provided source array.
+- The factory function typically calls timeframe.calcGeneratedSeries(...) to create or retrieve the generatedSeries_c and register the calculation function.
+- You must provide an unique name in calcGeneratedSeries for this calculation ("rsi", "sma", etc). It will be used to generate the generatedSeries_c name which will identify the calculation in the next updates.
+
+Minimal example signatures:
+
+```python
+# Calculation function signature (example)
+def my_calc_function(source_array: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param=None) -> np.ndarray:
+    # compute and return a numpy array of values (same length as source_array)
+    ...
+
+# Factory function signature (example)
+def MyIndicator(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    return source.timeframe.calcGeneratedSeries(
+        'my_indicator_name',
+        source,
+        period,
+        my_calc_function,
+        always_reset = False  # or True when full recalculation is required every update
+    )
+```
+
+Important details:
+- always_reset: If True, the engine will recalculate the full array each time new data arrives (safer for algorithms that need the full history recomputed). If False, the engine may attempt incremental updates. When in doubt, test with False and switch to True if realtime outputs appear incorrect.
+- The created generatedSeries_c will belong to the same timeframe as the `source` and can be used immediately in your closeCandle logic:
+  ```python
+  cg = MyIndicator(close, 14)
+  cg.plot('subpanel')
+  ```
+- Because the generated series is produced and managed by the timeframe, it will be updated automatically during backtest initialization (full calculation) and during live ticks (incrementally or fully depending on always_reset).
+
+Full example:
+- See the complete example file for a working example of this pattern:
+  https://github.com/germangar/algorizer/blob/main/example_custom_calculated_series.py
+
+Practical tip:
+- To craft the calculation function correctly, inspect the implementation of generatedSeries_c.calculate_full and generatedSeries_c.update in algorizer/series.py and other existing calculation functions (in the same module) to match expectations about array shapes, NaN handling, and performance patterns.
+
+---
