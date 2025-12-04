@@ -482,6 +482,7 @@ You can create your own computed (auto-calculated) generatedSeries_c instances f
 High-level notes:
 - The calculation function should accept the raw source array and the other arguments the engine expects and return a numpy array of the same length as the provided source array.
 - The factory function typically calls timeframe.calcGeneratedSeries(...) to create or retrieve the generatedSeries_c and register the calculation function.
+- You must provide an unique name in calcGeneratedSeries for this calculation ("rsi", "sma", etc). It will be used to generate the generatedSeries_c name which will identify the calculation in the next updates.
 
 Minimal example signatures:
 
