@@ -1,5 +1,5 @@
 
-from typing import Union
+from typing import Union, TYPE_CHECKING
 talib_available = False
 talib = None
 try:
@@ -16,6 +16,10 @@ import time
 from .constants import c
 from . import active
 from . import tools
+
+
+if TYPE_CHECKING:
+    from .stream import timeframe_c
     
 
 # Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude
@@ -1617,7 +1621,8 @@ class generatedSeries_c:
     
     def __init__(self, name: str, source: np.ndarray, period:int= 1, func=None, param=None, always_reset:bool= False):
 
-        timeframe = active.timeframe
+        self.timeframe: 'timeframe_c' = active.timeframe
+        timeframe = self.timeframe
         
         # These are generated series created by the user, used by plots, or the built in (ohlcv) columns
         if func is None:
@@ -1628,7 +1633,6 @@ class generatedSeries_c:
 
             self.param = None
             self.func = None
-            self.timeframe = timeframe
             self.lastUpdatedTimestamp = timeframe.timestamp
             self.alwaysReset = False
             self._is_generated_series = False # do not touch. 
@@ -1665,7 +1669,6 @@ class generatedSeries_c:
         self.period = max(period, 1) if period is not None else len(source)
         self.param = param
         self.func = func
-        self.timeframe = timeframe
         self.lastUpdatedTimestamp = 0
         self.alwaysReset = always_reset
         self._is_generated_series = True # do not touch. 
