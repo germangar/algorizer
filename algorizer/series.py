@@ -723,35 +723,7 @@ def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.
     result_with_padding = np.concatenate((np.full(period - 1, np.nan), cci_calculated))
 
     return result_with_padding
-'''
-# _cci250. Elapsed time: 0.04 seconds (talib 0.01 seconds)
-def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    length = len(series)
-    if length < period:
-        return np.full(length, np.nan)
-    
-    if talib_available:
-        return talib.CCI(dataset[:, c.DF_HIGH], dataset[:, c.DF_LOW], dataset[:, c.DF_CLOSE], period)
 
-    # Compute Typical Price
-    tp = (dataset[:, c.DF_HIGH] + dataset[:, c.DF_LOW] + dataset[:, c.DF_CLOSE]) / 3.0
-
-    # Create sliding windows
-    tp_windows = sliding_window_view(tp, window_shape=period)
-
-    # Compute SMA
-    sma = np.nanmean(tp_windows, axis=1)
-
-    # Compute MAD
-    mad = np.nanmean(np.abs(tp_windows - sma[:, np.newaxis]), axis=1)
-
-    # Compute CCI
-    cci = np.full(length, np.nan)
-    denominator = 0.015 * mad
-    cci[period - 1:] = np.where(denominator > 1e-10, (tp[period - 1:] - sma) / denominator, np.nan)
-
-    return cci
-'''
 # 0.02
 def _generatedseries_calculate_cfo(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
