@@ -480,7 +480,7 @@ You can create your own computed (auto-calculated) generatedSeries_c instances f
 - A factory function that registers that calculation with the timeframe and returns a generatedSeries_c you can use like any engine-provided indicator.
 
 High-level notes:
-- The calculation function should accept the raw source array and the other arguments the engine expects and return a numpy array of the same length as the dataset column.
+- The calculation function should accept the raw source array and the other arguments the engine expects and return a numpy array of the same length as the provided source array.
 - The factory function typically calls timeframe.calcGeneratedSeries(...) to create or retrieve the generatedSeries_c and register the calculation function.
 
 Minimal example signatures:
