@@ -1651,7 +1651,6 @@ class generatedSeries_c:
             if self.column_index == -1:
                 assert name not in timeframe.generatedSeries.keys(), f"A generatedSeries_c with the name '{name}' already exists"
                 self.column_index = timeframe.dataset_createColumn()
-                print( f"Column created at index {self.column_index} for {self.name}")
 
             # register the column
             timeframe.generatedSeries[self.name] = self
