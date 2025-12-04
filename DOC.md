@@ -436,7 +436,7 @@ Because the class is a thin wrapper over a dataset column, many interactions are
   - rsi = calc.RSI(close, 14)
   - rsi.plot('subpanel')
 - Create or use manual series for ad-hoc values:
-  - mySeries = generatedSeries_c('signal', None)  # 'source = None': manual series have no source. The rest of arguments are not required for manual series)
+  - mySeries = generatedSeries_c('signal', None)  # 'source = None': manual series have no source; other args are optional for manual series
   - mySeries[timeframe.barindex] = some_value
 - Operate series within the same timeframe:
   - bb_mid = calc.SMA(close, 21)
@@ -451,6 +451,10 @@ Because the class is a thin wrapper over a dataset column, many interactions are
 ## Practical Notes and Caveats
 
 - Series belong to a single timeframe/dataset. If you need cross-timeframe values, query the other timeframe via its dataset / utility functions (indexForTimestamp / ValueAtTimestamp) and then reference the appropriate series column there.
+- A generatedSeries_c can be retrieved by name from its timeframe using:
+  - timeframe.generatedSeries['name']
+  This is a convenient way to access series created earlier in the script or by the engine.
+- The arguments passed to your closeCandle callback — open, high, low, close, top, bottom, volume — are provided as built-in manual generatedSeries_c objects created and maintained by the timeframe. They map directly to the underlying dataset columns and are the canonical way to reference the primary price/volume series inside your callbacks.
 - For manual series, remember to update the series on the new bar if persistence is desired — otherwise only the current run-time value remains visible.
 - Because generatedSeries_c maps to numpy columns, vectorized operations and slice reads are efficient; prefer bulk reads when computing multi-bar indicators if you are implementing your own custom calculations.
 
