@@ -517,6 +517,6 @@ Full example:
   https://github.com/germangar/algorizer/blob/main/example_custom_calculated_series.py
 
 Practical tip:
-- To craft the calculation function correctly, inspect the implementation of generatedSeries_c.calculate_full and generatedSeries_c.update in algorizer/series.py (formerly calcseries.py) and other existing calculation functions (in the same module) to match expectations about array shapes, NaN handling, and performance patterns.
+- To craft the calculation function correctly, inspect the implementation of generatedSeries_c.calculate_full and generatedSeries_c.update in algorizer/series.py and other existing calculation functions (in the same module) to match expectations about array shapes, NaN handling, and performance patterns.
 
 ---
