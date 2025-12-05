@@ -2496,7 +2496,7 @@ def SHIFT(source:generatedSeries_c, offset: int)->generatedSeries_c:
     
     Args:
         source (generatedSeries_c): The input series to shift.
-        length (int): The number of bars to shift.
+        offset (int): The number of bars to shift.
     
     Returns:
         generatedSeries_c: A new series representing the shifted values.
@@ -2745,7 +2745,7 @@ def indexWhenTrue(source: generatedSeries_c)-> Union[int, None]:
     Returns:
         int: The 0-based index of the last True value, or None if no True values are found.
     """
-    source_array = _ensure_object_array(source)
+    source_array = _ensure_object_array(source).series()
     
     # Ensure the array is boolean. This handles cases where source might be 0s and 1s.
     boolean_source = source_array.astype(bool)
@@ -2770,10 +2770,10 @@ def indexWhenFalse(source: generatedSeries_c)-> Union[int, None]:
     Returns:
         int: The 0-based index of the last False value, or None if no False values are found.
     """
-    source = _ensure_object_array(source)
+    source_array = _ensure_object_array(source).series()
     
     # Ensure the array is boolean
-    boolean_source = source.astype(bool)
+    boolean_source = source_array.astype(bool)
     
     # Find all indices where the condition is False (using logical NOT on the boolean array)
     false_indices = np.where(~boolean_source)[0]
