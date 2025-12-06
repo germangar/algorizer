@@ -2748,7 +2748,63 @@ def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int 
 
 ################ Helpers. Not series #########################
 
-def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
+
+def highestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, since: int = None)-> Union[int, None]:
+    """
+    Finds the index of the highest value in a lookback window.
+    """
+    if since is None:
+        since = active.barindex
+    
+    start_index = max(0, since - lookback_period + 1)
+    end_index = since + 1
+    
+    if start_index >= end_index:
+        return None
+
+    # Slice the underlying numpy array
+    series_slice_values = source_series.series()[start_index:end_index]
+    
+    if len(series_slice_values) == 0:
+        return None
+
+    try:
+        # nanargmax returns the index within the slice where the max value is.
+        relative_index = np.nanargmax(series_slice_values)
+        # The absolute index in the full series is start_index + relative_index.
+        absolute_index = start_index + relative_index
+        return absolute_index
+    except ValueError: # This happens if the slice contains only NaNs
+        return None
+
+
+def lowestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, since: int = None)-> Union[int, None]:
+    """
+    Finds the index of the lowest value in a lookback window.
+    """
+    if since is None:
+        since = active.barindex
+        
+    start_index = max(0, since - lookback_period + 1)
+    end_index = since + 1
+
+    if start_index >= end_index:
+        return None
+
+    series_slice_values = source_series.series()[start_index:end_index]
+    
+    if len(series_slice_values) == 0:
+        return None
+
+    try:
+        relative_index = np.nanargmin(series_slice_values)
+        absolute_index = start_index + relative_index
+        return absolute_index
+    except ValueError: # All-NaN slice
+        return None
+
+
+def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None)-> Union[int, None]:
     """
     Finds the index of the last True value, searching backwards from a given point
     within a specified lookback period.
@@ -2784,7 +2840,7 @@ def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, 
     return None # No True value found
 
 
-def indexWhenFalseSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
+def indexWhenFalseSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None)-> Union[int, None]:
     """
     Finds the index of the last False value, searching backwards from a given point
     within a specified lookback period.
@@ -2817,7 +2873,7 @@ def indexWhenFalseSingle(source: generatedSeries_c, lookback_period: int = None,
     return None # No False value found
     
 
-def barsSinceSingle( source, period: int = None ):
+def barsSinceSingle( source:generatedSeries_c, lookback_period:int = None )-> Union[int, None]:
     """
     Calculates the number of bars that have passed since the last True condition
     within a given lookback period.
@@ -2833,7 +2889,7 @@ def barsSinceSingle( source, period: int = None ):
              True condition is found within the lookback period.
     """
     # Find the last true index, but only look back 'period' bars.
-    index_when_true = indexWhenTrueSingle( source, lookback_period=period )
+    index_when_true = indexWhenTrueSingle( source, lookback_period=lookback_period )
 
     if index_when_true is None:
         return None # No True condition was found within the lookback period.
@@ -2841,7 +2897,7 @@ def barsSinceSingle( source, period: int = None ):
     return active.barindex - index_when_true
 
 
-def barsWhileTrueSingle( source, period: int = None ):
+def barsWhileTrueSingle( source:generatedSeries_c, lookback_period:int = None )-> Union[int, None]:
     """
     Calculates the number of consecutive bars (including the current one)
     for which the source condition has been True, capped at a max `period`.
@@ -2868,8 +2924,8 @@ def barsWhileTrueSingle( source, period: int = None ):
         count = current_bar_index - index_of_last_false
 
     # Apply the period as a cap on the result.
-    if period is not None and count > period:
-        return period
+    if lookback_period is not None and count > lookback_period:
+        return lookback_period
 
     return count
 
