@@ -2750,140 +2750,128 @@ def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int 
 
 def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
     """
-    Finds the index of the last True value, searching backwards from a given point.
+    Finds the index of the last True value, searching backwards from a given point
+    within a specified lookback period.
     A value is considered True if it's non-zero and not NaN.
-
-    Args:
-        source: A generatedSeries_c object.
-        lookback_period (int, optional): The maximum number of bars to look back from the 'since' index.
-                                         If None, searches the entire history up to 'since'. Defaults to None.
-        since (int, optional): The index to start searching backwards from.
-                               If None, starts from the end of the series. Defaults to None.
-
-    Returns:
-        int: The index of the last True value found, or None if not found.
     """
-    source_array = _ensure_object_array(source).series()
+    source_series = _ensure_object_array(source)
+    full_source_array = source_series.series()
     
-    # Determine the end index of our search window
-    end_index = (len(source_array) - 1) if since is None else since
-    if end_index < 0 or end_index >= len(source_array):
-        return None # 'since' index is out of bounds
+    # Determine the end of the search window (exclusive for slicing)
+    end_index = (since if since is not None else active.barindex) + 1
 
-    # Determine the start index of our search window
-    if lookback_period is None:
+    # Determine the start of the search window
+    if lookback_period is not None and lookback_period > 0:
+        start_index = max(0, end_index - lookback_period)
+    else:
         start_index = 0
-    else:
-        start_index = max(0, end_index - lookback_period + 1)
+        
+    # Slice the array to the search window
+    source_array_slice = full_source_array[start_index:end_index]
+
+    # Create a boolean mask for "True" values
+    true_mask = (source_array_slice != 0) & (~np.isnan(source_array_slice))
     
-    # Create the slice to search within
-    search_slice = source_array[start_index : end_index + 1]
+    # Find all true indices *relative to the slice*
+    relative_true_indices = np.where(true_mask)[0]
 
-    # Find True values within the slice (non-zero and not NaN)
-    true_mask = (search_slice != 0) & ~np.isnan(search_slice)
-    slice_true_indices = np.where(true_mask)[0]
+    if relative_true_indices.size > 0:
+        # Get the last relative index and convert it to an absolute index
+        last_relative_index = relative_true_indices[-1]
+        absolute_index = start_index + last_relative_index
+        return absolute_index
+            
+    return None # No True value found
 
-    if slice_true_indices.size > 0:
-        # Get the last true index within the slice, which is the first one found searching backwards
-        last_true_index_in_slice = slice_true_indices[-1]
-        # Convert it to an absolute index relative to the original source_array
-        return start_index + last_true_index_in_slice
-    else:
-        return None
 
 def indexWhenFalseSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
     """
-    Finds the index of the last False value, searching backwards from a given point.
-    A value is considered False if it is zero; NaN is not considered False.
-
-    Args:
-        source: A generatedSeries_c object.
-        lookback_period (int, optional): The maximum number of bars to look back from the 'since' index. 
-                                         If None, searches the entire history up to 'since'. Defaults to None.
-        since (int, optional): The index to start searching backwards from. 
-                               If None, starts from the end of the series. Defaults to None.
-
-    Returns:
-        int: The index of the last False value found, or None if not found.
+    Finds the index of the last False value, searching backwards from a given point
+    within a specified lookback period.
+    A value is considered False if it's 0. NaN is not considered False.
     """
-    source_array = _ensure_object_array(source).series()
+    source_series = _ensure_object_array(source)
+    full_source_array = source_series.series()
 
-    # Determine the end index of our search window
-    end_index = (len(source_array) - 1) if since is None else since
-    if end_index < 0 or end_index >= len(source_array):
-        return None # 'since' index is out of bounds
+    # Determine the end of the search window (exclusive for slicing)
+    end_index = (since if since is not None else active.barindex) + 1
 
-    # Determine the start index of our search window
-    if lookback_period is None:
+    # Determine the start of the search window
+    if lookback_period is not None and lookback_period > 0:
+        start_index = max(0, end_index - lookback_period)
+    else:
         start_index = 0
-    else:
-        start_index = max(0, end_index - lookback_period + 1)
         
-    # Create the slice to search within
-    search_slice = source_array[start_index : end_index + 1]
+    # Slice the array to the search window
+    source_array_slice = full_source_array[start_index:end_index]
 
-    # A "False" value is 0. `search_slice == 0` correctly evaluates to False for NaN entries.
-    false_indices_in_slice = np.where(search_slice == 0)[0]
+    # A "False" value is 0. `series == 0` correctly handles NaN.
+    relative_false_indices = np.where(source_array_slice == 0)[0]
 
-    if false_indices_in_slice.size > 0:
-        # Get the last false index within the slice, which is the first one found searching backwards
-        last_false_index_in_slice = false_indices_in_slice[-1]
-        # Convert it to an absolute index relative to the original source_array
-        return start_index + last_false_index_in_slice
-    else:
-        return None
+    if relative_false_indices.size > 0:
+        # Get the last relative index and convert it to an absolute index
+        last_relative_index = relative_false_indices[-1]
+        absolute_index = start_index + last_relative_index
+        return absolute_index
+            
+    return None # No False value found
     
-def barsSinceSingle( source, lookback: int = None ):
+
+def barsSinceSingle( source, period: int = None ):
     """
-    Calculates the number of bars that have passed since the last True condition.
+    Calculates the number of bars that have passed since the last True condition
+    within a given lookback period.
 
     Args:
         source: A generatedSeries_c object.
-        lookback (int, optional): The maximum number of bars to look back for the True condition. 
-                                  If None, searches the entire available history. Defaults to None.
+        period (int, optional): The lookback period in which to search for the last
+                                True condition. If None, searches the entire history.
+                                Defaults to None.
 
     Returns:
-        int: The number of bars since the last True condition, or None if no True condition is found.
+        int: The number of bars since the last True condition, or None if no
+             True condition is found within the lookback period.
     """
-    index_when_true = indexWhenTrueSingle( source, lookback_period=lookback )
-    if index_when_true is None: 
-        return None
+    # Find the last true index, but only look back 'period' bars.
+    index_when_true = indexWhenTrueSingle( source, lookback_period=period )
+
+    if index_when_true is None:
+        return None # No True condition was found within the lookback period.
+
     return active.barindex - index_when_true
 
-def barsWhileTrueSingle( source, lookback: int = None ):
+
+def barsWhileTrueSingle( source, period: int = None ):
     """
     Calculates the number of consecutive bars (including the current one)
-    for which the source condition has been True, looking back up to `lookback` bars.
+    for which the source condition has been True, capped at a max `period`.
 
     Args:
         source: A generatedSeries_c object.
-        lookback (int, optional): The maximum number of bars to look back for a False condition.
-                                  If None, searches the entire available history. Defaults to None.
+        period (int, optional): The maximum value to return. If the actual streak is longer,
+                                the function will return `period`. Defaults to None (no limit).
 
     Returns:
-        int: The number of consecutive True bars ending at the current position.
-             Returns None if the source array is empty or the lookback period is invalid.
+        int: The number of consecutive True bars ending at the current position, capped by `period`.
     """
-    source_array = _ensure_object_array(source).series()
-    current_bar_index = active.barindex # Assuming active.barindex is the current bar's index
+    current_bar_index = active.barindex
 
-    # indexWhenFalse will search backwards from current_bar_index
-    index_of_last_false_in_window = indexWhenFalseSingle( source, lookback_period=lookback, since=current_bar_index )
+    # Find the last False, searching the whole history up to the current bar.
+    index_of_last_false = indexWhenFalseSingle( source, lookback_period=None, since=current_bar_index )
 
-    if index_of_last_false_in_window is None:
-        # If no False is found in the specified lookback window, it means the condition has been True
-        # for the entire window up to the current bar.
-        if lookback is not None:
-            # The number of bars that were True is exactly the length of the effective search window.
-            # This is min(lookback, current_bar_index + 1) because the lookback cannot exceed the actual history.
-            return min(lookback, current_bar_index + 1)
-        else:
-            # If lookback is None, means it checked the whole history.
-            # If no False was found, all bars up to current_bar_index were True.
-            return current_bar_index + 1
+    count = 0
+    if index_of_last_false is None:
+        # No False found, so the streak is the entire history up to this point.
+        count = current_bar_index + 1
     else:
-        # If a False is found, count the bars from that False occurrence to the current bar.
-        return current_bar_index - index_of_last_false_in_window
+        # Streak is the distance from the last False.
+        count = current_bar_index - index_of_last_false
+
+    # Apply the period as a cap on the result.
+    if period is not None and count > period:
+        return period
+
+    return count
 
 def crossingUp( self:generatedSeries_c|float, other:generatedSeries_c|float ):
     """
