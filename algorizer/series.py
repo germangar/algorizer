@@ -2748,7 +2748,7 @@ def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int 
 
 ################ Helpers. Not series #########################
 
-def indexWhenTrue(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
+def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
     """
     Finds the index of the last True value, searching backwards from a given point.
     A value is considered True if it's non-zero and not NaN.
@@ -2791,7 +2791,7 @@ def indexWhenTrue(source: generatedSeries_c, lookback_period: int = None, since:
     else:
         return None
 
-def indexWhenFalse(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
+def indexWhenFalseSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None) -> Union[int, None]:
     """
     Finds the index of the last False value, searching backwards from a given point.
     A value is considered False if it is zero; NaN is not considered False.
@@ -2833,7 +2833,7 @@ def indexWhenFalse(source: generatedSeries_c, lookback_period: int = None, since
     else:
         return None
     
-def barsSince( source, lookback: int = None ):
+def barsSinceSingle( source, lookback: int = None ):
     """
     Calculates the number of bars that have passed since the last True condition.
 
@@ -2845,12 +2845,12 @@ def barsSince( source, lookback: int = None ):
     Returns:
         int: The number of bars since the last True condition, or None if no True condition is found.
     """
-    index_when_true = indexWhenTrue( source, lookback_period=lookback )
+    index_when_true = indexWhenTrueSingle( source, lookback_period=lookback )
     if index_when_true is None: 
         return None
     return active.barindex - index_when_true
 
-def barsWhileTrue( source, lookback: int = None ):
+def barsWhileTrueSingle( source, lookback: int = None ):
     """
     Calculates the number of consecutive bars (including the current one)
     for which the source condition has been True, looking back up to `lookback` bars.
@@ -2868,7 +2868,7 @@ def barsWhileTrue( source, lookback: int = None ):
     current_bar_index = active.barindex # Assuming active.barindex is the current bar's index
 
     # indexWhenFalse will search backwards from current_bar_index
-    index_of_last_false_in_window = indexWhenFalse( source, lookback_period=lookback, since=current_bar_index )
+    index_of_last_false_in_window = indexWhenFalseSingle( source, lookback_period=lookback, since=current_bar_index )
 
     if index_of_last_false_in_window is None:
         # If no False is found in the specified lookback window, it means the condition has been True
