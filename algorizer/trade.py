@@ -517,7 +517,7 @@ class position_c:
         return None
     
     def createTakeprofit(self, price:float = None, quantity:float = None, win_pct:float = None, reduce_pct = None)->dict:
-        ''' quantity is in base currency.
+        ''' quantity is in *base currency*.
             quantity_pct is a percentage in a 0-100 scale'''
         if not price and not win_pct:
             print( "Warning: Stoploss order requires a price or a percentage. Ignoring")
@@ -552,7 +552,7 @@ class position_c:
                 tp['quantity'] = quantity
                 tp['quantity_pct'] = reduce_pct
                 tp ['win_pct'] = win_pct
-            return tp
+                return tp
 
         # create the takeprofit item
         tp_order = {

@@ -2749,14 +2749,17 @@ def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int 
 ################ Helpers. Not series #########################
 
 
-def highestBarSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[int, None]:
+def highestBarSingle(source:generatedSeries_c, lookback_period:int = None, since:int= None)-> Union[int, None]:
     """
     Finds the index of the highest value in a lookback window.
     """
     if since is None:
         since = active.barindex
     
-    start_index = max(0, since - lookback_period + 1)
+    if lookback_period is None:
+        start_index = 0
+    else:
+        start_index = max(0, since - lookback_period + 1)
     end_index = since + 1
     
     if start_index >= end_index:
@@ -2786,14 +2789,16 @@ def highestSingle(source:generatedSeries_c, lookback_period:int, since:int= None
         return None
     return source[index]
 
-def lowestBarSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[int, None]:
+def lowestBarSingle(source:generatedSeries_c, lookback_period:int= None, since:int= None)-> Union[int, None]:
     """
     Finds the index of the lowest value in a lookback window.
     """
     if since is None:
         since = active.barindex
-        
-    start_index = max(0, since - lookback_period + 1)
+    if lookback_period is None:
+        start_index = 0
+    else:
+        start_index = max(0, since - lookback_period + 1)
     end_index = since + 1
 
     if start_index >= end_index:
