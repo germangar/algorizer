@@ -2749,7 +2749,7 @@ def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int 
 ################ Helpers. Not series #########################
 
 
-def highestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, since: int = None)-> Union[int, None]:
+def highestBarSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[int, None]:
     """
     Finds the index of the highest value in a lookback window.
     """
@@ -2763,7 +2763,7 @@ def highestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, s
         return None
 
     # Slice the underlying numpy array
-    series_slice_values = source_series.series()[start_index:end_index]
+    series_slice_values = source.series()[start_index:end_index]
     
     if len(series_slice_values) == 0:
         return None
@@ -2777,8 +2777,16 @@ def highestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, s
     except ValueError: # This happens if the slice contains only NaNs
         return None
 
+def highestSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[int, None]:
+    """
+    Finds the highest value in a lookback window.
+    """
+    index = highestBarSingle(source, lookback_period, since)
+    if index is None:
+        return None
+    return source[index]
 
-def lowestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, since: int = None)-> Union[int, None]:
+def lowestBarSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[int, None]:
     """
     Finds the index of the lowest value in a lookback window.
     """
@@ -2791,7 +2799,7 @@ def lowestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, si
     if start_index >= end_index:
         return None
 
-    series_slice_values = source_series.series()[start_index:end_index]
+    series_slice_values = source.series()[start_index:end_index]
     
     if len(series_slice_values) == 0:
         return None
@@ -2803,6 +2811,14 @@ def lowestBarSingle(source_series: 'generatedSeries_c', lookback_period: int, si
     except ValueError: # All-NaN slice
         return None
 
+def lowestSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[int, None]:
+    """
+    Finds the lowest value in a lookback window.
+    """
+    index = lowestBarSingle(source, lookback_period, since)
+    if index is None:
+        return None
+    return source[index]
 
 def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None)-> Union[int, None]:
     """
@@ -2810,8 +2826,8 @@ def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, 
     within a specified lookback period.
     A value is considered True if it's non-zero and not NaN.
     """
-    source_series = _ensure_object_array(source)
-    full_source_array = source_series.series()
+    source = _ensure_object_array(source)
+    full_source_array = source.series()
     
     # Determine the end of the search window (exclusive for slicing)
     end_index = (since if since is not None else active.barindex) + 1
