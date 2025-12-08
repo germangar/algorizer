@@ -455,6 +455,7 @@ Because the class is a thin wrapper over a dataset column, many interactions are
   - timeframe.generatedSeries['name']
   This is a convenient way to access series created earlier in the script or by the engine.
 - The arguments passed to your closeCandle callback — open, high, low, close, top, bottom, volume — are provided as built-in manual generatedSeries_c objects created and maintained by the timeframe. They map directly to the underlying dataset columns and are the canonical way to reference the primary price/volume series inside your callbacks.
+- Manual series populated by the user at each close-candle iteration **cannot be used as the source of Computed series.** Computed series are precalculated during backtest initialization (and registered to be updated in live mode), so a manual series that has no historical values at initialization will not provide the data the computed series needs to build its full array.
 - For manual series, remember to update the series on the new bar if persistence is desired — otherwise only the current run-time value remains visible.
 - Because generatedSeries_c maps to numpy columns, vectorized operations and slice reads are efficient; prefer bulk reads when computing multi-bar indicators if you are implementing your own custom calculations.
 
