@@ -1817,6 +1817,13 @@ class generatedSeries_c:
 
     def __len__(self):
         return self.timeframe.dataset.shape[0]
+
+    def __bool__(self):
+        raise ValueError(
+            "The truth value of a generatedSeries_c with more than one element is ambiguous. "
+            "To combine series logically, use the bitwise operators '&' (and), '|' (or). "
+            "To check a specific value, access it directly (e.g., `if my_series[-1]:`)."
+        )
     
     def _lenError(self, other):
         if isinstance(other, generatedSeries_c):
