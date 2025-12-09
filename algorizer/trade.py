@@ -620,7 +620,7 @@ class position_c:
                 sl['quantity'] = quantity
                 sl['quantity_pct'] = reduce_pct
                 sl ['loss_pct'] = loss_pct
-            return sl
+                return sl
 
         # create the stoploss item
         stoploss_order = {
@@ -765,8 +765,14 @@ def marker( pos:position_c, message = None, prefix = '', reversal:bool = False )
 def getActivePosition(pos_type: int = None) -> 'position_c':
     return strategy.get_active_position(pos_type)
 
-def order(cmd: str, target_position_type: int = None, quantity: float = None, leverage: float = None):
-    order_type = c.BUY if cmd.lower() == 'buy' else c.SELL if cmd.lower() == 'sell' else None
+def order(cmd: str|int, target_position_type:int= None, quantity:float= None, leverage:float= None):
+    if isinstance( cmd, str ):
+        order_type = c.BUY if cmd.lower() == 'buy' else c.SELL if cmd.lower() == 'sell' else None
+    elif isinstance( cmd, int ):
+        order_type = cmd if cmd == c.BUY or c.SELL else None
+    else:
+        order_type = None
+
     if not order_type:
         raise ValueError(f"Invalid order command: {cmd}")
     
