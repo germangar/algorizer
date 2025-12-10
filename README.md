@@ -5,11 +5,11 @@ It connects to crypto exchanges using the CCXT library and downloads the require
 
 Strategies can be multi-timeframe. Trades can be oneway or hedged. Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
 
-Drawing capabilities are still a work in progress. As of today it's capable of **plots, histograms, lines** (point to point) and **markers** (labels), as it's capable of creating subpanels and targetting these to them. Horizontal lines, boxes and tables are still in the to do list.
-
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
 The project is still a work in progress so you'll most likely find a few nuissances. Specially when writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces. However, **fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime is reliable at this point.**
+
+Plotting capabilities: As of today it's capable of **plots, histograms, lines** (point to point) and **markers** (labels), as it's capable of creating subpanels and targetting these to them. Horizontal lines, boxes and tables are still in the to do list. Tables and horizontal lines remain in the To Do list.
 
 I'm slowly adding documentation in the ['DOC.md'](https://github.com/germangar/algorizer/blob/main/DOC.md) file. It's far from complete yet, but it offers a starting point. I also extensively commented the file ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) from which you can obtain a good amount of information and get a sense of how to create a strategy.
 
