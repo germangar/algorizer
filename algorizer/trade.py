@@ -248,7 +248,7 @@ class position_c:
         if quantity < EPSILON:
             return None
         
-        fee = 0.0
+        
 
         # Determine if order increases or reduces position
         is_increasing = False
@@ -258,62 +258,58 @@ class position_c:
         else:
             is_increasing = (order_type == c.BUY and self.type == c.LONG) or (order_type == c.SELL and self.type == c.SHORT)
 
-        # Calculate collateral required
+        # Calculate vaues for the order
+        fee = 0.0
         collateral_change = 0.0
+        pnl = 0.0
         if is_increasing:
-            if (quantity * price) / leverage > self.strategy_instance.liquidity:
-                quantity = (self.strategy_instance.liquidity * leverage) / price # liquidity and collateral always in USD
-            quantity = floor_to_tick_size(quantity, getPrecision())
+            # calculate max quantity we can buy
+            precision = max( getPrecision(), EPSILON )
+            max_quantity = floor_to_tick_size(((self.strategy_instance.liquidity / price) * leverage), precision)
+            max_fee = self.calculate_fee_taker(price, max_quantity)
+            cl = (max_quantity * price) / leverage # turn it back to dollars.
+            while cl + max_fee > self.strategy_instance.liquidity and max_quantity > precision:
+                max_quantity -= precision
+                max_fee = self.calculate_fee_taker(price, max_quantity)
+                cl = (max_quantity * price) / leverage # turn it back to dollars.
+
+            # we now have a max quantity we can purchase in base currency. Anything below is valid
+            if quantity > max_quantity:
+                quantity = max_quantity
+                fee = max_fee
+            else:
+                quantity = floor_to_tick_size(quantity, getPrecision())
+                fee = self.calculate_fee_taker(price, quantity)
             collateral_change = (quantity * price) / leverage
 
-            if quantity < EPSILON:
+            if quantity < precision:
                 return None
             
-            fee = self.calculate_fee_taker(price, quantity)
+            pnl = 0.0
+            
+            # we have the data to create the order
         
         else:
             # Clamp quantity if reducing position
             quantity = min(quantity, self.size)
             if quantity != self.size:
                 quantity = round_to_tick_size(quantity, getPrecision())
-            collateral_change = (-quantity * self.priceAvg) / self.leverage
+            collateral_change = (quantity * self.priceAvg) / self.leverage
             if collateral_change > self.collateral:
-                collateral_change = self.collateral
-                print( "Warning: collateral_change > self.collateral" )
+                collateral_change = self.collateral # EPSILON ERROR
+                # raise ValueError( f"Warning: collateral_change ({collateral_change}) > self.collateral ({self.collateral})" )
+            collateral_change = -collateral_change
 
             if quantity < EPSILON:
                 return None
             
             fee = self.calculate_fee_taker(price, quantity)
 
-        
+            # calculate pnl
+            pnl = self.calculate_pnl(price, quantity)
 
-        # Calculate PNL and fees
-        
-        fee = 0
-        pnl_q = 0.0
-        pnl_pct = 0.0
+            # we have the data to create the order
 
-        # Update position state
-        if is_increasing:
-            new_size = self.size + quantity
-            self.priceAvg = ((self.priceAvg * self.size) + (price * quantity)) / new_size
-            self.size = new_size
-            self.collateral += collateral_change
-            self.strategy_instance.liquidity -= collateral_change + fee
-            self.max_size_held = max(self.max_size_held, self.size)
-            self.leverage = leverage if not self.active else self.leverage # FIXME: Allow to combine orders with different leverages
-            # print( f"collateral change {collateral_change} liquidity {self.strategy_instance.liquidity}")
-        else:
-            pnl_q = self.calculate_pnl(price, quantity)
-            pnl_pct = (pnl_q / self.collateral) * 100 if self.collateral > EPSILON else 0.0
-            self.size -= quantity
-            self.collateral += collateral_change
-            self.strategy_instance.liquidity += -collateral_change + pnl_q - fee
-            # print( f"collateral change {collateral_change} pnl {pnl_q} liquidity {self.strategy_instance.liquidity}")
-            if self.size < EPSILON:
-                self.size = 0.0
-                self.collateral = 0.0
 
         # Store order in history
         order_info = {
@@ -325,15 +321,31 @@ class position_c:
             'barindex': active.barindex,
             'timestamp': active.timeframe.timestamp,
             'fees_cost': fee,
-            'pnl': pnl_q,
-            'pnl_percentage': pnl_pct,
+            'pnl': pnl
         }
         self.order_history.append(order_info)
 
 
-        # fixme: something is going wrong with the collateral so let's brute force a full recalculation
-        # The incremental collateral calculation was fixed, this should not be needed anymore.
-        # self.collateral = self.calculate_collateral_from_history()
+        # Apply the order to the position status
+        if is_increasing:
+            new_size = self.size + order_info['quantity']
+            self.priceAvg = ((self.priceAvg * self.size) + (price * order_info['quantity'])) / new_size
+            self.size = new_size
+        else:
+            self.size -= order_info['quantity']
+        self.collateral += order_info['collateral_change']
+        self.strategy_instance.liquidity += -order_info['collateral_change'] # when reducing collateral_change is negative so it will be added
+        self.strategy_instance.liquidity += order_info['pnl']
+        self.strategy_instance.liquidity -= order_info['fees_cost']
+
+        self.max_size_held = max(self.max_size_held, self.size)
+        self.leverage = leverage if not self.active else self.leverage # FIXME: Allow to combine orders with different leverages
+
+        # it's going to close the position after the broker event
+        if self.size < EPSILON:
+            self.size = 0.0
+            self.collateral = 0.0
+            self.was_liquidated = liquidation
 
         # Broker event
         if not isInitializing():
@@ -354,7 +366,6 @@ class position_c:
             )
         
         if self.size < EPSILON: # The order has emptied the position
-            self.was_liquidated = liquidation
             self.realized_pnl_quantity = self.calculate_realized_pnl_from_history() - self.calculate_fees_from_history()
             self.strategy_instance._close_position(self)
             return order_info
