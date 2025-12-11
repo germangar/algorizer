@@ -22,6 +22,10 @@ def floor_to_tick_size(value, tick_size):
         return value
     return math.floor(value / tick_size) * tick_size
 
+def cleanFloatJunk(x:float, places=12):
+    fmt = '{:.{}f}'.format(x, places)   # 12 digits after the point
+    return float(fmt)
+
 from dataclasses import dataclass
 @dataclass
 class strategy_stats_c:
@@ -310,7 +314,13 @@ class position_c:
 
             # we have the data to create the order
 
-
+        # I don't want to import decimal. I could, but I don't wanna
+        quantity = cleanFloatJunk( quantity )
+        collateral_change = cleanFloatJunk( collateral_change )
+        fee = cleanFloatJunk( fee )
+        pnl = cleanFloatJunk( pnl )
+        # print( f"quantity: {quantity} Collateral Change: {collateral_change} fee: {fee} pnl: {pnl}")
+        
         # Store order in history
         order_info = {
             'type': order_type,
