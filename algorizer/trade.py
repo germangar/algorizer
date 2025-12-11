@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from .candle import candle_c
-from .stream import getRealtimeCandle, createMarker, createLine, isInitializing, getCandle, getMintick, getPrecision, getFees
+from .stream import getRealtimeCandle, createMarker, createLine, isInitializing, getCandle, getMintick, getPrecision
 from .constants import c
 from . import active
 
@@ -60,6 +60,8 @@ class strategy_c:
         self.hedged = True
         self.show_markers = True
         self.liquidity = initial_liquidity
+        self.fees_override_maker = 0.0
+        self.fees_override_taker = 0.0
         self.stats: strategy_stats_c = strategy_stats_c()
         self.pnl_history: dict[str, list[float]] = {}
 
@@ -169,6 +171,8 @@ class position_c:
         self.collateral = 0.0
         self.priceAvg = 0.0
         self.leverage = 1
+        self.fee_taker = 0.0
+        self.fee_maker = 0.0
         self.realized_pnl_quantity = 0.0
         self.order_history = []
         self.max_size_held = 0.0
@@ -180,6 +184,14 @@ class position_c:
             'oldliquidation': 0,
             'liquidationLine': None
         }
+
+        # fees
+        self.fee_maker = active.timeframe.stream.fee_maker
+        self.fee_taker = active.timeframe.stream.fee_taker
+        if strategy_instance.fees_override_maker > 0.0:
+            self.fee_maker = strategy_instance.fees_override_maker
+        if strategy_instance.fees_override_taker > 0.0:
+            self.fee_taker = strategy_instance.fees_override_taker
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
@@ -214,12 +226,10 @@ class position_c:
         return pnl
 
     def calculate_fee_taker(self, price: float, quantity: float) -> float:
-        _, taker_fee = getFees()
-        return abs(quantity) * price * taker_fee
+        return abs(quantity) * price * self.fee_taker
     
     def calculate_fee_maker(self, price: float, quantity: float) -> float:
-        maker_fee, _ = getFees()
-        return abs(quantity) * price * maker_fee
+        return abs(quantity) * price * self.fee_maker
 
     def calculate_liquidation_price(self) -> float:
         '''

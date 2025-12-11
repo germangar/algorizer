@@ -906,9 +906,6 @@ def getMintick()->float:
 def getPrecision()->float:
     return active.timeframe.stream.precision
 
-def getFees()->tuple[float,float]:
-    return active.timeframe.stream.fee_maker, active.timeframe.stream.fee_taker
-    
 def isInitializing():
     return active.timeframe.stream.initializing
 
