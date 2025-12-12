@@ -7,7 +7,7 @@ import numpy as np
 import msgpack
 
 from . import tasks
-from .constants import c
+from .constants import constants as c
 from . import tools
 from . import active
 

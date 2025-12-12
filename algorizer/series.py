@@ -13,7 +13,7 @@ import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import time
 
-from .constants import c
+from .constants import constants as c
 from . import active
 from . import tools
 

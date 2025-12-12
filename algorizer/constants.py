@@ -2,7 +2,7 @@
 
 from enum import IntEnum
 
-class c(IntEnum):  # Ultra-short class name
+class constants(IntEnum):  # Ultra-short class name
     LONG = 1
     SHORT = -1
     IDLE = 0

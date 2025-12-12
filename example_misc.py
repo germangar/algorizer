@@ -1,5 +1,8 @@
-from algorizer import calc, trade
-from algorizer import stream_c, timeframe_c, marker_c, line_c, generatedSeries_c, candle_c, pivots_c, pivot_c, c
+from algorizer import calc # as ta # if you prefer to use that name
+from algorizer import trade
+from algorizer import constants as c
+from algorizer import stream_c, timeframe_c, generatedSeries_c, marker_c, line_c, candle_c
+# from algorizer import pivots_c, pivot_c
 from algorizer import plot, histogram, createMarker, removeMarker, createLine, removeLine
 
 

@@ -4,7 +4,7 @@ import asyncio
 import ccxt.pro as ccxt
 import time
 
-from .constants import c
+from .constants import constants as c
 from . import tasks
 from . import tools
 from .fetcher import ohlcvs_c

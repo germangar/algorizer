@@ -1,6 +1,6 @@
 
 import numpy as np
-from .constants import c
+from .constants import constants as c
 from . import active
 
 

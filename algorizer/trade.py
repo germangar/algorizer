@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from .candle import candle_c
 from .stream import getRealtimeCandle, createMarker, createLine, isInitializing, getCandle, getMintick, getPrecision
-from .constants import c
+from .constants import constants as c
 from . import active
 
 EPSILON = 1e-9

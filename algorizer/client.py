@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))  # Add project root to path
 
 from algorizer import tasks
-from algorizer.constants import c
+from algorizer.constants import constants as c
 from algorizer.candle import candle_c
 
 if sys.platform == 'win32':

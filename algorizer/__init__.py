@@ -1,4 +1,4 @@
-from .constants import c
+from .constants import constants
 from .stream import stream_c, timeframe_c, marker_c, line_c, plot, histogram, createMarker, removeMarker, createLine, removeLine
 from . import series as calc
 from .series import generatedSeries_c
