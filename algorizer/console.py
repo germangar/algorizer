@@ -157,15 +157,7 @@ async def cli_task(stream):
             command = parts[0].lower()
             args = parts[1] if len(parts) > 1 else '' # Get args if they exist
 
-            if command == 'chart' or command == 'c':
-                stream.createWindow( args )
-
-            elif command == 'close':
-                # TODO: Function to send a command to the client to shutdown
-                print('closing chart')
-
-            else:
-                stream.event_callback(stream, "cli_command", (command, args), 2)
+            stream.event_callback(stream, "cli_command", (command, args), 2)
             
             if stream.running:
                 print_status_line()

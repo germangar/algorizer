@@ -81,9 +81,11 @@ def event( stream:stream_c, event:str, param, numparams ):
         '''
         Handle custom console commands.
         '''
+        assert( isinstance(param, tuple) and len(param) == numparams)
         cmd, args = param
-        if cmd == 'echo':
-            print('Echo ', args)
+        # command "chart [timeframe] opens the chart window"
+        if cmd == 'chart' or cmd == 'c':
+            stream.createWindow( args )
 
 
 if __name__ == '__main__':

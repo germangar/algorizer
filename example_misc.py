@@ -14,9 +14,10 @@ def event( stream:stream_c, event:str, param, numparams ):
     if event == "cli_command":
         assert( isinstance(param, tuple) and len(param) == numparams)
         cmd, args = param
-        if cmd == 'echo': # command will always be lower case
-            print( 'Echo ', args )
-
+        # command "chart [timeframe] opens the chart window"
+        if cmd == 'chart' or cmd == 'c':
+            stream.createWindow( args )
+            
     elif event == "tick":
         '''
         candle : a cancle_c containing the OHLCV values of the latest price.
