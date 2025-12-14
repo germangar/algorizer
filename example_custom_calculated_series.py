@@ -2,7 +2,7 @@ from algorizer import stream_c, timeframe_c, generatedSeries_c
 
 #
 # This is an example on how you can create your custom auto-calculated generatedSeries_c
-# The CG oscilator is already available in calc
+# The CG oscilator is already available in ta
 #
 
 import numpy as np
@@ -34,10 +34,10 @@ def CG( source:generatedSeries_c, period:int )->generatedSeries_c:
     # candles. If it missbehaves in realtime it most likely needs the reset, otherwise it doesn't.
     return source.timeframe.calcGeneratedSeries( 'centergravity', source, period, _generatedseries_calculate_centerofgravity, always_reset = False )
 
-# Tip: AIs are pretty good at creating the calculation functions. Provide their context with the series.py and stream.py files.
+# Tip: AIs are pretty good at creating the calculation functions. Provide their context with the series.py, ta.py and stream.py files.
 # Tell them to analize the code paying special attention to the generatedSeries_c class, specially to the 
 # generatedSeries_c.calculate_full and generatedSeries_c.update methods and to look at the other calculation
-# functions and tell them what calculation function you want them to write. In most cases they'll succeed.
+# functions in ta.py, and tell them what calculation function you want them to write. In most cases they'll succeed.
 
 def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
     cg = CG(close, 14)
