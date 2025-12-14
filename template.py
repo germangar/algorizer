@@ -1,8 +1,8 @@
-from algorizer import calc
+from algorizer import ta
 from algorizer import trade
 from algorizer import constants as c
 from algorizer import stream_c, timeframe_c, generatedSeries_c, marker_c, line_c, candle_c
-# from algorizer import pivots_c, pivot_c
+# from algorizer import pivots_c, pivot_c # only needed if you use ta.pivots
 from algorizer import plot, histogram, createMarker, removeMarker, createLine, removeLine
 
 
@@ -11,8 +11,8 @@ def runCloseCandle( timeframe:timeframe_c, open, high, low, close, volume, top, 
     A candle was closed. Execute the strategy logic
     '''
     barindex = timeframe.barindex
-    calc.SMA(close, 200).plot()
-    calc.RSI(close, 14).plot('subpanel')
+    ta.SMA(close, 200).plot()
+    ta.RSI(close, 14).plot('subpanel')
 
 
 def event( stream:stream_c, event:str, param, numparams ):

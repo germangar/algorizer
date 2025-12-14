@@ -1,4 +1,4 @@
-from algorizer import calc # as ta # if you prefer to use that name
+from algorizer import ta
 from algorizer import trade
 from algorizer import constants as c
 from algorizer import stream_c, timeframe_c, generatedSeries_c, marker_c, line_c, candle_c
@@ -95,7 +95,7 @@ def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, 
 
     # calc is where the generatedSeries operations reside. 
     # You can rename it to 'ta' if you like. It's the equivalent. I just like 'calc' better.
-    rsiSlow = calc.IFTrsi(close, 8)
+    rsiSlow = ta.IFTrsi(close, 8)
 
     # This plot will only show when charting this timeframe.
     # the main logic resides in the 'fast' timeframe, so you most likely will never see it unless
@@ -107,11 +107,11 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
 
     barindex = timeframe.barindex # for simplicity
 
-    # There's a calc.BollingerBands function, but I'm doin'g it this
+    # There's a ta.BollingerBands function, but I'm doin'g it this
     # way to demonstrate you can freely operate with series.
     mult = 2.0
-    BBbasis = calc.SMA(close, 350)
-    stdev = calc.STDEV(close, 350, 1.0)     # You can feed the multiplier in the STDEV function directly
+    BBbasis = ta.SMA(close, 350)
+    stdev = ta.STDEV(close, 350, 1.0)     # You can feed the multiplier in the STDEV function directly
     BBupper = BBbasis + (stdev * mult)      # but again, for demosntrative purposes I calculate it here
     BBlower = BBbasis - (stdev * mult)
 
@@ -143,7 +143,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     plot( invRSI, 'rsiSlow', 'subpanel', color="#ef38cd44", width=10 ) # The subpanel panel was created by us. See below.
 
     # standard rsi
-    rsi14 = calc.RSI(close, 14).plot( 'subpanel' )
+    rsi14 = ta.RSI(close, 14).plot( 'subpanel' )
 
 
     # There's a built-in pivot indicator which is performance savy.
@@ -151,7 +151,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
     # the top and bottom prices of the candles bodies. Wicks excluded.
     # You can use high and low instead, or whatever you prefer.
     # 'Amplitude' is the main value you want to tweak for each symbol/timeframe
-    pivots = calc.pivots( top, bottom, 11 )
+    pivots = ta.pivots( top, bottom, 11 )
     if pivots.isNewPivot:
         thisPivot = pivots.getLast() # only confirmed pivots. You can check the WIP pivot values in pivots.temp_pivot
         if thisPivot.type == c.PIVOT_HIGH:
@@ -160,7 +160,7 @@ def runCloseCandle_fast( timeframe:timeframe_c, open, high, low, close, volume, 
             createMarker('△', 'below', color = "#BDBDBD", timestamp=thisPivot.timestamp)
 
     # MACD in one go
-    macd_line, signal_line, histo = calc.MACD(close)
+    macd_line, signal_line, histo = ta.MACD(close)
     histo.histogram( 'macd', "#4A545D" )
     macd_line.plot( 'macd', color = "#AB1212", width=2 ) # The macd panel was created by us. See below
     signal_line.plot( 'macd', color = "#1BC573" )
