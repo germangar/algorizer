@@ -1,7 +1,9 @@
 This is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't intend to mimic the language, but the structure should be familiar enough to you to feel comfortable.
 
 **What does it do:**
-It connects to crypto exchanges using the CCXT library and downloads the required historical data (if the exchange provides it). It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)).
+It connects to crypto exchanges using the CCXT library and downloads the required historical data[1]. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)).
+
+[1] It does not require an API key. Not all exchanges provide historical data. If it fails try another exchange.
 
 Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
 
