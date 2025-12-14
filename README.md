@@ -5,7 +5,9 @@ It connects to crypto exchanges using the CCXT library and downloads the require
 
 [1] It does not require an API key. Not all exchanges provide historical data. If it fails try another exchange.
 
-Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
+Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
+
+Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
 
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
