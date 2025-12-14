@@ -93,8 +93,6 @@ rsiSlow = None
 def runCloseCandle_slow( timeframe:timeframe_c, open, high, low, close, volume, top, bottom ):
     global rsiSlow
 
-    # calc is where the generatedSeries operations reside. 
-    # You can rename it to 'ta' if you like. It's the equivalent. I just like 'calc' better.
     rsiSlow = ta.IFTrsi(close, 8)
 
     # This plot will only show when charting this timeframe.
