@@ -20,7 +20,9 @@ I'm slowly adding documentation in the ['DOC.md'](https://github.com/germangar/a
 Use template.py as base to write scripts.
 
 
-<img width="2413" height="1258" alt="image" src="https://github.com/user-attachments/assets/fdb1d619-8e97-4a5d-ba6e-34c1faa8bb0b" />
+<img width="2118" height="1267" alt="image" src="https://github.com/user-attachments/assets/b1f69204-3e29-4865-a7d0-d4d0b5a66b35" />
+
+
 
 
 ### Future plans (aka to do list) ###
