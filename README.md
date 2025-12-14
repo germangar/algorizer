@@ -3,7 +3,7 @@ This is a framework for creating/backtesting and running trading algorythms. It 
 **What does it do:**
 It connects to crypto exchanges using the CCXT library and downloads the required historical data. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)).
 
-Strategies can be multi-timeframe. Trades can be oneway or hedged. Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
+Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
 
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
