@@ -1,10 +1,10 @@
-talib_available = False
+_talib_available = False
 talib = None
 try:
     import talib
-    talib_available = True
+    _talib_available = True
 except ImportError:
-    talib_available = False
+    _talib_available = False
     print("Talib not available")
 
 import numpy as np
@@ -14,11 +14,6 @@ from typing import Union
 from .series import generatedSeries_c, _prepare_param_for_op, _ensure_object_array, NumericScalar, OperandType
 from .constants import constants as c
 from . import active
-
-
-# Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude
-_exclude = ['active']
-__all__ = [name for name in globals() if not (name.startswith('_') or name in _exclude)]
 
 
 ################################ ANALYSIS TOOLS #####################################
@@ -56,7 +51,7 @@ def _rolling_window_apply_optimized(arr: np.ndarray, window: int, func) -> np.nd
 
 # #
 # # CALCULATION FUNCTIONS : calculate the series slice or full
-# #
+# # 
 
 
 # _highest250. Elapsed time: 0.00 seconds
@@ -64,7 +59,7 @@ def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset:
     """
     Calculates the highest value over a specified period using NumPy.
     """
-    if talib_available:
+    if _talib_available:
         return talib.MAX(source, period)
     source = np.asarray(source, dtype=np.float64)
     return _rolling_window_apply_optimized(source, period, lambda x: np.nanmax(x))
@@ -73,7 +68,7 @@ def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: 
     """
     Calculates the lowest value over a specified period using NumPy.
     """
-    if talib_available:
+    if _talib_available:
         return talib.MIN(source, period)
     source = np.asarray(source, dtype=np.float64)
     return _rolling_window_apply_optimized(source, period, lambda x: np.nanmin(x))
@@ -198,7 +193,7 @@ def _generatedseries_calculate_crossing_up(source: np.ndarray, period: int, data
     result = crossed_up.astype(np.float64)
     
     # The first element will always be NaN because there's no prior bar for comparison.
-    # This is implicitly handled by np.roll and the NaN assignment, but explicit is clear.
+    # This is implicitly handled by np.roll and the NaN assignment, but explicit is clear. 
     result[0] = np.nan 
     
     return result
@@ -425,7 +420,7 @@ def _generatedseries_calculate_sma(source: np.ndarray, period: int, dataset: np.
 
 # _ema_250. Elapsed time: 0.03 seconds (a little slow, but it's the only reliable one. Talib is also unreliable)
 def _generatedseries_calculate_ema(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
+    if _talib_available:
         return talib.EMA(series, period)
     length = len(series)
     if length == 0 or period < 1:
@@ -515,7 +510,7 @@ def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.
 
 # _wma250. Elapsed time: 0.02 seconds (talib 00.00 seconds)
 def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
+    if _talib_available:
         return talib.WMA(series, period)
     
     length = len(series)
@@ -541,7 +536,7 @@ def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.
 
 # _linreg250. Elapsed time: 0.02 seconds (talib 0.01 seconds)
 def _generatedseries_calculate_linreg(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
+    if _talib_available:
         return talib.LINEARREG(series, period)
 
     length = len(series)
@@ -614,7 +609,7 @@ def _generatedseries_calculate_cci(series: np.ndarray, period: int, dataset: np.
     low_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_LOW]
     close_slice = series # 'series' here is already the slice of close price
 
-    if talib_available:
+    if _talib_available:
         # Pass the sliced data to talib. It should produce the correct result for this slice.
         # If talib.CCI behaves unexpectedly with slices (e.g., assumes full history),
         # this might still behave like a full recalculation internally within talib,
@@ -753,7 +748,7 @@ def _generatedseries_calculate_fwma(series: np.ndarray, period: int, dataset: np
 
 # _stdev250. Elapsed time: 0.02 seconds (talib 0.00 seconds)
 def _generatedseries_calculate_stdev(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param:float=1.0) -> np.ndarray:
-    if talib_available:
+    if _talib_available:
         return talib.STDDEV(series, period) * param
 
     length = len(series)
@@ -822,7 +817,7 @@ def _generatedseries_calculate_williams_r(series: np.ndarray, period: int, datas
     low_slice = dataset[start_index_in_dataset:end_index_in_dataset, c.DF_LOW]
     close_slice = series # 'series' is already the correct close price slice
 
-    if talib_available:
+    if _talib_available:
         return talib.WILLR(high_slice, low_slice, close_slice, period)
     
     # Compute rolling highest high and lowest low over the slices
@@ -862,14 +857,14 @@ def _generatedseries_calculate_tr(series: np.ndarray, period: int, dataset: np.n
     low = _prepare_param_for_op( low, len(series), dataset )
     close = series
 
-    if talib_available:
+    if _talib_available:
         return talib.TRANGE(high, low, close)
 
     high_low = high - low
 
     # Compute |high - close_prev| and |low - close_prev|
     close_prev = np.roll(close, 1)  # Shift close by 1
-    close_prev[0] = close[0]  # Set first value to avoid undefined close[-1]
+    close_prev[0] = close[0]  # Set first value to avoid undefined close[-1] 
     high_close_prev = np.abs(high - close_prev)
     low_close_prev = np.abs(low - close_prev)
 
@@ -884,7 +879,7 @@ def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.
     if length < period:
         return np.full(length, np.nan)
     
-    if talib_available:
+    if _talib_available:
         if isinstance(param, tuple) and len(param) == 2:
             high, low = param
             assert(type(high)==generatedSeries_c and type(low)==generatedSeries_c)
@@ -905,7 +900,7 @@ def _generatedseries_calculate_atr(series: np.ndarray, period: int, dataset: np.
 
 # _slope250. Elapsed time: 0.03 seconds (talib 0.01 seconds)
 def _generatedseries_calculate_slope(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
+    if _talib_available:
         return talib.LINEARREG_SLOPE(series, period)
 
     length = len(series)
@@ -981,7 +976,7 @@ def _generatedseries_calculate_rsi(series: np.ndarray, period: int, dataset: np.
     if length < period + 1:
         return np.full(length, np.nan)
     
-    if talib_available:
+    if _talib_available:
         return talib.RSI(series, period)
 
     # Step 1: Compute price changes
@@ -1247,7 +1242,7 @@ def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.n
 
 #
 def _generatedseries_calculate_stoch_k(source_close: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    if talib_available:
+    if _talib_available:
         high = dataset[:, c.DF_HIGH]
         low = dataset[:, c.DF_LOW]
         close = dataset[:, c.DF_CLOSE] # HACK: it overrides the 'close' in the source
@@ -1742,7 +1737,7 @@ def HMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     return timeframe.calcGeneratedSeries( "hma", raw_hma, sqrt_period, _generatedseries_calculate_wma )
 
 def STDEV( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
-    return source.timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev, param = scalar, always_reset= talib_available )
+    return source.timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev, param = scalar, always_reset= _talib_available )
 
 def DEV( source:generatedSeries_c, period:int )->generatedSeries_c:
     return source.timeframe.calcGeneratedSeries( 'dev', _ensure_object_array(source), period, _generatedseries_calculate_dev )
@@ -2287,3 +2282,14 @@ def pivots( high:generatedSeries_c, low:generatedSeries_c, amplitude: float = 1.
 
     pivotsNow.update(high, low)
     return pivotsNow
+
+
+# Dynamically set __all__ to include all functions defined in this module
+# that do not start with an underscore. 
+# (I keep trying to clean up the private stuff from showing up in autocompletion
+# but I don't seem to be getting it to work)
+import types
+__all__ = [
+    name for name, val in globals().items()
+    if isinstance(val, types.FunctionType) and val.__module__ == __name__ and not name.startswith('_')
+]

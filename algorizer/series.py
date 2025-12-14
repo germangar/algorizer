@@ -14,14 +14,6 @@ if TYPE_CHECKING:
 
 NumericScalar = Union[float, int]
 OperandType = Union['generatedSeries_c', NumericScalar]
-    
-
-# Dynamically set __all__ to include all names that don't start with '_' and are not in _exclude
-_exclude = ['active']
-__all__ = [name for name in globals() if not (name.startswith('_') or name in _exclude)]
-
-
-
 
 # #
 # # GENERATED SERIES : These are series of values that are calculated always using the same formula
@@ -227,167 +219,174 @@ class generatedSeries_c:
         raise ValueError( f"Can't operate on series of different lengths. {self.name} != {other.name}" )
     
     def __add__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return addSeries(self, other)
-        raise ValueError( f"Can't add type {type(other)} to generatedSeries_c)" )
+        elif not np.isscalar(other):
+            raise TypeError( f"Can't add type {type(other)} to generatedSeries_c" )
+        return addSeries(self, other)
 
     def __radd__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return addScalar(other, self)
         return self.__add__(other)
 
     def __sub__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return subtractSeries(self, other)
-        raise ValueError( f"Can't subtract type {type(other)} to generatedSeries_c)" )
+        elif not np.isscalar(other):
+            raise TypeError( f"Can't subtract type {type(other)} to generatedSeries_c" )
+        return subtractSeries(self, other)
 
     def __rsub__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return subtractScalar(other, self)
         return self.__sub__(other)
 
     def __mul__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return multiplySeries(self, other)
-        raise ValueError( f"Can't multiply type {type(other)} to generatedSeries_c)" )
+        elif not np.isscalar(other):
+            raise TypeError( f"Can't multiply type {type(other)} to generatedSeries_c" )
+        return multiplySeries(self, other)
 
     def __rmul__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return multiplyScalar(other, self)
         return self.__mul__(other)
 
     def __truediv__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return divideSeries(self, other)
-        raise ValueError( f"Can't divide type {type(other)} to generatedSeries_c)" )
+        elif not np.isscalar(other):
+            raise TypeError( f"Can't divide generatedSeries_c by type {type(other)}" )
+        return divideSeries(self, other)
 
     def __rtruediv__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return divideScalar(other, self)
-        raise ValueError("rtruediv only defined for const / series")
+        raise TypeError("rtruediv only defined for const / series")
     
     def __neg__(self):
         return multiplySeries(self, -1)
 
     def __lt__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return lessSeries(self, other)
-        raise ValueError("Unsupported operand type for <")
+        elif not np.isscalar(other):
+            raise TypeError("Unsupported operand type for <")
+        return lessSeries(self, other)
     
     def __rlt__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return lessScalar(other, self)
-        raise ValueError("Unsupported reversed operand for <")
+        raise TypeError("Unsupported reversed operand for <")
 
     def __le__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return lessOrEqualSeries(self, other)
-        raise ValueError("Unsupported operand type for <=")
+        elif not np.isscalar(other):
+            raise TypeError("Unsupported operand type for <=")
+        return lessOrEqualSeries(self, other)
     
     def __rle__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return lessOrEqualScalar(other, self)
-        raise ValueError("Unsupported reversed operand for <=")
+        raise TypeError("Unsupported reversed operand for <=")
 
     def __gt__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return greaterSeries(self, other)
-        raise ValueError("Unsupported operand type for >")
+        elif not np.isscalar(other):
+            raise TypeError("Unsupported operand type for >")
+        return greaterSeries(self, other)
     
     def __rgt__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return greaterScalar(self, other)
-        raise ValueError("Unsupported reversed operand for >")
+        raise TypeError("Unsupported reversed operand for >")
 
     def __ge__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return greaterOrEqualSeries(self, other)
-        raise ValueError("Unsupported operand type for >=")
+        elif not np.isscalar(other):
+            raise TypeError("Unsupported operand type for >=")
+        return greaterOrEqualSeries(self, other)
     
     def __rge__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return greaterOrEqualScalar(self, other)
-        raise ValueError("Unsupported reversed operand for >=")
+        raise TypeError("Unsupported reversed operand for >=")
 
     def __eq__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return equalSeries(self, other)
-        return NotImplemented
+        elif not np.isscalar(other):
+            return NotImplemented
+        return equalSeries(self, other)
     
     def __req__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return equalScalar(self, other)
         return NotImplemented
 
     def __ne__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
                 self._lenError(other)
-            return notequalSeries(self, other)
-        return NotImplemented
+        elif not np.isscalar(other):
+            return NotImplemented
+        return notequalSeries(self, other)
 
     def __rne__(self, other):
-        if isinstance(other, (float, int)):
+        if np.isscalar(other):
             return notEqualScalar(self, other)
         return NotImplemented
     
     def __and__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
-                self._lenError(other) # Assuming _lenError is available
-            return bitwiseAndSeries(self, other)
-        # Delegate to standard Python if 'other' has a higher precedence __rand__ method
-        return NotImplemented 
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
+                self._lenError(other)
+        elif not np.isscalar(other):
+            return NotImplemented
+        return bitwiseAndSeries(self, other)
 
     def __rand__(self, other):
-        if isinstance(other, NumericScalar):
-            # Only handle if 'other' is a simple scalar, otherwise NotImplemented
+        if np.isscalar(other):
             return bitwiseAndScalar(other, self)
         return NotImplemented
     
     def __or__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
-                self._lenError(other) # Assuming _lenError is available
-            return bitwiseOrSeries(self, other)
-        # Delegate to standard Python if 'other' has a higher precedence __rand__ method
-        return NotImplemented 
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
+                self._lenError(other)
+        elif not np.isscalar(other):
+            return NotImplemented
+        return bitwiseOrSeries(self, other)
 
     def __ror__(self, other):
-        if isinstance(other, NumericScalar):
-            # Only handle if 'other' is a simple scalar, otherwise NotImplemented
+        if np.isscalar(other):
             return bitwiseOrScalar(other, self)
         return NotImplemented
     
     def __xor__(self, other):
-        if isinstance(other, (generatedSeries_c, np.ndarray, NumericScalar)):
-            if not isinstance(other, NumericScalar) and len(self) != len(other):
-                self._lenError(other) # Assuming _lenError is available
-            return bitwiseXorSeries(self, other)
-        # Delegate to standard Python if 'other' has a higher precedence __rand__ method
-        return NotImplemented 
+        if isinstance(other, generatedSeries_c):
+            if len(self) != len(other):
+                self._lenError(other)
+        elif not np.isscalar(other):
+            return NotImplemented 
+        return bitwiseXorSeries(self, other)
 
     def __rxor__(self, other):
-        if isinstance(other, NumericScalar):
-            # Only handle if 'other' is a simple scalar, otherwise NotImplemented
+        if np.isscalar(other):
             return bitwiseXorScalar(other, self)
         return NotImplemented
 
