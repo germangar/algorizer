@@ -23,7 +23,7 @@ Use template.py as base to write scripts.
 - Add more indicators and drawing options.
 - Add inputs with ranges and steps for future batch-backtesting
 - Direct broker connection with the exchange for the strategy code to confirm operations
-- Make the chart load bars in modular blocks so it doesn't take so long on high bar count.
+- Low priority: Make the chart load bars in modular blocks so it doesn't take so long on high bar count (pandas is slow af).
 
 
 . I will not make much work on the chart window UI. I'll make it able to change timeframe if the lightweight-charts gods allow it and that's it. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so even whole new chart replacements other than lightweight-charts could be added</br>
