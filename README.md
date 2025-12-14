@@ -10,6 +10,7 @@ I do think it provides a very intuitive and simple way of creating, backtesting 
 The project is still a work in progress so you'll most likely find a few nuissances. Specially when writing your script since I didn't add much error handling yet, so you'll find yourself reliant on Python's backtraces. However, **fetching the backtesting candles, fetching the real time price updates, running the backtest and running your strategy realtime is reliable.** Backtest and realtime executing match properly. There are **no lookahead nor repainting issues.**
 
 Plotting capabilities: As of today it's capable of **plots, histograms, lines** (point to point) and **markers** (labels), as it's capable of creating subpanels and targetting these to them. Horizontal lines, boxes and tables remain in the to do list.
+
 I'm slowly adding documentation in the ['DOC.md'](https://github.com/germangar/algorizer/blob/main/DOC.md) file. It's far from complete yet, but it offers a starting point. I also extensively commented the file ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) from which you can obtain a good amount of information and get a sense of how to create a strategy.
 
 Use template.py as base to write scripts.
