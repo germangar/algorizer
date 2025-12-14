@@ -304,7 +304,7 @@ Markers and lines, in contrast, are **independent of timeframe**; they can be pl
 
 Example of plotting series in your callback:
 ```python
-calc.SMA(close, 200).plot()           # Associated to the timeframe
+ta.SMA(close, 200).plot()           # Associated to the timeframe
 histogram(rsi, "rsiPanel")            # Associated to the timeframe
 # Markers/lines (createMarker, createLine) – not tied to timeframe
 ```
@@ -433,14 +433,14 @@ Because the class is a thin wrapper over a dataset column, many interactions are
 ## Typical Usage Patterns
 
 - Use computed series returned by the calculation utilities:
-  - rsi = calc.RSI(close, 14)
+  - rsi = ta.RSI(close, 14)
   - rsi.plot('subpanel')
 - Create or use manual series for ad-hoc values:
   - mySeries = generatedSeries_c('signal', None)  # 'source = None': manual series have no source; other args are optional for manual series
   - mySeries[timeframe.barindex] = some_value
 - Operate series within the same timeframe:
-  - bb_mid = calc.SMA(close, 21)
-  - bb_upper = bb_mid + (calc.STDEV(close, 21) * 2)
+  - bb_mid = ta.SMA(close, 21)
+  - bb_upper = bb_mid + (ta.STDEV(close, 21) * 2)
 - Detect crosses:
   - cross = fastEMA.crossing(slowEMA)
   - up = fastEMA.crossingUp(slowEMA)
