@@ -1,4 +1,3 @@
-
 from typing import Union, TYPE_CHECKING
 talib_available = False
 talib = None
@@ -62,47 +61,6 @@ def _rolling_window_apply_optimized(arr: np.ndarray, window: int, func) -> np.nd
         applied_values = np.array([func(w) for w in windows], dtype=np.float64)
         
     return np.concatenate((np.full(window - 1, np.nan, dtype=np.float64), applied_values))
-
-
-def _rolling_window_apply_optimized_axis(arr: np.ndarray, window: int, func) -> np.ndarray:
-    """
-    Applies a function over a rolling window of a 1D NumPy array using sliding_window_view.
-    Pads the beginning with NaNs to match the input array's length.
-    """
-    if not isinstance(arr, np.ndarray):
-        arr = np.asarray(arr, dtype=np.float64)
-    
-    n = len(arr)
-    if window < 1:
-        return np.full_like(arr, np.nan) # Should technically return all NaNs for length < 1
-    
-    # Check if we have enough data to form at least one window
-    if n < window:
-        return np.full_like(arr, np.nan)
-        
-    # Create the rolling window view
-    # The view will have shape (n - window + 1, window)
-    window_view = sliding_window_view(arr, window)
-    
-    # Apply the function across the last axis (the window dimension)
-    # The result will have shape (n - window + 1,)
-    calculated_values = func(window_view)
-    
-    # Pad the beginning with NaNs to match the original array size
-    # We need (window - 1) NaNs at the start
-    padding = np.full(window - 1, np.nan, dtype=np.float64)
-    
-    # Concatenate the padding and the calculated values
-    result = np.concatenate((padding, calculated_values))
-    
-    # Ensure the result has the same length as the input
-    if len(result) > n:
-        return result[:n]
-    elif len(result) < n:
-        # This case should ideally not happen if n >= window
-        return np.pad(result, (0, n - len(result)), constant_values=np.nan)
-
-    return result
 
 
 NumericScalar = Union[float, int]
@@ -378,6 +336,125 @@ def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: 
 
     # Convert to boolean, NaNs will remain as NaN, althought they will be converted to float64 in the dataset
     return result_array
+
+
+def _generatedseries_calculate_crossing_up(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
+    """
+    Calculates a boolean series (1.0 for True, 0.0 for False) where 'source' crosses over 'param'.
+    """
+    series1 = np.asarray(source, dtype=np.float64)
+    
+    # If the input array is too short for comparison with a previous bar, return NaNs.
+    # We need at least two bars (current and previous) to detect a cross.
+    if len(series1) < 2:
+        return np.full_like(series1, np.nan)
+
+    # Prepare the 'param' (second series) for vectorized operations.
+    # This handles scalars, NumPy arrays, and other generatedSeries_c objects.
+    series2 = _prepare_param_for_op(param, series1.shape[0], dataset)
+
+    # Get the previous values for both series by rolling the array.
+    # The first element becomes the last element, so we set it to NaN for correctness.
+    series1_prev = np.roll(series1, 1)
+    series1_prev[0] = np.nan
+    
+    series2_prev = np.roll(series2, 1)
+    series2_prev[0] = np.nan
+
+    # Condition for crossing up:
+    # 1. The previous value of series1 was less than or equal to series2.
+    # 2. The current value of series1 is strictly greater than series2.
+    # We also ensure that neither of the involved values are NaN for a valid cross.
+    crossed_up = (series1_prev <= series2_prev) & (series1 > series2) & \
+                 (~np.isnan(series1_prev)) & (~np.isnan(series2_prev)) & \
+                 (~np.isnan(series1)) & (~np.isnan(series2))
+
+    # Convert the boolean result to float (1.0 for True, 0.0 for False)
+    result = crossed_up.astype(np.float64)
+    
+    # The first element will always be NaN because there's no prior bar for comparison.
+    # This is implicitly handled by np.roll and the NaN assignment, but explicit is clear.
+    result[0] = np.nan 
+    
+    return result
+
+
+def _generatedseries_calculate_crossing_down(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
+    """
+    Calculates a boolean series (1.0 for True, 0.0 for False) where 'source' crosses under 'param'.
+    """
+    series1 = np.asarray(source, dtype=np.float64)
+    
+    # If the input array is too short for comparison with a previous bar, return NaNs.
+    if len(series1) < 2:
+        return np.full_like(series1, np.nan)
+
+    # Prepare the 'param' (second series) for vectorized operations.
+    series2 = _prepare_param_for_op(param, series1.shape[0], dataset)
+
+    # Get the previous values for both series by rolling the array.
+    series1_prev = np.roll(series1, 1)
+    series1_prev[0] = np.nan
+    
+    series2_prev = np.roll(series2, 1)
+    series2_prev[0] = np.nan
+
+    # Condition for crossing down:
+    # 1. The previous value of series1 was greater than or equal to series2.
+    # 2. The current value of series1 is strictly less than series2.
+    # We also ensure that neither of the involved values are NaN for a valid cross.
+    crossed_down = (series1_prev >= series2_prev) & (series1 < series2) & \
+                   (~np.isnan(series1_prev)) & (~np.isnan(series2_prev)) & \
+                   (~np.isnan(series1)) & (~np.isnan(series2))
+
+    # Convert the boolean result to float (1.0 for True, 0.0 for False)
+    result = crossed_down.astype(np.float64)
+    
+    # The first element will always be NaN.
+    result[0] = np.nan 
+    
+    return result
+
+
+def _generatedseries_calculate_crossing(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
+    """
+    Calculates a boolean series (1.0 for True, 0.0 for False) where 'source' crosses 'param' in either direction.
+    """
+    series1 = np.asarray(source, dtype=np.float64)
+    
+    # If the input array is too short for comparison with a previous bar, return NaNs.
+    if len(series1) < 2:
+        return np.full_like(series1, np.nan)
+
+    # Prepare the 'param' (second series) for vectorized operations.
+    series2 = _prepare_param_for_op(param, series1.shape[0], dataset)
+
+    # Get the previous values for both series by rolling the array.
+    series1_prev = np.roll(series1, 1)
+    series1_prev[0] = np.nan
+    
+    series2_prev = np.roll(series2, 1)
+    series2_prev[0] = np.nan
+
+    # Condition for crossing up: (series1_prev <= series2_prev) & (series1 > series2)
+    # Condition for crossing down: (series1_prev >= series2_prev) & (series1 < series2)
+    # Ensure all involved values are not NaN for a valid cross.
+    valid_mask = (~np.isnan(series1_prev)) & (~np.isnan(series2_prev)) & \
+                 (~np.isnan(series1)) & (~np.isnan(series2))
+
+    crossed_up = (series1_prev <= series2_prev) & (series1 > series2)
+    crossed_down = (series1_prev >= series2_prev) & (series1 < series2)
+    
+    # Combine both conditions and apply the valid_mask
+    crossed = (crossed_up | crossed_down) & valid_mask
+
+    # Convert the boolean result to float (1.0 for True, 0.0 for False)
+    result = crossed.astype(np.float64)
+    
+    # The first element will always be NaN.
+    result[0] = np.nan 
+    
+    return result
 
 #
 def _generatedseries_calculate_barssince(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -1631,6 +1708,7 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
 
 
 
+
 class generatedSeries_c:
     
     def __init__(self, name: str, source: np.ndarray, period:int= 1, func=None, param=None, always_reset:bool= False):
@@ -2069,7 +2147,8 @@ class generatedSeries_c:
             self.timeframe.histogram( self.series(), self.name, chart_name, color, margin_top, margin_bottom )
             return self
     
-    def crossingUp( self, other ):
+    def crossingUp( self, other )->bool:
+        '''returns a single boolean indicating if self is crossing up a value or a series'''
         current_self_val = self.iloc(-1)
         previous_self_val = self.iloc(-2)
 
@@ -2095,7 +2174,8 @@ class generatedSeries_c:
             # Corrected line: Use previous_self_val in the last condition
             return ( previous_self_val <= float_other and current_self_val >= float_other and not (previous_self_val == float_other and current_self_val == float_other) )
     
-    def crossingDown( self, other ):
+    def crossingDown( self, other )->bool:
+        '''returns a single boolean indicating if self is crossing down a value or a series'''
         current_self_val = self.iloc(-1)
         previous_self_val = self.iloc(-2)
         if np.isnan(current_self_val) or np.isnan(previous_self_val):
@@ -2118,7 +2198,8 @@ class generatedSeries_c:
                 return False
             return ( previous_self_val >= float_other and current_self_val <= float_other and not (previous_self_val == float_other and current_self_val == float_other) )
     
-    def crossing( self, other ):
+    def crossing( self, other )->bool:
+        '''returns a single boolean indicating if self is crossing a value or a series'''
         return self.crossingUp(other) or self.crossingDown(other)
     
 
@@ -2445,6 +2526,56 @@ def falling( source: generatedSeries_c, period:int )->generatedSeries_c:
 def rising( source: generatedSeries_c, period:int )->generatedSeries_c:
     return source.timeframe.calcGeneratedSeries( 'rising', _ensure_object_array(source), period, _generatedseries_calculate_rising )
 
+
+def crossingUp(source1: generatedSeries_c, source2: Union[generatedSeries_c, NumericScalar]) -> generatedSeries_c:
+    """
+    Returns a boolean series (1.0 for True, 0.0 for False) that indicates when source1 crosses over source2.
+    """
+    source1 = _ensure_object_array(source1) # Ensure source1 is a generatedSeries_c
+    
+    # Create a unique name for the generated series to prevent collisions
+    if np.isscalar(source2):
+        name = f"crossingUp_{source1.name}_{str(source2)}"
+    else:
+        source2 = _ensure_object_array(source2) # Ensure source2 is a generatedSeries_c
+        name = f"crossingUp_{source1.name}_{source2.name}"
+
+    # Period of 2 is needed to compare current and previous bars
+    return source1.timeframe.calcGeneratedSeries( name, source1, 2, _generatedseries_calculate_crossing_up, param= source2 )
+
+def crossingDown(source1: generatedSeries_c, source2: Union[generatedSeries_c, NumericScalar]) -> generatedSeries_c:
+    """
+    Returns a boolean series (1.0 for True, 0.0 for False) that indicates when source1 crosses under source2.
+    """
+    source1 = _ensure_object_array(source1) 
+    
+    # Create a unique name for the generated series to prevent collisions
+    if np.isscalar(source2):
+        name = f"crossingDown_{source1.name}_{str(source2)}"
+    else:
+        source2 = _ensure_object_array(source2) # Ensure source2 is a generatedSeries_c
+        name = f"crossingDown_{source1.name}_{source2.name}"
+
+    # Period of 2 is needed to compare current and previous bars
+    return source1.timeframe.calcGeneratedSeries( name, source1, 2, _generatedseries_calculate_crossing_down, param=source2 )
+
+def crossing(source1: generatedSeries_c, source2: Union[generatedSeries_c, NumericScalar]) -> generatedSeries_c:
+    """
+    Returns a boolean series (1.0 for True, 0.0 for False) that indicates when source1 crosses source2 in either direction.
+    """
+    source1 = _ensure_object_array(source1)
+    
+    # Create a unique name for the generated series to prevent collisions
+    if np.isscalar(source2):
+        name = f"crossing_{source1.name}_{str(source2)}"
+    else:
+        source2 = _ensure_object_array(source2) # Ensure source2 is a generatedSeries_c
+        name = f"crossing_{source1.name}_{source2.name}"
+
+    # Period of 2 is needed to compare current and previous bars
+    return source1.timeframe.calcGeneratedSeries( name, source1, 2, _generatedseries_calculate_crossing, param=source2 )
+
+
 def barsSinceSeries(source: generatedSeries_c, period: int) -> generatedSeries_c:
     import inspect
     # Get caller info by going up 2 levels in the stack
@@ -2678,9 +2809,8 @@ def LAGUERRE(source: Union[str, generatedSeries_c], gamma: float = 0.7)->generat
 
 
 
-
 # # #
-# # # OTHER NOT GENERATED SERIES
+# # #OTHER NOT GENERATED SERIES
 # # #
 
 
@@ -2957,7 +3087,7 @@ def barsWhileTrueSingle( source:generatedSeries_c, lookback_period:int = None )-
 
     return count
 
-def crossingUp( self:generatedSeries_c|float, other:generatedSeries_c|float ):
+def crossingUpSingle( self:generatedSeries_c|float, other:generatedSeries_c|float ):
     """
     Determines if 'self' crosses up over 'other' between the previous and current bar.
 
@@ -3002,9 +3132,9 @@ def crossingUp( self:generatedSeries_c|float, other:generatedSeries_c|float ):
                 return False
             other_old = other.iloc(-2)
             other_new = other.iloc(-1) 
-        else:
+        else: # assuming float or int
             try:
-                float(other)
+                float_other = float(other)
             except ValueError:
                 return False
             else:
@@ -3017,12 +3147,12 @@ def crossingUp( self:generatedSeries_c|float, other:generatedSeries_c|float ):
             print( "crossinUp: Unsupported type", type(self) )
             return False
         else:
-            return crossingDown( other, self )
+            return crossingDownSingle( other, self )
 
     return ( self_old <= other_old and self_new >= other_new and not (self_old == other_old and self_new == other_new) )
 
 
-def crossingDown( self:generatedSeries_c|float, other:generatedSeries_c|float ):
+def crossingDownSingle( self:generatedSeries_c|float, other:generatedSeries_c|float ):
     """
     Determines if 'self' crosses down below 'other' between the previous and current bar.
 
@@ -3081,11 +3211,11 @@ def crossingDown( self:generatedSeries_c|float, other:generatedSeries_c|float ):
             print( "crossinDown: Unsupported type", type(self) )
             return False
         else:
-            return crossingUp( other, self )
+            return crossingUpSingle( other, self )
 
     return ( self_old >= other_old and self_new <= other_new and not (self_old == other_old and self_new == other_new) )
 
-def crossing( self, other ):
+def crossingSingle( self, other ):
     """
     Determines if 'self' crosses either up or down with respect to 'other' between the previous and current bar.
 
@@ -3096,7 +3226,7 @@ def crossing( self, other ):
     Returns:
         bool: True if a crossing (up or down) occurred, False otherwise.
     """
-    return crossingUp( self, other ) or crossingDown( self, other )
+    return crossingUpSingle( self, other ) or crossingDownSingle( self, other )
 
 
 from .pivots import pivots_c, pivot_c
