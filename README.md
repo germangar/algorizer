@@ -3,7 +3,7 @@ This is a framework for creating/backtesting and running trading algorythms. It 
 **What does it do:**
 It connects to crypto exchanges using the CCXT library and downloads the required historical data[1]. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)).
 
-[1] It does not require an API key. Not all exchanges provide historical data. If it fails try another exchange.
+[1] It does not require an API key. Note: Not all exchanges provide historical data. If it fails try another exchange.
 
 Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
 
