@@ -11,7 +11,7 @@ The project is still a work in progress so you'll most likely find a few nuissan
 
 Plotting capabilities: As of today it's capable of **plots, histograms, lines** (point to point) and **markers** (labels), as it's capable of creating subpanels and targetting these to them. Horizontal lines, boxes and tables remain in the to do list.
 
-I'm slowly adding documentation in the ['DOC.md'](https://github.com/germangar/algorizer/blob/main/DOC.md) file. It's far from complete yet, but it offers a starting point. I also extensively commented the file ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) from which you can obtain a good amount of information and get a sense of how to create a strategy.
+I'm slowly adding documentation in the ['DOC.md'](https://github.com/germangar/algorizer/blob/main/DOC.md) file. It's not complete yet, but it offers a starting point. I also extensively commented the file ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) from which you can obtain a good amount of information and get a sense of how to create a strategy.
 
 Use template.py as base to write scripts.
 
