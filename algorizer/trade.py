@@ -495,6 +495,11 @@ class position_c:
                 closing_price = candle.close
                 if not realtime and stoploss_order.get('price'):
                     closing_price = stoploss_order.get('price')
+
+                line = stoploss_order.get("line")
+                if line and line.y1 == closing_price:
+                    line.style = 'solid'
+                    line.width = 3
                 
                 if quantity:
                     self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
@@ -525,6 +530,10 @@ class position_c:
         if self.liquidation_price > EPSILON:
             if (self.type == c.LONG and candle.low < self.liquidation_price) or \
             (self.type == c.SHORT and candle.high > self.liquidation_price):
+                line = self.drawInfo['liquidationLine']
+                if line and line.y1 == self.liquidation_price:
+                    line.style = 'solid'
+                    line.width = 3
                 order_type = c.BUY if self.type == c.SHORT else c.SELL
                 self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, liquidation= True)
                 marker( self, prefix = '💀 ' )
