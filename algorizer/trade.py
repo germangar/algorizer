@@ -81,6 +81,8 @@ class strategy_c:
             raise ValueError("Leverage values must be at least 1.")
 
     def order(self, order_type: int, pos_type: int, quantity: float, leverage: float, price: float = None)->'position_c':
+        if quantity < self.getMinOrder():
+            return None
         pos = self.get_active_position(pos_type)
         if not pos:
             pos = self._new_position(pos_type, leverage)
@@ -157,6 +159,12 @@ class strategy_c:
         for pos in self.positions:
             if pos.active:
                 pos.price_update(candle, realtime)
+
+    def getMinOrder(self):
+        min_order = active.timeframe.stream.min_order
+        if min_order < EPSILON:
+            min_order = getPrecision()
+        return max( min_order, EPSILON )
 
 
 class position_c:
@@ -259,9 +267,8 @@ class position_c:
         price = round_to_tick_size(price, getMintick())
         if leverage > 1:
             quantity *= leverage
-        if quantity < EPSILON:
+        if quantity < self.strategy_instance.getMinOrder():
             return None
-        
         
 
         # Determine if order increases or reduces position

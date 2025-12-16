@@ -603,10 +603,14 @@ class stream_c:
         self.fee_maker = self.markets[self.symbol].get('maker') if self.markets[self.symbol].get('maker') is not None else 0.0
         self.fee_taker = self.markets[self.symbol].get('taker') if self.markets[self.symbol].get('taker') is not None else 0.0
 
-        # hack thefor kucoin. It expects contracts and their contracts are units. That doesn't work for us
+        # hack for kucoin. It expects contracts and their contracts are units. That doesn't work for us
         if exchangeID == "kucoinfutures":
             self.mintick = 0.0
             self.precision = 0.0
+
+        self.min_order = self.markets[symbol]['limits']['amount'].get('min')
+        if not self.min_order:
+            self.min_order = self.precision
             
         # fetch OHLCVs
         if self.cache_only:
