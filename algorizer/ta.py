@@ -56,18 +56,12 @@ def _rolling_window_apply_optimized(arr: np.ndarray, window: int, func) -> np.nd
 
 # _highest250. Elapsed time: 0.00 seconds
 def _generatedseries_calculate_highest(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    """
-    Calculates the highest value over a specified period using NumPy.
-    """
     if _talib_available:
         return talib.MAX(source, period)
     source = np.asarray(source, dtype=np.float64)
     return _rolling_window_apply_optimized(source, period, lambda x: np.nanmax(x))
 
 def _generatedseries_calculate_lowest(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    """
-    Calculates the lowest value over a specified period using NumPy.
-    """
     if _talib_available:
         return talib.MIN(source, period)
     source = np.asarray(source, dtype=np.float64)
@@ -126,10 +120,6 @@ def _generatedseries_calculate_falling(source: np.ndarray, period: int, dataset:
 
 # _rising250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    """
-    Calculates a boolean series indicating if the source has been strictly rising
-    over the given period.
-    """
     source = np.asarray(source, dtype=np.float64)
     n = len(source)
 
@@ -159,9 +149,6 @@ def _generatedseries_calculate_rising(source: np.ndarray, period: int, dataset: 
 
 
 def _generatedseries_calculate_crossing_up(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    """
-    Calculates a boolean series (1.0 for True, 0.0 for False) where 'source' crosses over 'param'.
-    """
     series1 = np.asarray(source, dtype=np.float64)
     
     # If the input array is too short for comparison with a previous bar, return NaNs.
@@ -200,9 +187,6 @@ def _generatedseries_calculate_crossing_up(source: np.ndarray, period: int, data
 
 
 def _generatedseries_calculate_crossing_down(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    """
-    Calculates a boolean series (1.0 for True, 0.0 for False) where 'source' crosses under 'param'.
-    """
     series1 = np.asarray(source, dtype=np.float64)
     
     # If the input array is too short for comparison with a previous bar, return NaNs.
@@ -237,9 +221,6 @@ def _generatedseries_calculate_crossing_down(source: np.ndarray, period: int, da
 
 
 def _generatedseries_calculate_crossing(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: OperandType) -> np.ndarray:
-    """
-    Calculates a boolean series (1.0 for True, 0.0 for False) where 'source' crosses 'param' in either direction.
-    """
     series1 = np.asarray(source, dtype=np.float64)
     
     # If the input array is too short for comparison with a previous bar, return NaNs.
@@ -1221,10 +1202,6 @@ def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.n
 
 #
 def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
-    """
-    Center of Gravity (CG) oscillator (NumPy version).
-    Formula: CG = sum(i * price[i]) / sum(price[i]), over the lookback window.
-    """
     arr = series.astype(np.float64)
     length = len(arr)
     cg = np.full(length, np.nan, dtype=np.float64)
@@ -1533,42 +1510,99 @@ def _generatedseries_calculate_laguerre(source: np.ndarray, period: int, dataset
 # #
 
 
-
-# def _ensure_object_array( data: generatedSeries_c )-> generatedSeries_c:
-#     """
-#     Helper function to ensure the input is a series object.
-#     This replaces the initial type checking and conversion logic.
-#     """
-#     if isinstance(data, generatedSeries_c):
-#         return data
-#     elif isinstance(data, np.ndarray):
-#         raise TypeError( "_ensure_object_array: Numpy ndarray is not a valid object" )
-#     else:
-#         raise TypeError(f"Unsupported input type: {type(data)}. Expected generatedSeries_c.")
-
-
 def highest(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    """
+    Calculates the highest value of a source series over a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The number of bars to look back.
+
+    Returns:
+        generatedSeries_c: A new series representing the highest value in the lookback period.
+    """
     return source.timeframe.calcGeneratedSeries('highest', source, period, _generatedseries_calculate_highest)
 
 def lowest(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    """
+    Calculates the lowest value of a source series over a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The number of bars to look back.
+
+    Returns:
+        generatedSeries_c: A new series representing the lowest value in the lookback period.
+    """
     return source.timeframe.calcGeneratedSeries('lowest', _ensure_object_array(source), period, _generatedseries_calculate_lowest)
 
 def highestbars(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    """
+    Calculates the number of bars since the highest value in a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The number of bars to look back.
+
+    Returns:
+        generatedSeries_c: A new series representing the number of bars since the highest value.
+    """
     return source.timeframe.calcGeneratedSeries('highestbars', _ensure_object_array(source), period, _generatedseries_calculate_highestbars)
 
 def lowestbars(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    """
+    Calculates the number of bars since the lowest value in a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The number of bars to look back.
+
+    Returns:
+        generatedSeries_c: A new series representing the number of bars since the lowest value.
+    """
     return source.timeframe.calcGeneratedSeries('lowestbars', _ensure_object_array(source), period, _generatedseries_calculate_lowestbars)
 
 def falling( source: generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Checks if a series has been falling for a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The number of bars to check for a falling trend.
+
+    Returns:
+        generatedSeries_c: A boolean series (1.0 for True, 0.0 for False) indicating if the condition is met.
+    """
     return source.timeframe.calcGeneratedSeries( 'falling', _ensure_object_array(source), period, _generatedseries_calculate_falling )
 
 def rising( source: generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Checks if a series has been rising for a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The number of bars to check for a rising trend.
+
+    Returns:
+        generatedSeries_c: A boolean series (1.0 for True, 0.0 for False) indicating if the condition is met.
+    """
     return source.timeframe.calcGeneratedSeries( 'rising', _ensure_object_array(source), period, _generatedseries_calculate_rising )
 
 
 def crossingUp(source1: generatedSeries_c, source2: Union[generatedSeries_c, NumericScalar]) -> generatedSeries_c:
     """
-    Returns a boolean series (1.0 for True, 0.0 for False) that indicates when source1 crosses over source2.
+    Detects when one series crosses above another.
+
+    This returns a boolean series (1.0 for True, 0.0 for False) that is True on the bar where
+    source1's value becomes strictly greater than source2's value, after being less than or
+    equal to it on the previous bar.
+
+    Args:
+        source1 (generatedSeries_c): The series that is crossing.
+        source2 (Union[generatedSeries_c, NumericScalar]): The series or scalar being crossed.
+
+    Returns:
+        generatedSeries_c: A boolean series indicating the crossover event.
     """
     source1 = _ensure_object_array(source1) # Ensure source1 is a generatedSeries_c
     
@@ -1584,7 +1618,18 @@ def crossingUp(source1: generatedSeries_c, source2: Union[generatedSeries_c, Num
 
 def crossingDown(source1: generatedSeries_c, source2: Union[generatedSeries_c, NumericScalar]) -> generatedSeries_c:
     """
-    Returns a boolean series (1.0 for True, 0.0 for False) that indicates when source1 crosses under source2.
+    Detects when one series crosses below another.
+
+    This returns a boolean series (1.0 for True, 0.0 for False) that is True on the bar where
+    source1's value becomes strictly less than source2's value, after being greater than or
+    equal to it on the previous bar.
+
+    Args:
+        source1 (generatedSeries_c): The series that is crossing.
+        source2 (Union[generatedSeries_c, NumericScalar]): The series or scalar being crossed.
+
+    Returns:
+        generatedSeries_c: A boolean series indicating the cross-under event.
     """
     source1 = _ensure_object_array(source1) 
     
@@ -1600,7 +1645,16 @@ def crossingDown(source1: generatedSeries_c, source2: Union[generatedSeries_c, N
 
 def crossing(source1: generatedSeries_c, source2: Union[generatedSeries_c, NumericScalar]) -> generatedSeries_c:
     """
-    Returns a boolean series (1.0 for True, 0.0 for False) that indicates when source1 crosses source2 in either direction.
+    Detects when one series crosses another in either direction.
+
+    This is true when `crossingUp` or `crossingDown` would be true.
+
+    Args:
+        source1 (generatedSeries_c): The first series.
+        source2 (Union[generatedSeries_c, NumericScalar]): The second series or scalar.
+
+    Returns:
+        generatedSeries_c: A boolean series indicating a cross in either direction.
     """
     source1 = _ensure_object_array(source1)
     
@@ -1616,6 +1670,19 @@ def crossing(source1: generatedSeries_c, source2: Union[generatedSeries_c, Numer
 
 
 def barsSinceSeries(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    """
+    Counts the number of bars since a condition was last true.
+
+    The condition is considered true for any non-zero, non-NaN value in the source series.
+    The count resets to 0 on the bar where the condition is true.
+
+    Args:
+        source (generatedSeries_c): A boolean-like series where non-zero values are considered True.
+        period (int): The lookback period. If the event has not occurred within this period, the result is NaN.
+
+    Returns:
+        generatedSeries_c: A series with the count of bars since the last true event.
+    """
     import inspect
     # Get caller info by going up 2 levels in the stack
     caller_frame = inspect.currentframe().f_back
@@ -1624,15 +1691,67 @@ def barsSinceSeries(source: generatedSeries_c, period: int) -> generatedSeries_c
     return source.timeframe.calcGeneratedSeries('barsSince'+caller_id, _ensure_object_array(source), period, _generatedseries_calculate_barssince)
 
 def indexWhenTrueSeries(source: generatedSeries_c, period: int = None) -> generatedSeries_c:
+    """
+    Returns the bar index of the last time a condition was true.
+
+    For each bar, this series holds the absolute bar index of the most recent prior bar
+    where the source series was true (non-zero, non-NaN).
+
+    Args:
+        source (generatedSeries_c): The boolean-like source series.
+        period (int, optional): Not used in the calculation logic. Defaults to None.
+
+    Returns:
+        generatedSeries_c: A series containing the bar index of the last true occurrence.
+    """
     return source.timeframe.calcGeneratedSeries('indexwhentrue_series', _ensure_object_array(source), period, _generatedseries_calculate_indexwhentrue)
 
 def indexWhenFalseSeries(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    """
+    Returns the bar index of the last time a condition was false.
+
+    For each bar, this series holds the absolute bar index of the most recent prior bar
+    where the source series was false (equal to 0). NaN values are not considered false.
+
+    Args:
+        source (generatedSeries_c): The boolean-like source series.
+        period (int): Not used in the calculation logic.
+
+    Returns:
+        generatedSeries_c: A series containing the bar index of the last false occurrence.
+    """
     return source.timeframe.calcGeneratedSeries('indexwhenfalse_series', _ensure_object_array(source), period, _generatedseries_calculate_indexwhenfalse)
 
 def barsWhileTrueSeries(source: generatedSeries_c, period: int = None) -> generatedSeries_c:
+    """
+    Counts the number of consecutive bars a condition has been true.
+
+    The count increments for each consecutive bar where the source is true (non-zero, non-NaN)
+    and resets to zero when it becomes false.
+
+    Args:
+        source (generatedSeries_c): The boolean-like source series.
+        period (int, optional): The maximum value the count can reach. Defaults to None (no limit).
+
+    Returns:
+        generatedSeries_c: A series with the count of consecutive true bars.
+    """
     return source.timeframe.calcGeneratedSeries('barsWhileTrue', _ensure_object_array(source), period, _generatedseries_calculate_barswhiletrue)
 
 def barsWhileFalseSeries(source: generatedSeries_c, period: int = None) -> generatedSeries_c:
+    """
+    Counts the number of consecutive bars a condition has been false.
+
+    The count increments for each consecutive bar where the source is false (zero)
+    and resets to zero when it becomes true.
+
+    Args:
+        source (generatedSeries_c): The boolean-like source series.
+        period (int, optional): The maximum value the count can reach. Defaults to None (no limit).
+
+    Returns:
+        generatedSeries_c: A series with the count of consecutive false bars.
+    """
     return source.timeframe.calcGeneratedSeries('barsWhileFalse', _ensure_object_array(source), period, _generatedseries_calculate_barswhilefalse)
 
 
@@ -1641,6 +1760,16 @@ def barsWhileFalseSeries(source: generatedSeries_c, period: int = None) -> gener
 ########################## INDICATORS #################################
 
 def MIN( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    """
+    Calculates the element-wise minimum of two series or a series and a scalar.
+
+    Args:
+        colA (Union[generatedSeries_c, NumericScalar]): The first series or scalar.
+        colB (Union[generatedSeries_c, NumericScalar]): The second series or scalar.
+
+    Returns:
+        generatedSeries_c: A new series containing the element-wise minimum.
+    """
     if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
         return min( colA, colB )
     
@@ -1661,6 +1790,16 @@ def MIN( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | Nume
     return timeframe.calcGeneratedSeries(name, colA, 1, _generatedseries_calculate_min_series, param= colB)
 
 def MAX( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | NumericScalar) -> generatedSeries_c:
+    """
+    Calculates the element-wise maximum of two series or a series and a scalar.
+
+    Args:
+        colA (Union[generatedSeries_c, NumericScalar]): The first series or scalar.
+        colB (Union[generatedSeries_c, NumericScalar]): The second series or scalar.
+
+    Returns:
+        generatedSeries_c: A new series containing the element-wise maximum.
+    """
     if isinstance( colA, NumericScalar ) and isinstance( colB, NumericScalar ):
         return min( colA, colB )
     
@@ -1682,13 +1821,16 @@ def MAX( colA: generatedSeries_c | NumericScalar, colB: generatedSeries_c | Nume
 
 def SHIFT(source:generatedSeries_c, offset: int)->generatedSeries_c:
     """
-    A positive 'offset' (e.g., 1) lags the series (C[i] takes the value of C[i-1]).
-    A negative 'offset' (e.g., -1) leads the series (C[i] takes the value of C[i+1]).
-    
+    Shifts a series by a given offset, providing access to past or future values.
+
+    A positive 'offset' (e.g., 1) lags the series, so the value at the current bar `i`
+    is taken from the previous bar `i-1`. This is equivalent to `source[1]` in Pine Script.
+    A negative 'offset' (e.g., -1) leads the series, so the value at `i` is from `i+1`.
+
     Args:
         source (generatedSeries_c): The input series to shift.
-        offset (int): The number of bars to shift.
-    
+        offset (int): The number of bars to shift. Positive for lag, negative for lead.
+
     Returns:
         generatedSeries_c: A new series representing the shifted values.
     """
@@ -1697,28 +1839,109 @@ def SHIFT(source:generatedSeries_c, offset: int)->generatedSeries_c:
     return source.timeframe.calcGeneratedSeries( 'shift', _ensure_object_array(source), offset, _generatedseries_calculate_shift )
 
 def SUM( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Calculates the rolling sum of a series over a specified period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The number of bars to include in the sum.
+
+    Returns:
+        generatedSeries_c: A new series representing the rolling sum.
+    """
     return source.timeframe.calcGeneratedSeries( 'sum', _ensure_object_array(source), period, _generatedseries_calculate_sum )
 
 def SMA( source: generatedSeries_c, period: int )->generatedSeries_c:
+    """
+    Simple Moving Average (SMA).
+
+    Calculates the arithmetic mean of a series over a specified period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The moving average period.
+
+    Returns:
+        generatedSeries_c: A new series representing the SMA.
+    """
     return source.timeframe.calcGeneratedSeries('sma', _ensure_object_array(source), period, _generatedseries_calculate_sma )
 
 def EMA( source: generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Exponential Moving Average (EMA).
+
+    Calculates a weighted moving average where more recent values are given more weight.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The moving average period.
+
+    Returns:
+        generatedSeries_c: A new series representing the EMA.
+    """
     return source.timeframe.calcGeneratedSeries( "ema", _ensure_object_array(source), period, _generatedseries_calculate_ema, always_reset=True )
 
 def DEMA( source: generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Double Exponential Moving Average (DEMA).
+
+    A more responsive moving average that reduces lag by combining a single and double EMA.
+    Formula: DEMA = 2 * EMA(source, period) - EMA(EMA(source, period), period)
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The moving average period for both EMAs.
+
+    Returns:
+        generatedSeries_c: A new series representing the DEMA.
+    """
     return source.timeframe.calcGeneratedSeries( "dema", _ensure_object_array(source), period, _generatedseries_calculate_dema, always_reset=True )
 
 def RMA( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Relative Moving Average (RMA) or Running Moving Average.
+
+    A type of moving average that is smoothed differently from a simple or exponential one.
+    It's also known as Wilder's Smoothing Average.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The smoothing period.
+
+    Returns:
+        generatedSeries_c: A new series representing the RMA.
+    """
     return source.timeframe.calcGeneratedSeries( 'rma', _ensure_object_array(source), period, _generatedseries_calculate_rma, always_reset=True )
 
 def WMA( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Weighted Moving Average (WMA).
+
+    Calculates a moving average where earlier values in the period have linearly decreasing weights.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The moving average period.
+
+    Returns:
+        generatedSeries_c: A new series representing the WMA.
+    """
     return source.timeframe.calcGeneratedSeries( "wma", _ensure_object_array(source), period, _generatedseries_calculate_wma )
 
 def HMA( source:generatedSeries_c, period:int )->generatedSeries_c:
-    """Hull Moving Average implementation using multiple calculation steps
-    HMA = WMA(2*WMA(n/2) - WMA(n), sqrt(n))
     """
+    Hull Moving Average (HMA).
 
+    A fast and smooth moving average that minimizes lag while maintaining curve smoothness.
+    Formula: HMA = WMA(2 * WMA(source, period/2) - WMA(source, period), sqrt(period))
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The HMA period.
+
+    Returns:
+        generatedSeries_c: A new series representing the HMA.
+    """
     source = _ensure_object_array(source)
     timeframe = source.timeframe
     
@@ -1737,17 +1960,70 @@ def HMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     return timeframe.calcGeneratedSeries( "hma", raw_hma, sqrt_period, _generatedseries_calculate_wma )
 
 def STDEV( source:generatedSeries_c, period:int, scalar:float = 1.0 )->generatedSeries_c:
+    """
+    Standard Deviation.
+
+    Calculates the rolling standard deviation of a series over a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The calculation period.
+        scalar (float, optional): A multiplier for the final result. Defaults to 1.0.
+
+    Returns:
+        generatedSeries_c: A new series representing the rolling standard deviation.
+    """
     return source.timeframe.calcGeneratedSeries( 'stdev', _ensure_object_array(source), period, _generatedseries_calculate_stdev, param = scalar, always_reset= _talib_available )
 
 def DEV( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Mean Absolute Deviation (DEV).
+
+    Calculates the average of the absolute deviations from the mean over a given period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The calculation period.
+
+    Returns:
+        generatedSeries_c: A new series representing the mean absolute deviation.
+    """
     return source.timeframe.calcGeneratedSeries( 'dev', _ensure_object_array(source), period, _generatedseries_calculate_dev )
 
 def WILLR( period:int )->generatedSeries_c:
+    """
+    Williams %R.
+
+    A momentum indicator that measures overbought and oversold levels. It uses the 'close', 'high',
+    and 'low' series from the active timeframe.
+
+    Args:
+        period (int): The lookback period.
+
+    Returns:
+        generatedSeries_c: A new series representing the Williams %R values.
+    """
     timeframe = active.timeframe
     source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries( 'wpr', source, period, _generatedseries_calculate_williams_r )
 
 def TR( period:int, high:generatedSeries_c= None, low:generatedSeries_c= None )->generatedSeries_c:
+    """
+    True Range (TR).
+
+    Calculates the true range, which is the greatest of the following:
+    - Current high minus the current low
+    - Absolute value of the current high minus the previous close
+    - Absolute value of the current low minus the previous close
+
+    Args:
+        period (int): The period (used for consistency, but TR is calculated from bar to bar).
+        high (generatedSeries_c, optional): The high series. Defaults to active timeframe's high.
+        low (generatedSeries_c, optional): The low series. Defaults to active timeframe's low.
+
+    Returns:
+        generatedSeries_c: A new series representing the True Range.
+    """
     timeframe = active.timeframe
     source = timeframe.generatedSeries['close']
     if high is None: high = timeframe.generatedSeries["high"]
@@ -1758,6 +2034,19 @@ def TR( period:int, high:generatedSeries_c= None, low:generatedSeries_c= None )-
     return timeframe.calcGeneratedSeries( name, source, period, _generatedseries_calculate_tr, param= (high, low) )
 
 def ATR( period:int, high:generatedSeries_c= None, low:generatedSeries_c= None )->generatedSeries_c:
+    """
+    Average True Range (ATR).
+
+    A volatility indicator that shows how much an asset moves on average. It is an RMA of the True Range (TR).
+
+    Args:
+        period (int): The smoothing period for the RMA.
+        high (generatedSeries_c, optional): The high series. Defaults to active timeframe's high.
+        low (generatedSeries_c, optional): The low series. Defaults to active timeframe's low.
+
+    Returns:
+        generatedSeries_c: A new series representing the Average True Range.
+    """
     timeframe = active.timeframe
     source = timeframe.generatedSeries['close']
     if high is None: high = timeframe.generatedSeries["high"]
@@ -1768,18 +2057,81 @@ def ATR( period:int, high:generatedSeries_c= None, low:generatedSeries_c= None )
     return timeframe.calcGeneratedSeries( name, source, period, _generatedseries_calculate_atr, param= (high, low), always_reset= True )  # rma requires always_reset, so atr also must
 
 def SLOPE( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Linear Regression Slope.
+
+    Calculates the slope of a linear regression line over a specified period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The period for the linear regression calculation.
+
+    Returns:
+        generatedSeries_c: A new series representing the slope.
+    """
     return source.timeframe.calcGeneratedSeries( 'slope', _ensure_object_array(source), period, _generatedseries_calculate_slope )
 
 def VHMA(source: generatedSeries_c, period: int) -> generatedSeries_c:
+    """
+    Variable-length Hull Moving Average (VHMA).
+
+    An adaptive version of the Hull Moving Average where the smoothing period is
+    dynamically adjusted based on market volatility.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The base period for the calculation.
+
+    Returns:
+        generatedSeries_c: A new series representing the VHMA.
+    """
     return source.timeframe.calcGeneratedSeries('vhma', _ensure_object_array(source), period, _generatedseries_calculate_vhma, always_reset= True)
 
 def BIAS( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Bias (BIAS).
+
+    Measures the percentage deviation of a series from its Simple Moving Average.
+    Formula: ((source - SMA(source, period)) / SMA(source, period)) * 100
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The period for the SMA calculation.
+
+    Returns:
+        generatedSeries_c: A new series representing the BIAS oscillator.
+    """
     return source.timeframe.calcGeneratedSeries( 'bias', _ensure_object_array(source), period, _generatedseries_calculate_bias )
 
 def LINREG( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Linear Regression Curve (LINREG).
+
+    Calculates the ending value of a linear regression line over a specified period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The period for the linear regression calculation.
+
+    Returns:
+        generatedSeries_c: A new series representing the linear regression value.
+    """
     return source.timeframe.calcGeneratedSeries( "linreg", _ensure_object_array(source), period, _generatedseries_calculate_linreg )
 
 def CCI(period: int = 20) -> generatedSeries_c:
+    """
+    Commodity Channel Index (CCI).
+
+    A momentum-based oscillator used to help determine when an investment vehicle is
+    reaching a condition of being overbought or oversold. It uses the 'close', 'high',
+    and 'low' series from the active timeframe.
+
+    Args:
+        period (int, optional): The lookback period. Defaults to 20.
+
+    Returns:
+        generatedSeries_c: A new series representing the CCI.
+    """
     if not isinstance(period, int ):
         raise ValueError( "CCI requires only a period argument" )
     timeframe = active.timeframe
@@ -1787,23 +2139,103 @@ def CCI(period: int = 20) -> generatedSeries_c:
     return timeframe.calcGeneratedSeries('cci', _ensure_object_array(source), period, _generatedseries_calculate_cci, always_reset= True)
 
 def CFO( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Chande Forecast Oscillator (CFO).
+
+    Measures the percentage difference between the closing price and its n-period
+    linear regression forecast.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The period for the linear regression forecast.
+
+    Returns:
+        generatedSeries_c: A new series representing the CFO.
+    """
     return source.timeframe.calcGeneratedSeries( 'cfo', _ensure_object_array(source), period, _generatedseries_calculate_cfo )
 
 def CMO(source: generatedSeries_c, period: int = 9) -> generatedSeries_c:
+    """
+    Chande Momentum Oscillator (CMO).
+
+    A momentum oscillator that measures the strength of a trend. It is calculated by
+    taking the sum of all positive momentum over a period and subtracting the sum of
+    all negative momentum, then dividing by the sum of all momentum.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int, optional): The lookback period. Defaults to 9.
+
+    Returns:
+        generatedSeries_c: A new series representing the CMO, oscillating between -100 and +100.
+    """
     return source.timeframe.calcGeneratedSeries('cmo', _ensure_object_array(source), period, _generatedseries_calculate_cmo)
 
 def FWMA( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Fibonacci Weighted Moving Average (FWMA).
+
+    A moving average where the weights are based on the Fibonacci sequence.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The moving average period.
+
+    Returns:
+        generatedSeries_c: A new series representing the FWMA.
+    """
     return source.timeframe.calcGeneratedSeries( 'fwma', _ensure_object_array(source), period, _generatedseries_calculate_fwma )
 
 def RSI( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Relative Strength Index (RSI).
+
+    A momentum oscillator that measures the speed and change of price movements.
+    RSI oscillates between zero and 100.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The lookback period.
+
+    Returns:
+        generatedSeries_c: A new series representing the RSI.
+    """
     return source.timeframe.calcGeneratedSeries( 'rsi', _ensure_object_array(source), period, _generatedseries_calculate_rsi, always_reset=True )
 
 def IFTrsi( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Inverse Fisher Transform on RSI (IFTrsi).
+
+    Applies an Inverse Fisher Transform to the RSI values to help identify
+    overbought and oversold conditions with sharper, more defined signals.
+
+    Args:
+        source (generatedSeries_c): The input series for the RSI calculation.
+        period (int): The period for the underlying RSI calculation.
+
+    Returns:
+        generatedSeries_c: A new series representing the IFTrsi.
+    """
     timeframe = _ensure_object_array(source).timeframe
     rsi = timeframe.calcGeneratedSeries( 'rsi', source, period, _generatedseries_calculate_rsi, always_reset=True )
     return timeframe.calcGeneratedSeries( 'iftrsi', rsi, period, _generatedseries_calculate_inverse_fisher_rsi )
 
 def Fisher( period:int, signal:float=None )->tuple[generatedSeries_c, generatedSeries_c]:
+    """
+    Fisher Transform.
+
+    An indicator that converts prices into a Gaussian normal distribution, helping to
+    identify trend reversals with sharper signals. It uses 'high' and 'low' from the active timeframe.
+
+    Args:
+        period (int): The lookback period for the transform.
+        signal (float, optional): The period for the signal line (an EMA of the Fisher line).
+                                  Defaults to 9 if not provided.
+
+    Returns:
+        tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the Fisher Transform line
+                                                     and its signal line.
+    """
     timeframe = active.timeframe
     source = timeframe.generatedSeries['close']
     fish = timeframe.calcGeneratedSeries( 'fisher', source, period, _generatedseries_calculate_fisher )
@@ -1811,39 +2243,132 @@ def Fisher( period:int, signal:float=None )->tuple[generatedSeries_c, generatedS
     return fish, sig
 
 def AO( fast: int = 5, slow: int = 34 ) -> generatedSeries_c:
+    """
+    Awesome Oscillator (AO).
+
+    A momentum indicator that calculates the difference between a 34-period and 5-period
+    Simple Moving Average of the median price (High+Low)/2.
+
+    Args:
+        fast (int, optional): The period for the fast SMA. Defaults to 5.
+        slow (int, optional): The period for the slow SMA. Defaults to 34.
+
+    Returns:
+        generatedSeries_c: A new series representing the Awesome Oscillator.
+    """
     timeframe = active.timeframe
     param = (fast, slow)
     source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries('ao', source, max(fast,slow), _generatedseries_calculate_ao, param)
 
 def BR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+    """
+    Willingness to Buy Ratio (BR).
+
+    A market sentiment indicator that measures the strength of buying pressure versus selling pressure.
+
+    Args:
+        period (int): The lookback period.
+
+    Returns:
+        generatedSeries_c: A new series representing the BR.
+    """
     timeframe = active.timeframe
     source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries( 'br', source, period, _generatedseries_calculate_br )
 
 def AR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+    """
+    Momentum Ratio (AR).
+
+    A market sentiment indicator that measures the strength of the current trend by comparing
+    the difference between the high and open to the difference between the open and low.
+
+    Args:
+        period (int): The lookback period.
+
+    Returns:
+        generatedSeries_c: A new series representing the AR.
+    """
     timeframe = active.timeframe
     source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries( 'ar', source, period, _generatedseries_calculate_ar )
 
 def BRAR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+    """
+    Calculates both the Willingness to Buy Ratio (BR) and Momentum Ratio (AR).
+
+    Args:
+        period (int): The lookback period for both indicators.
+
+    Returns:
+        tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the BR and AR series.
+    """
     timeframe = active.timeframe
     br = BR(period, timeframe)
     ar = AR(period, timeframe)
     return br, ar
 
 def CG( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Center of Gravity (CG) Oscillator.
+
+    An oscillator that helps identify turning points with minimal lag.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The lookback period.
+
+    Returns:
+        generatedSeries_c: A new series representing the Center of Gravity oscillator.
+    """
     return source.timeframe.calcGeneratedSeries( 'cg', _ensure_object_array(source), period, _generatedseries_calculate_cg )
 
 def STOCHk( source: generatedSeries_c, period:int )-> tuple[generatedSeries_c, generatedSeries_c]:
+    """
+    Stochastic Oscillator %K line.
+
+    This is the main line for the Stochastic Oscillator. It is often smoothed to create the %D line.
+
+    Args:
+        source (generatedSeries_c): The input series (typically 'close').
+        period (int): The lookback period for the stochastic calculation.
+
+    Returns:
+        generatedSeries_c: A new series representing the %K line.
+    """
     return source.timeframe.calcGeneratedSeries( "stochk", _ensure_object_array(source), period, _generatedseries_calculate_stoch_k )
 
 def OBV( timeframe=None ) -> generatedSeries_c:
+    """
+    On-Balance Volume (OBV).
+
+    A momentum indicator that uses volume flow to predict changes in stock price.
+    It uses the 'close' and 'volume' series from the specified timeframe.
+
+    Args:
+        timeframe (Timeframe, optional): The timeframe context. Defaults to the active timeframe.
+
+    Returns:
+        generatedSeries_c: A new series representing the OBV.
+    """
     # period=2 because obv reads the previous value of close. It can not be anything else.
     source = timeframe.generatedSeries['close']
     return source.timeframe.calcGeneratedSeries( 'obv', source, 2, _generatedseries_calculate_obv )
 
 def LAGUERRE(source: Union[str, generatedSeries_c], gamma: float = 0.7)->generatedSeries_c:
+    """
+    Laguerre Oscillator.
+
+    A responsive oscillator that uses a Laguerre filter to reduce lag and provide clear signals.
+
+    Args:
+        source (Union[str, generatedSeries_c]): The input series.
+        gamma (float, optional): The smoothing factor for the Laguerre filter. Defaults to 0.7.
+
+    Returns:
+        generatedSeries_c: A new series representing the Laguerre Oscillator (values 0 to 1).
+    """
     return source.timeframe.calcGeneratedSeries( 'lagerre', _ensure_object_array(source), 1, _generatedseries_calculate_laguerre, gamma, always_reset=True )
 
 
@@ -1856,11 +2381,9 @@ def Stochastic(source: generatedSeries_c, k_period: int = 14, d_period: int = 3)
     Calculates the Stochastic Oscillator (%K and %D lines).
 
     Args:
-        close_series_input: The close price series. Can be a string (column name),
-                             a generatedSeries_c object, or a direct NumPy array.
+        source (generatedSeries_c): The input price series (typically 'close').
         k_period (int): The period for the %K calculation (e.g., 14).
         d_period (int): The period for the %D calculation (SMA of %K, e.g., 3).
-        timeframe: The timeframe context (defaults to active.timeframe).
 
     Returns:
         Tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the %K line
@@ -1876,14 +2399,19 @@ def Stochastic(source: generatedSeries_c, k_period: int = 14, d_period: int = 3)
 
 def BollingerBands( source:generatedSeries_c, period:int, mult:float = 2.0 )->tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
-    Returns the Bollinger Bands (basis, upper, lower) for the given source series and period.
+    Calculates Bollinger Bands (basis, upper, lower).
+
+    Bollinger Bands consist of a middle band being an N-period simple moving average (SMA),
+    an upper band at K standard deviations above the middle band, and a lower band at K
+    standard deviations below the middle band.
 
     Args:
-        source (pd.Series): The input pandas Series to calculate the Bollinger Bands on.
-        period (int): The period/window for the Bollinger Bands calculation.
+        source (generatedSeries_c): The input series.
+        period (int): The period for the SMA and standard deviation calculation.
+        mult (float, optional): The number of standard deviations. Defaults to 2.0.
 
     Returns:
-        Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band as generatedSeries_c objects.
+        Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: The basis (SMA), upper band, and lower band.
     """
     BBbasis = SMA(source, period)
     stdev = STDEV(source, period, mult)
@@ -1894,15 +2422,18 @@ def BollingerBands( source:generatedSeries_c, period:int, mult:float = 2.0 )->tu
 
 def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]:
     """
-    Returns the MACD line, Signal line, and Histogram for given source and periods.
+    Moving Average Convergence Divergence (MACD).
+
+    A trend-following momentum indicator that shows the relationship between two moving averages of a security’s price.
+
     Args:
-        source (pd.Series): The price series (e.g. close).
-        fast (int): Fast EMA period.
-        slow (int): Slow EMA period.
-        signal (int): Signal EMA period.
-        timeframe: The timeframe context (defaults to active.timeframe).
+        source (generatedSeries_c): The input price series (e.g. close).
+        fast (int, optional): The period for the fast EMA. Defaults to 12.
+        slow (int, optional): The period for the slow EMA. Defaults to 26.
+        signal (int, optional): The period for the signal line EMA. Defaults to 9.
+
     Returns:
-        Tuple of (MACD line, Signal line, Histogram) as generatedSeries_c objects.
+        Tuple[generatedSeries_c, generatedSeries_c, generatedSeries_c]: A tuple containing the MACD line, Signal line, and Histogram.
     """
     # Calculate the fast and slow EMAs
     fast_ema = EMA(source, fast)
@@ -1925,9 +2456,20 @@ def MACD( source:generatedSeries_c, fast: int = 12, slow: int = 26, signal: int 
 # # #
 
 
-def highestBarSingle(source:generatedSeries_c, lookback_period:int = None, since:int= None)-> Union[float, None]:
+def highestBarSingle(source:generatedSeries_c, lookback_period:int = None, since:int= None)-> Union[int, None]:
     """
-    Finds the index of the highest value in a lookback window.
+    Finds the absolute bar index of the highest value within a specified lookback window.
+
+    Args:
+        source (generatedSeries_c): The input series to search.
+        lookback_period (int, optional): The number of bars to look back from the 'since' bar.
+                                         If None, searches from the beginning of the series. Defaults to None.
+        since (int, optional): The ending bar index (inclusive) for the lookback.
+                               If None, uses the current active bar index. Defaults to None.
+
+    Returns:
+        Union[int, None]: The absolute bar index of the highest value, or None if no valid
+                          (non-NaN) highest value is found within the window.
     """
     if since is None:
         since = active.barindex
@@ -1958,7 +2500,17 @@ def highestBarSingle(source:generatedSeries_c, lookback_period:int = None, since
 
 def highestSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[float, None]:
     """
-    Finds the highest value in a lookback window.
+    Finds the highest value within a specified lookback window.
+
+    Args:
+        source (generatedSeries_c): The input series to search.
+        lookback_period (int): The number of bars to look back from the 'since' bar.
+        since (int, optional): The ending bar index (inclusive) for the lookback.
+                               If None, uses the current active bar index. Defaults to None.
+
+    Returns:
+        Union[float, None]: The highest value found within the window, or None if no valid
+                            (non-NaN) highest value is found.
     """
     index = highestBarSingle(source, lookback_period, since)
     if index is None:
@@ -1967,7 +2519,18 @@ def highestSingle(source:generatedSeries_c, lookback_period:int, since:int= None
 
 def lowestBarSingle(source:generatedSeries_c, lookback_period:int= None, since:int= None)-> Union[int, None]:
     """
-    Finds the index of the lowest value in a lookback window.
+    Finds the absolute bar index of the lowest value within a specified lookback window.
+
+    Args:
+        source (generatedSeries_c): The input series to search.
+        lookback_period (int, optional): The number of bars to look back from the 'since' bar.
+                                         If None, searches from the beginning of the series. Defaults to None.
+        since (int, optional): The ending bar index (inclusive) for the lookback.
+                               If None, uses the current active bar index. Defaults to None.
+
+    Returns:
+        Union[int, None]: The absolute bar index of the lowest value, or None if no valid
+                          (non-NaN) lowest value is found within the window.
     """
     if since is None:
         since = active.barindex
@@ -1992,9 +2555,19 @@ def lowestBarSingle(source:generatedSeries_c, lookback_period:int= None, since:i
     except ValueError: # All-NaN slice
         return None
 
-def lowestSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[int, None]:
+def lowestSingle(source:generatedSeries_c, lookback_period:int, since:int= None)-> Union[float, None]:
     """
-    Finds the lowest value in a lookback window.
+    Finds the lowest value within a specified lookback window.
+
+    Args:
+        source (generatedSeries_c): The input series to search.
+        lookback_period (int): The number of bars to look back from the 'since' bar.
+        since (int, optional): The ending bar index (inclusive) for the lookback.
+                               If None, uses the current active bar index. Defaults to None.
+
+    Returns:
+        Union[float, None]: The lowest value found within the window, or None if no valid
+                            (non-NaN) lowest value is found.
     """
     index = lowestBarSingle(source, lookback_period, since)
     if index is None:
@@ -2003,9 +2576,21 @@ def lowestSingle(source:generatedSeries_c, lookback_period:int, since:int= None)
 
 def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None)-> Union[int, None]:
     """
-    Finds the index of the last True value, searching backwards from a given point
+    Finds the absolute bar index of the most recent occurrence where the source series was "True"
     within a specified lookback period.
-    A value is considered True if it's non-zero and not NaN.
+
+    A value is considered "True" if it is non-zero and not NaN.
+
+    Args:
+        source (generatedSeries_c): The boolean-like input series.
+        lookback_period (int, optional): The number of bars to look back from the 'since' bar.
+                                         If None, searches from the beginning of the series. Defaults to None.
+        since (int, optional): The ending bar index (inclusive) for the search.
+                               If None, uses the current active bar index. Defaults to None.
+
+    Returns:
+        Union[int, None]: The absolute bar index of the last "True" occurrence, or None if no
+                          "True" value is found within the specified window.
     """
     source = _ensure_object_array(source)
     full_source_array = source.series()
@@ -2039,9 +2624,21 @@ def indexWhenTrueSingle(source: generatedSeries_c, lookback_period: int = None, 
 
 def indexWhenFalseSingle(source: generatedSeries_c, lookback_period: int = None, since: int = None)-> Union[int, None]:
     """
-    Finds the index of the last False value, searching backwards from a given point
+    Finds the absolute bar index of the most recent occurrence where the source series was "False"
     within a specified lookback period.
-    A value is considered False if it's 0. NaN is not considered False.
+
+    A value is considered "False" if it is exactly 0. NaN values are explicitly not considered "False".
+
+    Args:
+        source (generatedSeries_c): The boolean-like input series.
+        lookback_period (int, optional): The number of bars to look back from the 'since' bar.
+                                         If None, searches from the beginning of the series. Defaults to None.
+        since (int, optional): The ending bar index (inclusive) for the search.
+                               If None, uses the current active bar index. Defaults to None.
+
+    Returns:
+        Union[int, None]: The absolute bar index of the last "False" occurrence, or None if no
+                          "False" value is found within the specified window.
     """
     source_series = _ensure_object_array(source)
     full_source_array = source_series.series()
@@ -2072,20 +2669,22 @@ def indexWhenFalseSingle(source: generatedSeries_c, lookback_period: int = None,
 
 def barsSinceSingle( source:generatedSeries_c, lookback_period:int = None )-> Union[int, None]:
     """
-    Calculates the number of bars that have passed since the last True condition
-    within a given lookback period.
+    Calculates the number of bars that have passed since the last "True" condition
+    occurred within a given lookback period, up to the current bar.
+
+    A value is considered "True" if it is non-zero and not NaN.
 
     Args:
-        source: A generatedSeries_c object.
-        period (int, optional): The lookback period in which to search for the last
-                                True condition. If None, searches the entire history.
-                                Defaults to None.
+        source (generatedSeries_c): The boolean-like input series.
+        lookback_period (int, optional): The maximum number of bars to look back from the current bar
+                                         to find the last "True" condition. If None, searches the
+                                         entire history. Defaults to None.
 
     Returns:
-        int: The number of bars since the last True condition, or None if no
-             True condition is found within the lookback period.
+        Union[int, None]: The number of bars elapsed since the last "True" condition,
+                          or None if no "True" condition is found within the lookback period.
     """
-    # Find the last true index, but only look back 'period' bars.
+    # Find the last true index, but only look back 'lookback_period' bars.
     index_when_true = indexWhenTrueSingle( source, lookback_period=lookback_period )
 
     if index_when_true is None:
@@ -2097,15 +2696,19 @@ def barsSinceSingle( source:generatedSeries_c, lookback_period:int = None )-> Un
 def barsWhileTrueSingle( source:generatedSeries_c, lookback_period:int = None )-> Union[int, None]:
     """
     Calculates the number of consecutive bars (including the current one)
-    for which the source condition has been True, capped at a max `period`.
+    for which the source condition has been "True", optionally capped by `lookback_period`.
+
+    A value is considered "True" if it is non-zero and not NaN.
 
     Args:
-        source: A generatedSeries_c object.
-        period (int, optional): The maximum value to return. If the actual streak is longer,
-                                the function will return `period`. Defaults to None (no limit).
+        source (generatedSeries_c): The boolean-like input series.
+        lookback_period (int, optional): The maximum number of consecutive "True" bars to count.
+                                         If the actual streak is longer, the function returns this cap.
+                                         If None, there is no limit. Defaults to None.
 
     Returns:
-        int: The number of consecutive True bars ending at the current position, capped by `period`.
+        Union[int, None]: The count of consecutive "True" bars ending at the current position,
+                          or None if the series is empty or the condition is never met.
     """
     current_bar_index = active.barindex
 
@@ -2120,152 +2723,161 @@ def barsWhileTrueSingle( source:generatedSeries_c, lookback_period:int = None )-
         # Streak is the distance from the last False.
         count = current_bar_index - index_of_last_false
 
-    # Apply the period as a cap on the result.
+    # Apply the lookback_period as a cap on the result.
     if lookback_period is not None and count > lookback_period:
         return lookback_period
 
     return count
 
-def crossingUpSingle( self:generatedSeries_c|float, other:generatedSeries_c|float )-> bool:
+def crossingUpSingle( series1:generatedSeries_c|float, series2:generatedSeries_c|float )-> bool:
     """
-    Determines if 'self' crosses up over 'other' between the previous and current bar.
+    Determines if `series1` crosses up over `series2` between the previous and current bar.
+
+    This function checks if, on the previous bar, `series1` was less than or equal to `series2`,
+    and on the current bar, `series1` is strictly greater than `series2`.
 
     Args:
-        self: The first value/series.
-        other: The second value/series to compare against.
+        series1 (Union[generatedSeries_c, float]): The first series or a scalar value.
+        series2 (Union[generatedSeries_c, float]): The second series or a scalar value to compare against.
 
     Returns:
         bool: True if a crossing up occurred, False otherwise.
     """
-    if isinstance( self, generatedSeries_c ):
-        return self.crossingUp(other)
+    if isinstance( series1, generatedSeries_c ):
+        return series1.crossingUp(series2)
     
     # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
-    if isinstance( self, int ):
-        self = float(self)
+    if isinstance( series1, int ):
+        series1 = float(series1)
 
-    if isinstance( other, int ):
-        other = float(other)
+    if isinstance( series2, int ):
+        series2 = float(series2)
 
-    if( isinstance(self, float) and isinstance(other, float) ):
+    if( isinstance(series1, float) and isinstance(series2, float) ):
         print( "* WARNING: crossinUp: Two static values can never cross" )
         return False
     
-    self_old = 0
-    self_new = 0
-    other_old = 0
-    other_new = 0
-    if isinstance( self, np.ndarray ):
-        if( len(self) < 2 or active.barindex < 1 ):
+    series1_old = 0
+    series1_new = 0
+    series2_old = 0
+    series2_new = 0
+    if isinstance( series1, np.ndarray ):
+        if( len(series1) < 2 or active.barindex < 1 ):
             return False
-        self_old = self[active.barindex-1]
-        self_new = self[active.barindex]
-        if isinstance( other, np.ndarray ):
-            if( len(other) < 2 ):
+        series1_old = series1[active.barindex-1]
+        series1_new = series1[active.barindex]
+        if isinstance( series2, np.ndarray ):
+            if( len(series2) < 2 ):
                 return False
-            other_old = other[active.barindex-1]
-            other_new = other[active.barindex]
-        elif isinstance( other, generatedSeries_c ):
-            # Directly use other.iloc(-1) and other.iloc(-2)
-            if np.isnan(other.lastUpdatedTimestamp) or len(other) < 2 or active.barindex < 1 :
+            series2_old = series2[active.barindex-1]
+            series2_new = series2[active.barindex]
+        elif isinstance( series2, generatedSeries_c ):
+            # Directly use series2.iloc(-1) and series2.iloc(-2)
+            if np.isnan(series2.lastUpdatedTimestamp) or len(series2) < 2 or active.barindex < 1 :
                 return False
-            other_old = other.iloc(-2)
-            other_new = other.iloc(-1) 
+            series2_old = series2.iloc(-2)
+            series2_new = series2.iloc(-1) 
         else: # assuming float or int
             try:
-                float_other = float(other)
+                float_series2 = float(series2)
             except ValueError:
                 return False
             else:
-                other_old = float(other)
-                other_new = float(other)
+                series2_old = float(series2)
+                series2_new = float(series2)
     else:
         try:
-            float(self)
+            float(series1)
         except ValueError:
-            print( "crossinUp: Unsupported type", type(self) )
+            print( "crossinUp: Unsupported type", type(series1) )
             return False
         else:
-            return crossingDownSingle( other, self )
+            return crossingDownSingle( series2, series1 )
 
-    return ( self_old <= other_old and self_new >= other_new and not (self_old == other_old and self_new == other_new) )
+    return ( series1_old <= series2_old and series1_new >= series2_new and not (series1_old == series2_old and series1_new == series2_new) )
 
 
-def crossingDownSingle( self:generatedSeries_c|float, other:generatedSeries_c|float )-> bool:
+def crossingDownSingle( series1:generatedSeries_c|float, series2:generatedSeries_c|float )-> bool:
     """
-    Determines if 'self' crosses down below 'other' between the previous and current bar.
+    Determines if `series1` crosses down below `series2` between the previous and current bar.
+
+    This function checks if, on the previous bar, `series1` was greater than or equal to `series2`,
+    and on the current bar, `series1` is strictly less than `series2`.
 
     Args:
-        self: The first value/series.
-        other: The second value/series to compare against.
+        series1 (Union[generatedSeries_c, float]): The first series or a scalar value.
+        series2 (Union[generatedSeries_c, float]): The second series or a scalar value to compare against.
 
     Returns:
         bool: True if a crossing down occurred, False otherwise.
     """
-    if isinstance( self, generatedSeries_c ):
-        return self.crossingDown(other)
+    if isinstance( series1, generatedSeries_c ):
+        return series1.crossingDown(series2)
     
     # Original logic for pd.Series and float/int (unchanged, but might need similar iloc(-1) and iloc(-2) adaptations for clarity if it's not already doing that)
-    if isinstance( self, int ):
-        self = float(self)
+    if isinstance( series1, int ):
+        series1 = float(series1)
 
-    if isinstance( other, int ):
-        other = float(other)
+    if isinstance( series2, int ):
+        series2 = float(series2)
 
-    if( isinstance(self, float) and isinstance(other, float) ):
+    if( isinstance(series1, float) and isinstance(series2, float) ):
         print( "* WARNING: crossinDown: Two static values can never cross" )
         return False
     
-    self_old = 0
-    self_new = 0
-    other_old = 0
-    other_new = 0
-    if isinstance( self, np.ndarray ):
-        if( len(self) < 2 or active.barindex < 1 ):
+    series1_old = 0
+    series1_new = 0
+    series2_old = 0
+    series2_new = 0
+    if isinstance( series1, np.ndarray ):
+        if( len(series1) < 2 or active.barindex < 1 ):
             return False
-        self_old = self[active.barindex-1]
-        self_new = self[active.barindex]
-        if isinstance( other, np.ndarray ):
-            if( len(other) < 2 ):
+        series1_old = series1[active.barindex-1]
+        series1_new = series1[active.barindex]
+        if isinstance( series2, np.ndarray ):
+            if( len(series2) < 2 ):
                 return False
-            other_old = other[active.barindex-1]
-            other_new = other[active.barindex]
-        elif isinstance( other, generatedSeries_c ):
-            if np.isnan(other.lastUpdatedTimestamp) or len(other) < 2 or active.barindex < 1 :
+            series2_old = series2[active.barindex-1]
+            series2_new = series2[active.barindex]
+        elif isinstance( series2, generatedSeries_c ):
+            if np.isnan(series2.lastUpdatedTimestamp) or len(series2) < 2 or active.barindex < 1 :
                 return False
-            other_old = other.iloc(-2)
-            other_new = other.iloc(-1) 
+            series2_old = series2.iloc(-2)
+            series2_new = series2.iloc(-1) 
         else:
             try:
-                float(other)
+                float(series2)
             except ValueError:
                 return False
             else:
-                other_old = float(other)
-                other_new = float(other)
+                series2_old = float(series2)
+                series2_new = float(series2)
     else:
         try:
-            float(self)
+            float(series1)
         except ValueError:
-            print( "crossinDown: Unsupported type", type(self) )
+            print( "crossinDown: Unsupported type", type(series1) )
             return False
         else:
-            return crossingUpSingle( other, self )
+            return crossingUpSingle( series2, series1 )
 
-    return ( self_old >= other_old and self_new <= other_new and not (self_old == other_old and self_new == other_new) )
+    return ( series1_old >= series2_old and series1_new <= series2_new and not (series1_old == series2_old and series1_new == series2_new) )
 
-def crossingSingle( self, other )-> bool:
+def crossingSingle( series1:generatedSeries_c|float, series2:generatedSeries_c|float )-> bool:
     """
-    Determines if 'self' crosses either up or down with respect to 'other' between the previous and current bar.
+    Determines if `series1` crosses `series2` (either up or down) between the previous and current bar.
+
+    This function returns True if either `crossingUpSingle(series1, series2)` or
+    `crossingDownSingle(series1, series2)` is True.
 
     Args:
-        self: The first value/series.
-        other: The second value/series to compare against.
+        series1 (Union[generatedSeries_c, float]): The first series or a scalar value.
+        series2 (Union[generatedSeries_c, float]): The second series or a scalar value to compare against.
 
     Returns:
         bool: True if a crossing (up or down) occurred, False otherwise.
     """
-    return crossingUpSingle( self, other ) or crossingDownSingle( self, other )
+    return crossingUpSingle( series1, series2 ) or crossingDownSingle( series1, series2 )
 
 
 
@@ -2276,6 +2888,23 @@ def crossingSingle( self, other )-> bool:
 from .pivots import pivots_c, pivot_c
 pivotsNow:pivots_c = None
 def pivots( high:generatedSeries_c, low:generatedSeries_c, amplitude: float = 1.0, reversal_percent: float = 32.0 )->pivots_c:
+    """
+    Calculates and manages pivot points (e.g., swing highs and lows).
+
+    This function initializes a `pivots_c` object if not already present and updates it
+    with the latest high and low series data to identify pivot points.
+
+    Args:
+        high (generatedSeries_c): The high price series.
+        low (generatedSeries_c): The low price series.
+        amplitude (float, optional): The minimum amplitude (in price units) required for a swing.
+                                     Defaults to 1.0.
+        reversal_percent (float, optional): The percentage of price movement required for a reversal
+                                            to confirm a pivot. Defaults to 32.0.
+
+    Returns:
+        pivots_c: An instance of the `pivots_c` class, updated with the latest pivot data.
+    """
     global pivotsNow
     if pivotsNow == None:
         pivotsNow = pivots_c(amplitude, reversal_percent)
