@@ -1130,29 +1130,15 @@ def _generatedseries_calculate_br(series: np.ndarray, period: int, dataset: np.n
     br_num = np.maximum(high_slice - prev_close_slice, 0)
     br_den = np.maximum(prev_close_slice - low_slice, 0)
 
-    # Re-use the existing rolling_sum helper function (defined locally for now)
-    def rolling_sum(arr, window):
-        ret = np.full_like(arr, np.nan, dtype=np.float64)
-        if window > len(arr):
-            return ret
-        cumsum = np.nancumsum(np.insert(arr, 0, 0))
-        ret[window-1:] = cumsum[window:] - cumsum[:-window]
-        return ret
-
     # These rolling sums will be calculated over the derived slices
-    sum_num = rolling_sum(br_num, period)
-    sum_den = rolling_sum(br_den, period)
+    sum_num = _rolling_window_apply_optimized(br_num, period, np.nansum)
+    sum_den = _rolling_window_apply_optimized(br_den, period, np.nansum)
     
-    # Calculate BR. The length of sum_num and sum_den is (current_input_len - period + 1)
-    br_calculated = np.full(len(sum_num), np.nan)
+    # Calculate BR.
     # Handle division by zero or NaN denominator
     br_calculated = np.where( (sum_den != 0) & (~np.isnan(sum_den)), (sum_num / sum_den) * 100, np.nan)
 
-    # Pad with NaNs at the beginning to match the original input slice length
-    # The padding length should be period - 1 to align with rolling window output
-    result_with_padding = np.concatenate((np.full(period - 1, np.nan), br_calculated))
-
-    return result_with_padding
+    return br_calculated
 
 #
 def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -1176,29 +1162,14 @@ def _generatedseries_calculate_ar(series: np.ndarray, period: int, dataset: np.n
     ar_num_slice = high_slice - open_slice
     ar_den_slice = open_slice - low_slice
 
-    # Re-use the existing rolling_sum helper function (defined locally for now)
-    def rolling_sum(arr, window):
-        ret = np.full_like(arr, np.nan, dtype=np.float64)
-        if window > len(arr):
-            return ret
-        cumsum = np.nancumsum(np.insert(arr, 0, 0))
-        ret[window-1:] = cumsum[window:] - cumsum[:-window]
-        return ret
-
-    # These rolling sums will be calculated over the derived slices
-    sum_num = rolling_sum(ar_num_slice, period)
-    sum_den = rolling_sum(ar_den_slice, period)
+    sum_num = _rolling_window_apply_optimized(ar_num_slice, period, np.nansum)
+    sum_den = _rolling_window_apply_optimized(ar_den_slice, period, np.nansum)
     
-    # Calculate AR. The length of sum_num and sum_den is (current_input_len - period + 1)
-    ar_calculated = np.full(len(sum_num), np.nan)
+    # Calculate AR.
     # Handle division by zero or NaN denominator
     ar_calculated = np.where( (sum_den != 0) & (~np.isnan(sum_den)), (sum_num / sum_den) * 100, np.nan)
 
-    # Pad with NaNs at the beginning to match the original input slice length
-    # The padding length should be period - 1 to align with rolling window output
-    result_with_padding = np.concatenate((np.full(period - 1, np.nan), ar_calculated))
-
-    return result_with_padding
+    return ar_calculated
 
 #
 def _generatedseries_calculate_cg(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
@@ -2261,7 +2232,7 @@ def AO( fast: int = 5, slow: int = 34 ) -> generatedSeries_c:
     source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries('ao', source, max(fast,slow), _generatedseries_calculate_ao, param)
 
-def BR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+def BR( period:int )->generatedSeries_c:
     """
     Willingness to Buy Ratio (BR).
 
@@ -2277,7 +2248,7 @@ def BR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
     source = timeframe.generatedSeries['close']
     return timeframe.calcGeneratedSeries( 'br', source, period, _generatedseries_calculate_br )
 
-def AR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
+def AR( period:int )->generatedSeries_c:
     """
     Momentum Ratio (AR).
 
@@ -2304,9 +2275,8 @@ def BRAR( period:int )->tuple[generatedSeries_c, generatedSeries_c]:
     Returns:
         tuple[generatedSeries_c, generatedSeries_c]: A tuple containing the BR and AR series.
     """
-    timeframe = active.timeframe
-    br = BR(period, timeframe)
-    ar = AR(period, timeframe)
+    br = BR(period)
+    ar = AR(period)
     return br, ar
 
 def CG( source:generatedSeries_c, period:int )->generatedSeries_c:
