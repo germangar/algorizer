@@ -9,7 +9,7 @@ Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into
 
 Most typical 'indicators' are already built in, and creating custom ones is relatively easy. By default all series are calculated using Numpy. Talib is used for some of them when it's present in the system. Talib provides a marginal speed increase..
 
-I do think Algorizer offer a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
+I do think Algorizer offers a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
 The project is still a work in progress so you'll most likely find a few nuissances. However, **fetching the historical candles, fetching the real time price updates, running the backtest and running your strategy realtime is reliable.** Backtest and realtime execution match properly. There are **no lookahead nor repainting issues.**
 
