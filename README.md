@@ -7,15 +7,13 @@ It connects to crypto exchanges using the CCXT library and downloads the histori
 
 Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
 
-Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
+Most typical 'indicators' are already built in, and creating custom ones is relatively easy. By default all series are calculated using Numpy. It can use Talib when available for the some of them. Talib provides a marginal speed increase.
 
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
 The project is still a work in progress so you'll most likely find a few nuissances. However, **fetching the historical candles, fetching the real time price updates, running the backtest and running your strategy realtime is reliable.** Backtest and realtime execution match properly. There are **no lookahead nor repainting issues.**
 
 Plotting capabilities: As of today it's capable of **plots, histograms, lines** (point to point) and **markers** (labels), as it's capable of creating subpanels and targetting these to them. Horizontal lines, boxes and tables remain in the to do list, and will probably stay there for quite some time.
-
-By default all series are calculated using Numpy. It can use Talib when available for the some of them. Talib provides a marginal speed increase.
 
 I'm slowly adding documentation in the ['DOC.md'](https://github.com/germangar/algorizer/blob/main/DOC.md) file. It's not complete yet, but it offers a starting point. I also extensively commented the file ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) from which you can obtain a good amount of information and get a sense of how to create a strategy.
 
