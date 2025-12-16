@@ -7,7 +7,7 @@ It connects to crypto exchanges using the CCXT library and downloads the histori
 
 Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
 
-Most typical 'indicators' are already built in, and creating custom ones is relatively easy. 
+Most typical 'indicators' are already built in, and creating custom ones is relatively easy. By default all series are calculated using Numpy. Talib is used for the some of them when it's present in the system. Talib provides a marginal speed increase..
 
 I do think it provides a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
 
