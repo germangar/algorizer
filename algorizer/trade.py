@@ -82,7 +82,7 @@ class strategy_c:
 
     def order(self, order_type: int, pos_type: int, quantity: float, leverage: float, price: float = None)->'position_c':
         if quantity < self.getMinOrder():
-            return None
+            return {"error":"minorder"}
         pos = self.get_active_position(pos_type)
         if not pos:
             pos = self._new_position(pos_type, leverage)
@@ -160,11 +160,43 @@ class strategy_c:
             if pos.active:
                 pos.price_update(candle, realtime)
 
-    def getMinOrder(self):
+    def calculate_fee_taker(self, price: float, quantity: float) -> float:
+        fee_taker = max(active.timeframe.stream.fee_taker, 0.0)
+        if self.fees_override_taker > 0.0:
+            fee_taker = self.fees_override_taker
+        return abs(quantity) * price * fee_taker
+    
+    def calculate_fee_maker(self, price: float, quantity: float) -> float:
+        fee_maker = max(active.timeframe.stream.fee_maker, 0.0)
+        if self.fees_override_maker > 0.0:
+            fee_maker = self.fees_override_maker
+        return abs(quantity) * price * fee_maker
+
+    def getMinOrder(self, price:float = None):
         min_order = active.timeframe.stream.min_order
+        # if active.timeframe.stream.min_order_usd:
+        #     if price is None: 
+        #         price = round_to_tick_size(getRealtimeCandle().close, getMintick())
+        #     min_order = max( min_order, active.timeframe.stream.min_order_usd * price )
         if min_order < EPSILON:
             min_order = getPrecision()
         return max( min_order, EPSILON )
+    
+    def getMaxAvailableQuantity(self, price:float, leverage)->float:
+        ''' calculate max quantity we can buy/sell in base currency from liquity'''
+        assert(price != None)
+        
+        precision = max( getPrecision(), EPSILON )
+        max_quantity = floor_to_tick_size(((self.liquidity / price) * leverage), precision)
+        max_fee = self.calculate_fee_taker(price, max_quantity)
+        cl = (max_quantity * price) / leverage # turn it back to dollars.
+        while cl + max_fee > self.liquidity and max_quantity > precision:
+            max_quantity -= precision
+            max_fee = self.calculate_fee_taker(price, max_quantity)
+            cl = (max_quantity * price) / leverage # turn it back to dollars.
+        return max_quantity
+    
+    
 
 
 class position_c:
@@ -179,8 +211,6 @@ class position_c:
         self.collateral = 0.0
         self.priceAvg = 0.0
         self.leverage = 1
-        self.fee_taker = 0.0
-        self.fee_maker = 0.0
         self.realized_pnl_quantity = 0.0
         self.order_history = []
         self.max_size_held = 0.0
@@ -192,14 +222,6 @@ class position_c:
             'oldliquidation': 0,
             'liquidationLine': None
         }
-
-        # fees
-        self.fee_maker = active.timeframe.stream.fee_maker
-        self.fee_taker = active.timeframe.stream.fee_taker
-        if strategy_instance.fees_override_maker > 0.0:
-            self.fee_maker = strategy_instance.fees_override_maker
-        if strategy_instance.fees_override_taker > 0.0:
-            self.fee_taker = strategy_instance.fees_override_taker
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
@@ -233,12 +255,6 @@ class position_c:
             pnl = (self.priceAvg - current_price) * quantity
         return pnl
 
-    def calculate_fee_taker(self, price: float, quantity: float) -> float:
-        return abs(quantity) * price * self.fee_taker
-    
-    def calculate_fee_maker(self, price: float, quantity: float) -> float:
-        return abs(quantity) * price * self.fee_maker
-
     def calculate_liquidation_price(self) -> float:
         '''
         maintenance_margin_ratio: It is used to measure the user's position risk. 
@@ -268,9 +284,8 @@ class position_c:
         if leverage > 1:
             quantity *= leverage
         if quantity < self.strategy_instance.getMinOrder():
-            return None
+            return {"error": "<min"}
         
-
         # Determine if order increases or reduces position
         is_increasing = False
         if not self.active:
@@ -283,28 +298,36 @@ class position_c:
         fee = 0.0
         collateral_change = 0.0
         pnl = 0.0
+        precision = getPrecision()
         if is_increasing:
-            # calculate max quantity we can buy
-            precision = max( getPrecision(), EPSILON )
-            max_quantity = floor_to_tick_size(((self.strategy_instance.liquidity / price) * leverage), precision)
-            max_fee = self.calculate_fee_taker(price, max_quantity)
-            cl = (max_quantity * price) / leverage # turn it back to dollars.
-            while cl + max_fee > self.strategy_instance.liquidity and max_quantity > precision:
-                max_quantity -= precision
-                max_fee = self.calculate_fee_taker(price, max_quantity)
-                cl = (max_quantity * price) / leverage # turn it back to dollars.
+            max_quantity = self.strategy_instance.getMaxAvailableQuantity(price, leverage)
+            max_fee = self.strategy_instance.calculate_fee_taker(price, max_quantity)
 
             # we now have a max quantity we can purchase in base currency. Anything below is valid
             if quantity > max_quantity:
                 quantity = max_quantity
                 fee = max_fee
             else:
-                quantity = floor_to_tick_size(quantity, getPrecision())
-                fee = self.calculate_fee_taker(price, quantity)
+                quantity = floor_to_tick_size(quantity, precision)
+                fee = self.strategy_instance.calculate_fee_taker(price, quantity)
+
+            # clamp to max_position
+            # I don't like that we are using dollars here. I'd like to keep this dollar free except for liquidity
+            if self.strategy_instance.max_position_size > 0.0:
+                if self.strategy_instance.currency_mode == 'USD':
+                    value = (self.size * self.priceAvg) / leverage
+                    cost = (quantity * price) / leverage
+                    if value + cost > self.strategy_instance.max_position_size:
+                        cost = self.strategy_instance.max_position_size - value
+                        quantity = round_to_tick_size(((cost / price) * leverage), getPrecision())
+                elif self.size + quantity > self.strategy_instance.max_position_size:
+                    quantity = round_to_tick_size(self.strategy_instance.max_position_size - self.size, getPrecision())
+
+
             collateral_change = (quantity * price) / leverage
 
-            if quantity < precision:
-                return None
+            if quantity < self.strategy_instance.getMinOrder():
+                return {"error": "<min"}
             
             pnl = 0.0
             
@@ -317,16 +340,13 @@ class position_c:
                 quantity = round_to_tick_size(quantity, getPrecision())
             collateral_change = (quantity * self.priceAvg) / self.leverage
             if collateral_change > self.collateral:
-                collateral_change = self.collateral # EPSILON ERROR
-                # raise ValueError( f"Warning: collateral_change ({collateral_change}) > self.collateral ({self.collateral})" )
+                collateral_change = self.collateral # Float ERROR
             collateral_change = -collateral_change
 
-            if quantity < EPSILON:
-                return None
+            if quantity < self.strategy_instance.getMinOrder():
+                return {"error": "<min"}
             
-            fee = self.calculate_fee_taker(price, quantity)
-
-            # calculate pnl
+            fee = self.strategy_instance.calculate_fee_taker(price, quantity)
             pnl = self.calculate_pnl(price, quantity)
 
             # we have the data to create the order
@@ -336,7 +356,6 @@ class position_c:
         collateral_change = cleanFloatJunk( collateral_change )
         fee = cleanFloatJunk( fee )
         pnl = cleanFloatJunk( pnl )
-        # print( f"quantity: {quantity} Collateral Change: {collateral_change} fee: {fee} pnl: {pnl}")
         
         # Store order in history
         order_info = {
@@ -403,11 +422,13 @@ class position_c:
 
     def close(self):
         if not self.active or self.size < EPSILON:
-            return
+            return { "error": "noposition" }
         order_type = c.BUY if self.type == c.SHORT else c.SELL
         price = getRealtimeCandle().close
-        self.execute_order(order_type, price, self.size, self.leverage)
-        marker(self)
+        order_info = self.execute_order(order_type, price, self.size, self.leverage)
+        if not order_info.get("error"):
+            marker(self)
+        return order_info
 
     def check_stoploss(self, stoploss_order, candle:candle_c)->bool:
         price = stoploss_order.get('price')
@@ -812,6 +833,7 @@ def marker( pos:position_c, message = None, prefix = '', reversal:bool = False )
 def getActivePosition(pos_type: int = None) -> 'position_c':
     return strategy.get_active_position(pos_type)
 
+
 def order(cmd: str|int, target_position_type:int= None, quantity:float= None, leverage:float= None):
     if isinstance( cmd, str ):
         order_type = c.BUY if cmd.lower() == 'buy' else c.SELL if cmd.lower() == 'sell' else None
@@ -832,38 +854,39 @@ def order(cmd: str|int, target_position_type:int= None, quantity:float= None, le
         else:
             target_position_type = c.LONG if order_type == c.BUY else c.SHORT
 
+    if target_position_type != c.LONG and target_position_type != c.SHORT:
+        raise ValueError( f"Invalid position type: {target_position_type}" )
+
     selected_leverage = leverage if leverage is not None else (strategy.leverage_long if target_position_type == c.LONG else strategy.leverage_short)
-    current_price = getRealtimeCandle().close
+    selected_leverage = max(selected_leverage, 1)
+    current_price = round_to_tick_size(getRealtimeCandle().close, getMintick())
 
-    # Convert quantity to base units. Not leveraged. Not rounded to tick size
-    actual_quantity_base_units = quantity if quantity is not None else strategy.order_size
+    if quantity is None:
+        quantity = strategy.order_size
+
+    # if we are trading in USDT convert the quantity to base units
     if strategy.currency_mode == 'USD':
-        actual_quantity_base_units = actual_quantity_base_units / current_price if current_price > EPSILON else 0.0
+        quantity = quantity/current_price # we don't adjust to precision yet
 
-    # clamp only when not using a custom quantity
-    if not quantity:
-        active_pos = strategy.get_active_position()
-        if active_pos:
-            if strategy.currency_mode == 'BASE':
-                if active_pos.type == order_type and active_pos.size + actual_quantity_base_units > strategy.max_position_size:
-                    actual_quantity_base_units = strategy.max_position_size - active_pos.size
-            else:
-                q_dollars = actual_quantity_base_units * current_price
-                if active_pos.type == order_type and active_pos.collateral + q_dollars > strategy.max_position_size:
-                    actual_quantity_base_units = (strategy.max_position_size - active_pos.collateral) / current_price
+    actual_quantity_base_units = quantity
 
-    if actual_quantity_base_units < EPSILON:
-        if not isInitializing():
-            print(f"Order quantity too small: {actual_quantity_base_units}")
-        return
+    # We have cleaned the inputs.
+    # We now handle the oneway/hedged situation
+
+
+    order = None
 
     if strategy.hedged: # 'HEDGE'
-        if strategy.order(order_type, target_position_type, actual_quantity_base_units, selected_leverage):
+        order = strategy.order(order_type, target_position_type, actual_quantity_base_units, selected_leverage)
+        assert order, "strategy.order must always return a dict"
+        if not order.get("error"):
             marker( strategy.get_active_position(target_position_type) )
     else:  # ONEWAY
         active_pos = strategy.get_active_position()
         if not active_pos or active_pos.type == target_position_type:
-            if strategy.order(order_type, target_position_type, actual_quantity_base_units, selected_leverage):
+            order = strategy.order(order_type, target_position_type, actual_quantity_base_units, selected_leverage)
+            assert order, "strategy.order must always return a dict"
+            if not order.get("error"):
                 marker( strategy.get_active_position() )
         else:
             pos_size = active_pos.size
@@ -876,13 +899,18 @@ def order(cmd: str|int, target_position_type:int= None, quantity:float= None, le
                     remaining_quantity = actual_quantity_base_units
                 else:
                     remaining_quantity = actual_quantity_base_units - pos_size
-                if remaining_quantity > EPSILON:
-                    if strategy.order(order_type, target_position_type, remaining_quantity, selected_leverage):
+                if remaining_quantity > strategy.getMinOrder():
+                    order = strategy.order(order_type, target_position_type, remaining_quantity, selected_leverage)
+                    assert order, "strategy.order must always return a dict"
+                    if not order.get("error"):
                         marker( strategy.get_active_position(), reversal= True )
             else:
-                if strategy.order(order_type, active_pos.type, actual_quantity_base_units, selected_leverage):
+                order = strategy.order(order_type, active_pos.type, actual_quantity_base_units, selected_leverage)
+                assert order, "strategy.order must always return a dict"
+                if not order.get("error"):
                     marker( strategy.get_active_position() )
 
+    return order
 
 
 def close(pos_type: int = None):
