@@ -58,7 +58,7 @@ class strategy_c:
         self.liquidation_enabled = True
         self.maintenance_margin_rate = 0.0066
         self.hedged = True
-        self.show_markers = True
+        self.show_entry_markers = True
         self.liquidity = initial_liquidity
         self.fees_override_maker = 0.0
         self.fees_override_taker = 0.0
@@ -81,14 +81,21 @@ class strategy_c:
             raise ValueError("Leverage values must be at least 1.")
 
     def order(self, order_type: int, pos_type: int, quantity: float, leverage: float, price: float = None)->'position_c':
-        if quantity < self.getMinOrder():
-            return {"error":"minorder"}
-        pos = self.get_active_position(pos_type)
-        if not pos:
-            pos = self._new_position(pos_type, leverage)
         if not price:
             price = getRealtimeCandle().close
-        return pos.execute_order(order_type, price, quantity, leverage)
+
+        pos = self.get_active_position(pos_type)
+        if pos:
+            return pos.execute_order(order_type, price, quantity, leverage)
+        
+        # create a new position
+        pos = self._new_position(pos_type, leverage)
+        order_info = pos.execute_order(order_type, price, quantity, leverage)
+
+        if not order_info.get("error"):
+            self.positions.append( pos )
+
+        return order_info
 
     def _new_position(self, pos_type: int, leverage: float) -> 'position_c':
         # Set up stats if it's the first position ever opened
@@ -98,7 +105,6 @@ class strategy_c:
         pos = position_c(self)
         pos.type = pos_type
         pos.leverage = leverage
-        self.positions.append(pos)
         return pos
 
     def _close_position(self, pos: 'position_c'):
@@ -172,15 +178,14 @@ class strategy_c:
             fee_maker = self.fees_override_maker
         return abs(quantity) * price * fee_maker
 
-    def getMinOrder(self, price:float = None):
+    def getMinOrder(self, at_price:float = None):
+        ''' calculate minimum order allowed by the exchange. *without leverage*'''
         min_order = active.timeframe.stream.min_order
         # if active.timeframe.stream.min_order_usd:
-        #     if price is None: 
-        #         price = round_to_tick_size(getRealtimeCandle().close, getMintick())
-        #     min_order = max( min_order, active.timeframe.stream.min_order_usd * price )
-        if min_order < EPSILON:
-            min_order = getPrecision()
-        return max( min_order, EPSILON )
+        #     if at_price is None: 
+        #         at_price = round_to_tick_size(getRealtimeCandle().close, getMintick())
+        #     min_order = max( min_order, active.timeframe.stream.min_order_usd * at_price )
+        return max( min_order, getPrecision() )
     
     def getMaxAvailableQuantity(self, price:float, leverage)->float:
         ''' calculate max quantity we can buy/sell in base currency from liquity'''
@@ -283,8 +288,6 @@ class position_c:
         price = round_to_tick_size(price, getMintick())
         if leverage > 1:
             quantity *= leverage
-        if quantity < self.strategy_instance.getMinOrder():
-            return {"error": "<min"}
         
         # Determine if order increases or reduces position
         is_increasing = False
@@ -327,7 +330,7 @@ class position_c:
             collateral_change = (quantity * price) / leverage
 
             if quantity < self.strategy_instance.getMinOrder():
-                return {"error": "<min"}
+                return {"error": "minorder"}
             
             pnl = 0.0
             
@@ -343,8 +346,9 @@ class position_c:
                 collateral_change = self.collateral # Float ERROR
             collateral_change = -collateral_change
 
-            if quantity < self.strategy_instance.getMinOrder():
-                return {"error": "<min"}
+            # there is minimum when reducing other than the unit size
+            if quantity < getPrecision():
+                return {"error": "minorder"}
             
             fee = self.strategy_instance.calculate_fee_taker(price, quantity)
             pnl = self.calculate_pnl(price, quantity)
@@ -792,7 +796,7 @@ def newTick(candle: candle_c, realtime: bool = True):
     strategy.price_update(candle, realtime)
 
 def marker( pos:position_c, message = None, prefix = '', reversal:bool = False ):
-    if strategy.show_markers and pos:
+    if strategy.show_entry_markers and pos:
         order = pos.order_history[-1]
         if order['quantity'] < EPSILON:
             return
