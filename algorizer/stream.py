@@ -612,12 +612,7 @@ class stream_c:
         if not self.min_order:
             self.min_order = self.precision
         self.min_order_usd = self.markets[symbol]['limits']['cost'].get('min')
-
-        from pprint import pprint
-        pprint( self.markets[symbol] )
-
-        print( f"MINIMUM ORDER: {self.min_order} markets min order: {self.markets[symbol]['limits']['amount'].get('min')}")
-            
+ 
         # fetch OHLCVs
         if self.cache_only:
             ohlcvs = fetcher.loadCache( self.symbol, self.timeframeFetch, max_amount * scale )
