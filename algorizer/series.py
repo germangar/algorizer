@@ -567,22 +567,41 @@ def _generatedseries_calculate_lessequal_series(source: np.ndarray, period: int,
 
 def _generatedseries_calculate_bitwise_and_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param= None) -> np.ndarray:
     param_array = _prepare_param_for_op( param, source.shape[0], dataset )
-    int_result = np.bitwise_and(source.astype(np.int64), param_array.astype(np.int64)) # to int
-    return int_result.astype(np.float64) # back to float
+    mask = np.isnan(source) | np.isnan(param_array)
+    src_int = np.where(mask, 0, source).astype(np.int64)
+    prm_int = np.where(mask, 0, param_array).astype(np.int64)
+    int_result = np.bitwise_and(src_int, prm_int)
+    res = int_result.astype(np.float64)
+    res[mask] = np.nan
+    return res
 
 def _generatedseries_calculate_bitwise_or_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param) -> np.ndarray:
     param_array = _prepare_param_for_op( param, source.shape[0], dataset )
-    int_result = np.bitwise_or(source.astype(np.int64), param_array.astype(np.int64))
-    return int_result.astype(np.float64)
+    mask = np.isnan(source) | np.isnan(param_array)
+    src_int = np.where(mask, 0, source).astype(np.int64)
+    prm_int = np.where(mask, 0, param_array).astype(np.int64)
+    int_result = np.bitwise_or(src_int, prm_int)
+    res = int_result.astype(np.float64)
+    res[mask] = np.nan
+    return res
 
 def _generatedseries_calculate_bitwise_xor_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param) -> np.ndarray:
     param_array = _prepare_param_for_op( param, source.shape[0], dataset )
-    int_result = np.bitwise_xor(source.astype(np.int64), param_array.astype(np.int64))
-    return int_result.astype(np.float64)
+    mask = np.isnan(source) | np.isnan(param_array)
+    src_int = np.where(mask, 0, source).astype(np.int64)
+    prm_int = np.where(mask, 0, param_array).astype(np.int64)
+    int_result = np.bitwise_xor(src_int, prm_int)
+    res = int_result.astype(np.float64)
+    res[mask] = np.nan
+    return res
 
 def _generatedseries_calculate_bitwise_not_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param) -> np.ndarray:
-    int_result = np.bitwise_not(source.astype(np.int64))
-    return int_result.astype(np.float64)
+    mask = np.isnan(source)
+    src_int = np.where(mask, 0, source).astype(np.int64)
+    int_result = np.bitwise_not(src_int)
+    res = int_result.astype(np.float64)
+    res[mask] = np.nan
+    return res
 
 def _generatedseries_calculate_abs_series(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param: None) -> np.ndarray:
     return np.abs(source)
