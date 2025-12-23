@@ -979,8 +979,16 @@ def print_summary_stats():
     long_win_ratio = (strategy.stats.total_winning_long_positions / strategy.stats.total_long_positions) * 100 if strategy.stats.total_long_positions > 0 else 0.0
     short_win_ratio = (strategy.stats.total_winning_short_positions / strategy.stats.total_short_positions) * 100 if strategy.stats.total_short_positions > 0 else 0.0
 
-    print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Long SL':<12} {'Short SL':<12} {'Liquidated':<12}")
-    print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {strategy.stats.total_long_stoploss:<12} {strategy.stats.total_short_stoploss:<12} {strategy.stats.total_liquidated_positions:<12}")
+    long_sl_pct = (strategy.stats.total_long_stoploss / total_closed_positions) * 100 if total_closed_positions > 0 else 0.0
+    short_sl_pct = (strategy.stats.total_short_stoploss / total_closed_positions) * 100 if total_closed_positions > 0 else 0.0
+    liquidated_pct = (strategy.stats.total_liquidated_positions / total_closed_positions) * 100 if total_closed_positions > 0 else 0.0
+
+    long_sl_str = f"{strategy.stats.total_long_stoploss} ({long_sl_pct:.1f}%)"
+    short_sl_str = f"{strategy.stats.total_short_stoploss} ({short_sl_pct:.1f}%)"
+    liquidated_str = f"{strategy.stats.total_liquidated_positions} ({liquidated_pct:.1f}%)"
+
+    print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Long SL':<15} {'Short SL':<15} {'Liquidated':<15}")
+    print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {long_sl_str:<15} {short_sl_str:<15} {liquidated_str:<15}")
     print("------------------------------")
 
 
