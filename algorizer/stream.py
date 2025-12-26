@@ -777,7 +777,7 @@ class stream_c:
         if self.running:
             console.print_status_line()
 
-    def broker_event( self, order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price ):
+    def broker_event( self, order_info:dict ):
         '''
         order_type (Buy/Sell Event): represented as the constants c.LONG (1) and c.SHORT (-1)
         quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.001 BTC).
@@ -790,7 +790,7 @@ class stream_c:
         '''
         if self.running:
             console.delete_last_line()
-        self.event_callback( self, "broker_event", (order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price), 9 )
+        self.event_callback( self, "broker_event", order_info, 1 )
         if self.running:
             console.print_status_line()
 

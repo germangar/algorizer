@@ -43,37 +43,45 @@ def event( stream:stream_c, event:str, param, numparams ):
 
     # This event will be called when the strategy executes an order in real time. Not when backtesting.
     elif event == "broker_event":
-        assert( isinstance(param, tuple) and len(param) == numparams)
         '''
-        order_type (Buy/Sell): represented as the constants c.LONG (1) and c.SHORT (-1)
-        quantity (Order Quantity in Base Currency): The order amount of the base asset already leveraged.
-        quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD already leveraged.
-        position_type (New Position Type: Long/Short/Flat)
-        position_size_base (New Position Size in Base Currency): Total quantity of the base asset currently held (signed for long/short) leveraged.
-        position_size_dollars Total notional exposure of the position, including the effect of leverage, in dollars.
-        leverage (Leverage of the Order)
-        position_collateral_dollars (Un-leveraged Capital in Position)
+        info = {
+                "order_type": order_type,                           # c.BUY / c.SELL (1/-1)
+                "order_quantity": quantity,                         # Notional. Already scaled by leverage
+                "order_quantity_dollars": quantity_dollars,         # Notional. Already scaled by leverage
+                "position_type": self.type,                         # c.LONG / c.SHORT (1/-1)
+                "position_size": position_size_base,                # Notional. Already scaled by leverage
+                "position_size_dollars": position_size_dollars,     # Notional. Already scaled by leverage
+                "leverage": leverage,
+                "price": price,
+                "source ": [ 'order', 'liquidation_trigger', 'takeprofit_trigger', 'stoploss_trigger', 'takeprofit_create', 'stoploss_create' ]
+            }
         '''
-        import requests
-        
-        order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price = param
-
-        # These events happen when the strategy creates a takeprofit or a stoploss.
-        # Use them to create them in your broker if you think it's convenient.
-        # The trade code will also create a close event when the takeprofit or stoploss are
-        # triggered that you will need to skip in that case
-        if order_type == c.TAKEPROFIT or order_type == c.STOPLOSS:
+        if not stream.running: # is backtesting
             return
+        
+        source = param['source']
+        if source == 'takeprofit_create' or source == 'stoploss_create':
+            # These are meant to create a stoploss or takeprofit in the exchange. Not to execute a market order.
+            # When the takeprofit, stoploss and liquidation are triggered there will also be an event ('*_trigger')
+            # and in that case the orders will be sent unless we choose to filter them out.
+            return
+        
+        order_type = param['order_type']
+        leverage = param['leverage']
+        position_size = param['position_size'] * param['position_type'] # added directionality for no reason
+        order_quantity_dollars = param['order_quantity_dollars'] / leverage # whook by default expects unleveraged collateral in the order
+
 
         # this is an example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = "blabla"
         url = 'https://webhook.site/ae09b310-eab0-4086-a0d1-2da80ab722d1'
-        if position_size_base == 0:
+        if position_size == 0:
             message = f"{account} {stream.symbol} close"
         else:
             order = 'buy' if order_type == c.LONG else 'sell'
-            message = f"{account} {stream.symbol} {order} {quantity_dollars:.4f}$ {leverage}x"
+            message = f"{account} {stream.symbol} {order} {order_quantity_dollars:.4f}$ {leverage}x"
         if url:
+            import requests
             req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
 
         

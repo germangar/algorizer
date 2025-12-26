@@ -46,34 +46,40 @@ def event( stream:stream_c, event:str, param, numparams ):
 
     elif event == "broker_event":
         '''
-        order_type (Buy/Sell): represented as the constants c.LONG, c.SHORT, c.TAKEPROFIT (for placing it) and c.STOPLOSS (for placing it)
-        quantity (Order Quantity in Base Currency): The exact amount of the base asset (e.g., 0.01 BTC).
-        quantity_dollars (Order Quantity in Dollars): The notional value of the current order in USD (e.g., if you buy 0.001 BTC at $60,000, this would be $60).
-        position_type (New Position Type: Long/Short/Flat)
-        position_size_base (New Position Size in Base Currency): The total quantity of the base asset currently held (signed for long/short).
-        position_size_dollars (New Position Size in Dollars, Leveraged): This represents the total notional exposure of the position, including the effect of leverage.
-        leverage (Leverage of the Order)
-        position_collateral_dollars (Un-leveraged Capital in Position)
+        info = {
+                "order_type": order_type,                           # c.BUY / c.SELL (1/-1)
+                "order_quantity": quantity,                         # Notional. Already scaled by leverage
+                "order_quantity_dollars": quantity_dollars,         # Notional. Already scaled by leverage
+                "position_type": self.type,                         # c.LONG / c.SHORT (1/-1)
+                "position_size": position_size_base,                # Notional. Already scaled by leverage
+                "position_size_dollars": position_size_dollars,     # Notional. Already scaled by leverage
+                "leverage": leverage,
+                "price": price,
+                "source ": [ 'order', 'liquidation_trigger', 'takeprofit_trigger', 'stoploss_trigger', 'takeprofit_create', 'stoploss_create' ]
+            }
         '''
         if not stream.running: # is backtesting
             return
         
-        order_type, quantity, quantity_dollars, position_type, position_size_base, position_size_dollars, position_collateral_dollars, leverage, price = param
-
-        if order_type == c.TAKEPROFIT or order_type == c.STOPLOSS:
+        source = param['source']
+        if source == 'takeprofit_create' or source == 'stoploss_create':
             return
         
-        import requests
-
+        order_type = param['order_type']
+        position_size = param['position_size'] * param['position_type']
+        leverage = param['leverage']
+        order_quantity_dollars = param['order_quantity_dollars'] / leverage # whook by default expects unleveraged collateral in the order
+        
         # Example of an alert for my webhook 'whook': https://github.com/germangar/whook
         account = ""
         url = 'http://localhost:80/whook'
-        if position_size_base == 0:
+        if position_size == 0:
             message = f"{account} {stream.symbol} close"
         else:
             order = 'buy' if order_type == c.LONG else 'sell'
-            message = f"{account} {stream.symbol} {order} {quantity_dollars:.4f}$ {leverage}x"
+            message = f"{account} {stream.symbol} {order} {order_quantity_dollars:.4f}$ {leverage}x"
         if url and message:
+            import requests
             req = requests.post( url, data=message.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'} )
             print( f"Alert sent:  Status: {req.status_code}  Response: {req.text}" )
 

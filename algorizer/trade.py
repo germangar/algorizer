@@ -284,7 +284,7 @@ class position_c:
             return round_to_tick_size(self.priceAvg - delta, getMintick())
         return 0.0
 
-    def execute_order(self, order_type: int, price: float, quantity: float, leverage: float, liquidation:bool = False):
+    def execute_order(self, order_type: int, price: float, quantity: float, leverage: float, source:str= 'order'):
         price = round_to_tick_size(price, getMintick())
         if leverage > 1:
             quantity *= leverage
@@ -371,7 +371,8 @@ class position_c:
             'barindex': active.barindex,
             'timestamp': active.timeframe.timestamp,
             'fees_cost': fee,
-            'pnl': pnl
+            'pnl': pnl,
+            'source': source
         }
         self.order_history.append(order_info)
 
@@ -395,25 +396,25 @@ class position_c:
         if self.size < EPSILON:
             self.size = 0.0
             self.collateral = 0.0
-            self.was_liquidated = liquidation
+            self.was_liquidated = source == 'liquidation_trigger'
 
         # Broker event
         if not isInitializing():
             quantity_dollars = quantity * price
             position_size_base = self.size
             position_size_dollars = self.size * price
-            position_collateral_dollars = self.collateral
-            active.timeframe.stream.broker_event(
-                order_type=order_type,
-                quantity=quantity,
-                quantity_dollars=quantity_dollars,
-                position_type=self.type,
-                position_size_base=position_size_base,
-                position_size_dollars=position_size_dollars,
-                position_collateral_dollars=position_collateral_dollars,
-                leverage=leverage,
-                price=price
-            )
+            info = {
+                "order_type": order_type,
+                "order_quantity": quantity,
+                "order_quantity_dollars": quantity_dollars,
+                "position_type": self.type,
+                "position_size": position_size_base,
+                "position_size_dollars": position_size_dollars,
+                "leverage": leverage,
+                "price": price,
+                "source ": source
+            }
+            active.timeframe.stream.broker_event( info )
         
         if self.size < EPSILON: # The order has emptied the position
             self.realized_pnl_quantity = self.calculate_realized_pnl_from_history() - self.calculate_fees_from_history()
@@ -498,11 +499,11 @@ class position_c:
                     closing_price = tp_order.get('price')
                 
                 if quantity:
-                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage, source= 'takeprofit_trigger')
                 else:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
-                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage, source= 'takeprofit_trigger')
                 marker( self, prefix=f'TP({quantity:.2f}):' )
 
                 if not self.active:
@@ -534,11 +535,11 @@ class position_c:
                     line.width = 3
                 
                 if quantity:
-                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage, source= 'stoploss_trigger')
                 else:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
-                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage)
+                    self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage, source= 'stoploss_trigger')
                 marker( self, prefix='Stoploss ⛔' )
                 if self.type == c.SHORT:
                     self.strategy_instance.stats.total_short_stoploss += 1
@@ -567,7 +568,7 @@ class position_c:
                     line.style = 'solid'
                     line.width = 3
                 order_type = c.BUY if self.type == c.SHORT else c.SELL
-                self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, liquidation= True)
+                self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, source= 'liquidation_trigger')
                 marker( self, prefix = '💀 ' )
                 return # with the position liquidated there's no need to continue
 
@@ -639,22 +640,22 @@ class position_c:
 
         # Broker event
         if not isInitializing():
-            order_type = c.TAKEPROFIT
+            order_type = c.SELL if self.type == c.LONG else c.BUY
             quantity_dollars = quantity * price
             position_size_base = self.size
             position_size_dollars = self.size * price
-            position_collateral_dollars = self.collateral
-            active.timeframe.stream.broker_event(
-                order_type=order_type,
-                quantity=quantity,
-                quantity_dollars=quantity_dollars,
-                position_type=self.type,
-                position_size_base=position_size_base,
-                position_size_dollars=position_size_dollars,
-                position_collateral_dollars=position_collateral_dollars,
-                leverage=self.leverage,
-                price=price
-            )
+            info = {
+                "order_type": order_type,
+                "order_quantity": quantity,
+                "order_quantity_dollars": quantity_dollars,
+                "position_type": self.type,
+                "position_size": position_size_base,
+                "position_size_dollars": position_size_dollars,
+                "leverage": self.leverage,
+                "price": price,
+                "source ": 'takeprofit_create'
+            }
+            active.timeframe.stream.broker_event( info )
 
         return tp_order
     
@@ -707,22 +708,22 @@ class position_c:
 
         # Broker event
         if not isInitializing():
-            order_type = c.STOPLOSS
+            order_type = c.BUY if self.type == c.LONG else c.SELL
             quantity_dollars = quantity * price
             position_size_base = self.size
             position_size_dollars = self.size * price
-            position_collateral_dollars = self.collateral
-            active.timeframe.stream.broker_event(
-                order_type=order_type,
-                quantity=quantity,
-                quantity_dollars=quantity_dollars,
-                position_type=self.type,
-                position_size_base=position_size_base,
-                position_size_dollars=position_size_dollars,
-                position_collateral_dollars=position_collateral_dollars,
-                leverage=self.leverage,
-                price=price
-            )
+            info = {
+                "order_type": order_type,
+                "order_quantity": quantity,
+                "order_quantity_dollars": quantity_dollars,
+                "position_type": self.type,
+                "position_size": position_size_base,
+                "position_size_dollars": position_size_dollars,
+                "leverage": self.leverage,
+                "price": price,
+                "source ": 'stoploss_create'
+            }
+            active.timeframe.stream.broker_event( info )
 
         return stoploss_order
     
