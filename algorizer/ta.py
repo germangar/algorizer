@@ -1,11 +1,16 @@
+import platform
+
 _talib_available = False
 talib = None
-try:
-    import talib
-    _talib_available = True
-except ImportError:
-    _talib_available = False
-    print("Talib not available")
+if platform.python_implementation() == 'CPython':
+    try:
+        import talib
+        _talib_available = True
+    except ImportError:
+        _talib_available = False
+        print("Talib not available")
+else:
+    print("Talib not loaded (not running on CPython)")
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view

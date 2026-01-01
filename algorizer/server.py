@@ -12,7 +12,8 @@ from . import tools
 from . import active
 
 # Fix for Windows proactor event loop
-if sys.platform == 'win32':
+import platform
+if sys.platform == 'win32' and platform.python_implementation() == 'CPython':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 debug = False

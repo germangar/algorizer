@@ -18,7 +18,8 @@ from algorizer import tasks
 from algorizer.constants import constants as c
 from algorizer.candle import candle_c
 
-if sys.platform == 'win32':
+import platform
+if sys.platform == 'win32' and platform.python_implementation() == 'CPython':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Add port parameter handling

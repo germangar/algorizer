@@ -1,6 +1,7 @@
 @echo off
-set coins=LDO CFX ETH XAUT BTC
+set coins=LDO
 
 for %%c in (%coins%) do (
-    start "%%c Instance" python strat.py %%c
+	start "%%c Instance" python strat.py %%c
+    #start "%%c Instance" pypy strat.py %%c
 )
