@@ -1035,7 +1035,24 @@ def print_pnl_by_period_summary( quarter_pnl_relative_to_max_position = False ):
 
     # Optionally skip last quarter from average unless it's in the third month
     last_q_months = quarters[last_trade_idx][3]
-    last_quarter_incomplete = abs(last_q_months[2]) < EPSILON
+    
+    # Check if the last quarter with trades is the current ongoing quarter
+    is_ongoing_quarter = True
+    try:
+        if active.timeframe and active.timeframe.timestamp:
+            dt_now = datetime.fromtimestamp(active.timeframe.timestamp / 1000, tz=timezone.utc)
+            current_year = dt_now.year
+            current_q = (dt_now.month - 1) // 3 + 1
+            
+            last_q_year = int(quarters[last_trade_idx][0])
+            last_q_idx = quarters[last_trade_idx][1]
+            
+            if last_q_year < current_year or (last_q_year == current_year and last_q_idx < current_q):
+                is_ongoing_quarter = False
+    except:
+        pass # Fallback to treating it as ongoing if we can't determine time
+
+    last_quarter_incomplete = is_ongoing_quarter and abs(last_q_months[2]) < EPSILON
     last_idx_to_use = last_trade_idx
 
     # Print header
