@@ -598,6 +598,8 @@ class stream_c:
         self.fetcher = fetcher = ohlcvs_c( exchangeID, self.symbol )
 
         self.markets = fetcher.getMarkets()
+        if not self.markets.get( self.symbol ):
+            raise SystemExit( f"{exchangeID} doesn't have the symbol {self.symbol}")
         self.precision = fetcher.getPrecision()
         self.mintick = fetcher.getMintick()
         self.fee_maker = self.markets[self.symbol].get('maker') if self.markets[self.symbol].get('maker') is not None else 0.0
