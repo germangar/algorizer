@@ -1,5 +1,6 @@
 import csv
 import ccxt
+import os
 
 # The code in this file started as me trying one of CCXT's examples on how to
 # fetch data from an exchange, and I kept piling stuff on it without any plan.
@@ -7,6 +8,7 @@ import ccxt
 # It does the job. I don't have any interest in refining this part.
 
 path = 'data/'
+os.makedirs(path, exist_ok=True)
 
 class ohlcvs_c:
     def __init__(self, exchangeID = 'binance', symbol = 'BTC/USDT:USDT', type = 'swap') -> None:
@@ -71,6 +73,7 @@ class ohlcvs_c:
             return
         
         filename = self.filenameFromSymbol( symbol, timeframe )
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         print('Writing:', filename)
         
 

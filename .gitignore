@@ -17,3 +17,5 @@ strat.py
 GEMINI.md
 short.py
 launch.bat
+dist/
+*.egg-info/

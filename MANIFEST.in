@@ -1,0 +1,4 @@
+include template.py
+include example_misc.py
+include example_custom_calculated_series.py
+include DOC.md

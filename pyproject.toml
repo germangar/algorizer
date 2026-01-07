@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "algorizer"
+version = "0.1.0"
+description = "A framework for algorithmic strategy scripts."
+readme = "README.md"
+authors = [{ name = "Germán García", email = "germangarciaart@gmail.com" }]
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
+    "ccxt>=4.4.77",
+    "pyzmq>=25.0.0",
+    "requests>=2.31.0",
+    "msgpack>=1.0.0",
+    "lightweight-charts>=2.1",
+    "aioconsole>=0.6.0",
+    "colorama~=0.4.6"
+]
+
+[tool.setuptools]
+# Ensures only the core framework directory is treated as the package
+packages = ["algorizer"]
+
+[tool.setuptools.package-data]
+# Whitelist of specific files to include in the distribution
+"*" = [
+    "README.md", 
+    "DOC.md", 
+    "LICENSE", 
+    "template.py", 
+    "example_misc.py", 
+    "example_custom_calculated_series.py"
+]
+
+[tool.setuptools.exclude-package-data]
+# Blacklist to ensure local development/test files are never bundled
+"*" = [
+    "strat.py", 
+    "test.py", 
+    "short.py", 
+    "launch.bat", 
+    "config.json",
+    "requirements.txt"
+]
