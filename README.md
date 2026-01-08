@@ -5,7 +5,7 @@ It connects to crypto exchanges using the CCXT library and downloads the histori
 
 > [1] It does not require an API key and it will take a while to download. Note: Not all exchanges provide historical data. If it fails try another exchange.
 
-Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
+Strategies can be multi-timeframe (minimum timeframe is 1 minute). Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
 
 Most typical 'indicators' are already built in, and creating custom ones is relatively easy. By default all series are calculated using Numpy. Talib is used for some of them when it's present in the system. Talib provides a marginal speed increase..
 
