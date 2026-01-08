@@ -9,20 +9,31 @@ Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into
 
 Most typical 'indicators' are already built in, and creating custom ones is relatively easy. By default all series are calculated using Numpy. Talib is used for some of them when it's present in the system. Talib provides a marginal speed increase..
 
-I do think Algorizer offers a very intuitive and simple way of creating, backtesting and running trading bots for those with knowledge of python and/or pinescript.
+
+
+## ** Quick Start **
+
+- Install the algorizer module
+```python -m pip install algorizer```
+
+- Create an empty python script and copy/paste the contents of the [script template](https://github.com/germangar/algorizer/blob/main/template.py)
+
+- Run it to verify everything is correct. Start writing your strategy.
+
+</br>
+I'm slowly adding documentation in the DOC file: https://github.com/germangar/algorizer/blob/main/DOC.md </br>
+I also extensively commented the file example_misc.py: https://github.com/germangar/algorizer/blob/main/example_misc.py
+
+</br></br></br>
 
 The project is still a work in progress so you'll most likely find a few nuissances. However, **fetching the historical candles, fetching the real time price updates, running the backtest and running your strategy realtime is reliable.** Backtest and realtime execution match properly. There are **no lookahead nor repainting issues.**
 
 Plotting capabilities: As of today it's capable of **plots, histograms, lines** (point to point) and **markers** (labels), as it's capable of creating subpanels and targetting these to them. Horizontal lines, boxes and tables remain in the to do list, and will probably stay there for quite some time.
 
-I'm slowly adding documentation in the ['DOC.md'](https://github.com/germangar/algorizer/blob/main/DOC.md) file. It's not complete yet, but it offers a starting point. I also extensively commented the file ['example_misc.py'](https://github.com/germangar/algorizer/blob/main/example_misc.py) from which you can obtain a good amount of information and get a sense of how to create a strategy.
-
-Use template.py as base to write scripts.
-
-
+</br>
 <img width="2118" height="1267" alt="image" src="https://github.com/user-attachments/assets/b1f69204-3e29-4865-a7d0-d4d0b5a66b35" />
 
-
+</br>
 
 
 ### Future plans (aka to do list) ###
