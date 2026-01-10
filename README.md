@@ -35,6 +35,8 @@ Plotting capabilities: As of today it's capable of **plots, histograms, lines** 
 
 </br>
 
+Note on dependencies: Pandas is only used to load the data into the chart. Lightweight-chart requires it. It isn't used anywhere else. However, even if algorizer doesn't directly use it, CCXT does.
+
 
 ### Future plans (aka to do list) ###
 - Add more indicators and drawing options.
@@ -45,12 +47,5 @@ Plotting capabilities: As of today it's capable of **plots, histograms, lines** 
 
 . I will not make much work on the chart window UI. I'll make it able to change timeframe if the lightweight-charts gods allow it and that's it. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so even whole new chart replacements other than lightweight-charts could be added</br>
 . I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates, but I have no idea where one can obtain that information in the world of stocks.
-
---------------------
-
-Install the required modules with the usual requirements.txt
-
-pip install -r requirements.txt
-
 
 
