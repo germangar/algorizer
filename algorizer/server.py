@@ -291,7 +291,7 @@ def push_row_update(timeframe):
         "type": "row",
         "timeframe": timeframe.timeframeStr,
         "barindex": timeframe.barindex,
-        "columns": timeframe.columnsList(),
+        "columns": list( timeframe.generatedSeries.keys() ),
         "row_array": pack_array(rows),
         "markers": client.prepareMarkersUpdate( timeframe.stream.markers ),
         "lines": client.prepareLinesUpdate( timeframe.stream.lines ),

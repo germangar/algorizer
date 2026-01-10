@@ -248,7 +248,7 @@ class timeframe_c:
             newrow_close = newrow[4]
             newrow_volume = newrow[5]
 
-            # PROCESSING HISTORICAL DATA (either jumpstart or backtesting)
+            # PROCESSING HISTORICAL DATA
             if self.backtesting:
                 # Increment barindex and timestamp for each historical row
                 self.barindex += 1 
@@ -273,14 +273,13 @@ class timeframe_c:
                 for lt in self.stream.timeframes.values():
                     if not lt.ready or lt.backtesting:
                         continue
-                    # figure out the other timeframe barindex and timestamp for this candle barindex and timestamp
                     lt.barindex = lt.indexForTimestamp( newrow_timestamp, self.timeframeMsec )
                     lt.timestamp = lt.timestampAtIndex( lt.barindex ) if lt.barindex >= 0 else 0
-
-                # Execute the user-defined callback for each historical candle.
+                
                 if self.lastTimestampExecuted == self.dataset[self.barindex, c.DF_TIMESTAMP]:
                     raise ValueError( f"Backtesting: Timestamp already executed [{int(self.dataset[self.barindex, c.DF_TIMESTAMP])}] at barindex {self.barindex}\n previous index timestamp: {int(self.dataset[self.barindex-1, c.DF_TIMESTAMP])}")
 
+                # Execute the user-defined callback for each historical candle.
                 if( self.callback != None ):
                     self.callback( self, 
                               self.generatedSeries['open'], 
@@ -293,7 +292,6 @@ class timeframe_c:
                     
                 self.lastTimestampExecuted = self.dataset[self.barindex, c.DF_TIMESTAMP]
 
-                # Print progress only during the main historical processing loop
                 if self.barindex % 10000 == 0 and not self.jumpstart: 
                     print( self.barindex, "candles processed." )
 
@@ -351,11 +349,11 @@ class timeframe_c:
             # NEW CANDLE - REAL-TIME
 
             # Exchange issued candle updates may not match fetched closed candles (used for historic backtesting)
-            # so we need to fetch the last historic candle after the updates closed a candle. Which SUCKS because it adds
-            # half a second or more of delay, but if we don't the backtest may not match the realtime strategy.
-            if VERIFY_CLOSED_CANDLES: # and self.stream.exchange.id != "binance": # chatGPT affirms Binance is the only one with perfect candles in the updates.
+            # so we need to fetch the last historic candle after the tick closed a candle. Which SUCKS because it adds
+            # a ping amount of milliseconds of delay, but if we don't fetch it the backtest may not match the realtime strategy.
+            if VERIFY_CLOSED_CANDLES:
                 ohlcv = self.stream.fetcher.fetchLastClosed(self.stream.symbol, self.timeframeStr)
-                # FIXME: I guess I should add error handling to the fetch. More delays, yeepee
+                # FIXME?: I guess I should add error handling to the fetch. More delays, yeepee
                 if ohlcv:
                     if ohlcv[c.DF_TIMESTAMP] == self.realtimeCandle.timestamp:
                         if verbose and (ohlcv[c.DF_OPEN] != self.realtimeCandle.open or 
@@ -379,7 +377,7 @@ class timeframe_c:
             # Append a new row to the Dataset for the closed candle data
             new_idx = self.barindex + 1
 
-            # Create a new row with values from self.realtimeCandle
+            # Create a new row with values from self.realtimeCandle and append it to the dataset
             new_dataset_row = np.full(self.dataset.shape[1], np.nan)
             new_dataset_row[c.DF_TIMESTAMP] = self.realtimeCandle.timestamp
             new_dataset_row[c.DF_OPEN]      = self.realtimeCandle.open
@@ -389,7 +387,7 @@ class timeframe_c:
             new_dataset_row[c.DF_VOLUME]    = self.realtimeCandle.volume
             new_dataset_row[c.DF_TOP]    = self.realtimeCandle.top
             new_dataset_row[c.DF_BOTTOM]    = self.realtimeCandle.bottom
-            self.dataset = np.vstack([self.dataset, new_dataset_row]) # Append the new row to the dataset
+            self.dataset = np.vstack([self.dataset, new_dataset_row])
             
 
             # copy newrow into realtimeCandle for the NEXT incoming tick
@@ -409,14 +407,11 @@ class timeframe_c:
             self.timestamp = int( self.dataset[ self.barindex, c.DF_TIMESTAMP ] )
             if is_fetch :
                 self.stream.timestampFetch = self.realtimeCandle.timestamp
-
-            # print( f"NEW CANDLE {self.timeframeStr} : {[new_dataset_row[c.DF_TIMESTAMP], new_dataset_row[c.DF_OPEN], new_dataset_row[c.DF_HIGH], new_dataset_row[c.DF_LOW], new_dataset_row[c.DF_CLOSE], new_dataset_row[c.DF_VOLUME]]}" )
-            # print( f" RT CANDLE {self.timeframeStr} : {self.realtimeCandle.tolist()}" )
-
             
             if self.lastTimestampExecuted == self.dataset[self.barindex, c.DF_TIMESTAMP]:
                 raise ValueError( f"Realtime: Timestamp already executed [{int(self.dataset[self.barindex, c.DF_TIMESTAMP])}] at barindex {self.barindex}\n previous index timestamps: {self.dataset[:, c.DF_TIMESTAMP].tolist()[-3:]}")
-                
+            
+            # call the user closeCandle script
             if( self.callback != None ):
                 self.callback( self, 
                               self.generatedSeries['open'], 
@@ -441,21 +436,19 @@ class timeframe_c:
         
 
     def dataset_createColumn( self )->int:
-        # Add the new column if necessary
         n_rows = self.dataset.shape[0]
         new_col = np.full((n_rows, 1), np.nan, dtype=np.float64)
         self.dataset = np.hstack([self.dataset, new_col])
         index = self.dataset.shape[1] - 1
         return index
-    
-    def columnsList( self )->list:
-        return list( self.generatedSeries.keys() )
+
 
     def indexForTimestamp( self, timestamp:int, caller_timeframe_msec:int = 0 ) -> int:
         adjusted_timestamp = timestamp + caller_timeframe_msec
         baseTimestamp = self.dataset[0, c.DF_TIMESTAMP]
         index = int((adjusted_timestamp - baseTimestamp) // self.timeframeMsec) - 1
         return max(-1, index)
+
 
     def timestampAtIndex( self, index:int )->int:
         return int( self.dataset[index, c.DF_TIMESTAMP] )
@@ -472,7 +465,6 @@ class timeframe_c:
 
 
     def calcGeneratedSeries( self, type:str, source: np.ndarray|generatedSeries_c, period:int, func, param=None, always_reset:bool = False )->generatedSeries_c:
-
         gse = self.generatedSeries.get( tools.generatedSeriesNameFormat( type, source, period ) )
         if( gse == None ):
             gse = generatedSeries_c( type, source, period, func, param, always_reset )
@@ -511,6 +503,7 @@ class timeframe_c:
         '''
         return self.register_plot( source, name, chart_name, color, style, width )
     
+
     def histogram( self, source, name:str = None, chart_name:str = None, color = "#8FA7BBAA", margin_top = 0.0, margin_bottom = 0.0 )->plot_c:
         '''
         source: can either be a series or a value. A series can only be plotted when it is in the dataframe. When plotting a value a series will be automatically created in the dataframe.
@@ -521,14 +514,16 @@ class timeframe_c:
         '''
         return self.register_plot( source, name, chart_name, color, type = c.PLOT_HIST, hist_margin_top= margin_top, hist_margin_bottom= margin_bottom )
     
+
     def plotsList( self )->dict:
         di = {}
         for plot in self.registeredPlots.values():
             gs = self.generatedSeries[plot.name]
-            if gs.column_index == -1: # HACK: Avoid adding plots without a dataset column initialized
+            if gs.column_index == -1: # Avoid adding plots without a dataset column initialized
                 continue
             di[plot.name] = plot.descriptor()
         return di
+
 
     def candle( self, index = None )->candle_c:
         if( index is None ):
@@ -546,10 +541,6 @@ class timeframe_c:
         candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.top, candle.bottom = ( int(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], row[7] )
         return candle
     
-    def setStatusLineMsg( self, message:str ):
-        self.stream.setStatusLineMsg(message)
-    
-
 
 class stream_c:
     def __init__( self, symbol, exchangeID:str, timeframeList, callbacks, event_callback = None, max_amount = 5000, cache_only = False ):
@@ -585,7 +576,7 @@ class stream_c:
                 self.timeframeFetch = t
 
         if self.timeframeFetch == None :
-            raise SystemError( f"stream_c->Init: timeframeList doesn't contain a valid timeframe name ({timeframeList})" )
+            raise SystemExit( f"stream_c->Init: timeframeList doesn't contain a valid timeframe name ({timeframeList})" )
         
         # the amount of candles to fetch are defined by the last timeframe on the list
         scale = int( tools.timeframeSec(timeframeList[-1]) / tools.timeframeSec(self.timeframeFetch) )
@@ -607,8 +598,10 @@ class stream_c:
 
         # hack for kucoin. It expects contracts and their contracts are units. That doesn't work for us
         if exchangeID == "kucoinfutures":
-            self.mintick = 0.0
-            self.precision = 0.0
+            if self.mintick >= 1.0:
+                self.mintick = 0.0
+            if self.precision >= 1.0:
+                self.precision = 0.0
 
         self.min_order = self.markets[symbol]['limits']['amount'].get('min')
         if not self.min_order:
@@ -618,7 +611,7 @@ class stream_c:
         # fetch OHLCVs
         if self.cache_only:
             ohlcvs = fetcher.loadCache( self.symbol, self.timeframeFetch, max_amount * scale )
-            print( "LOADING FROM CACHE")
+            print( "Loading OHLCV data from cache")
         else:
             ohlcvs = fetcher.loadCacheAndFetchUpdate( self.symbol, self.timeframeFetch, max_amount * scale )
         if( len(ohlcvs) == 0 ):
