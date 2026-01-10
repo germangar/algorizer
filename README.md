@@ -1,11 +1,11 @@
-This is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't intend to mimic the language, but the structure should be familiar enough to you to feel comfortable.
+Algorizer is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't intend to mimic the language, but the structure should be familiar enough to you to feel comfortable.
 
 **What does it do:**
 It connects to crypto exchanges using the CCXT library and downloads the historical data[1]. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)).
 
-[1] It does not require an API key and it will take a while to download. Note: Not all exchanges provide historical data. If it fails try another exchange.
+> [1] It does not require an API key and it will take a while to download. Note: Not all exchanges provide historical data. If it fails try another exchange.
 
-Strategies can be multi-timeframe. Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
+Strategies can be multi-timeframe (minimum timeframe is 1 minute). Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
 
 Most typical 'indicators' are already built in, and creating custom ones is relatively easy. By default all series are calculated using Numpy. Talib is used for some of them when it's present in the system. Talib provides a marginal speed increase..
 
@@ -35,6 +35,8 @@ Plotting capabilities: As of today it's capable of **plots, histograms, lines** 
 
 </br>
 
+Note on dependencies: Pandas is only used to load the data into the chart. Lightweight-chart requires it. It isn't used anywhere else. However, even if algorizer doesn't directly use it, CCXT does.
+
 
 ### Future plans (aka to do list) ###
 - Add more indicators and drawing options.
@@ -45,12 +47,5 @@ Plotting capabilities: As of today it's capable of **plots, histograms, lines** 
 
 . I will not make much work on the chart window UI. I'll make it able to change timeframe if the lightweight-charts gods allow it and that's it. But I'll gladly accept contributions on it. The script and the chart are in a client/server configuration so even whole new chart replacements other than lightweight-charts could be added</br>
 . I'll also be happy to accept contributions in making it work with stocks. Only needs a fetcher file and a way to get the realtime price updates, but I have no idea where one can obtain that information in the world of stocks.
-
---------------------
-
-Install the required modules with the usual requirements.txt
-
-pip install -r requirements.txt
-
 
 
