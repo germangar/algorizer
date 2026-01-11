@@ -32,10 +32,9 @@ Plotting capabilities: As of today it's capable of **plots, histograms, lines** 
 
 </br>
 <img width="2118" height="1267" alt="image" src="https://github.com/user-attachments/assets/b1f69204-3e29-4865-a7d0-d4d0b5a66b35" />
+</br></br>
 
-</br>
-
-Note on dependencies: Pandas is only used to load the data into the chart. Lightweight-chart requires it. It isn't used anywhere else. However, even if algorizer doesn't directly use it, CCXT does.
+> Note on dependencies: Pandas is only used to load the data into the chart. Lightweight-chart requires it. It isn't used anywhere else. However, even if algorizer doesn't directly use it, CCXT does.
 
 
 ### Future plans (aka to do list) ###
