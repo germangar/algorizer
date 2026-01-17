@@ -3,6 +3,15 @@ from typing import Union, Callable, Coroutine, Any
 
 pendingTasks = {}
 
+def handle_task_result(task: asyncio.Task):
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        import traceback
+        print(f"Exception raised by task = {task.get_name()}:")
+        traceback.print_exc()
 
 def registerTask(name: str, func_or_coro: Union[Callable, Coroutine], *args, **kwargs):
     """Register a task to be run
@@ -31,6 +40,7 @@ async def watch_for_new_tasks(tasks):
                 # This is a function to call with args
                 t = asyncio.create_task(func(*args, **kwargs))
             t.set_name(taskname)
+            t.add_done_callback(handle_task_result)
             tasks.append(t)
             to_remove.append(taskname)
 
@@ -53,12 +63,14 @@ async def runTasks():
             # This is a function to call with args
             task = asyncio.create_task(func(*args, **kwargs))
         task.set_name(name)
+        task.add_done_callback(handle_task_result)
         tasks.append(task)
         del pendingTasks[name]  # Clean them out of pendingTasks
 
     # Start the watcher to launch future ones
     watcher_task = asyncio.create_task(watch_for_new_tasks(tasks))
     watcher_task.set_name("task_watcher")
+    watcher_task.add_done_callback(handle_task_result)
     tasks.append(watcher_task)
 
     # Let tasks run forever instead of waiting for completion
