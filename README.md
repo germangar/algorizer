@@ -3,7 +3,7 @@ Algorizer is a framework for creating/backtesting and running trading algorythms
 **What does it do:**
 It connects to crypto exchanges using the CCXT library and downloads the historical data[1]. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)).
 
-> [1] It does not require an API key and it will take a while to download. Note: Not all exchanges provide historical data. If it fails try another exchange.
+> [1] It does not require an API key and it will take a while to download for the first time. Note: Not all exchanges provide historical data. If it fails try another exchange.
 
 Strategies can be multi-timeframe (minimum timeframe is 1 minute). Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
 
@@ -32,10 +32,9 @@ Plotting capabilities: As of today it's capable of **plots, histograms, lines** 
 
 </br>
 <img width="2118" height="1267" alt="image" src="https://github.com/user-attachments/assets/b1f69204-3e29-4865-a7d0-d4d0b5a66b35" />
+</br></br>
 
-</br>
-
-Note on dependencies: Pandas is only used to load the data into the chart. Lightweight-chart requires it. It isn't used anywhere else. However, even if algorizer doesn't directly use it, CCXT does.
+> Note on dependencies: Pandas is only used to load the data into the chart. Lightweight-chart requires it. It isn't used anywhere else. However, even if algorizer doesn't directly use it, CCXT does.
 
 
 ### Future plans (aka to do list) ###
