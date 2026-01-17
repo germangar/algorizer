@@ -592,24 +592,6 @@ class stream_c:
         self.markets = fetcher.getMarkets()
         if not self.markets.get( self.symbol ):
             raise SystemExit( f"{exchangeID} doesn't have the symbol {self.symbol}")
-        
-
-        # from pprint import pprint
-        if exchangeID == 'bitget':
-            print( "limitOpenTime:", self.markets[symbol]['info']['limitOpenTime'] )
-            print( "offTime:", self.markets[symbol]['info']['offTime'] )
-            print( "openTime:", self.markets[symbol]['info']['openTime'] if self.markets[symbol]['info']['openTime'] else None )
-
-        # 'limitOpenTime': '1768006860541'
-        # 'offTime': '1768006860569'
-        # 'openTime': '1767574864096'
-
-        # 'limitOpenTime': '-1'
-        # 'offTime': '-1'
-        # 'openTime': ''
-
-
-
 
         self.precision = fetcher.getPrecision()
         self.mintick = fetcher.getMintick()
