@@ -43,14 +43,14 @@ stream = stream_c(
     symbol,             # E.g., 'BTC/USDT:USDT' - symbol and quote currency
     exchangeID,         # E.g., 'bitget' - exchange name as understood by CCXT
     timeframeList,      # E.g., ['4h', '1h'] - timeframes of interest (largest first)
-    callbacks,          # List of functions called on each respective candle close
+    callbacks,          # List of functions called on candle close for each timeframe in the list
     event_callback,     # (Optional) Custom handler for asynchronous events
     max_amount=35000,   # Number of historical candles to fetch for backtest
     cache_only=False    # Only use cached data if True
 )
 ```
 
-**Order matters:** List your timeframes largest-to-smallest to enable cross-timeframe logic.
+**Order matters:** List your timeframes in the order you want to read from them in cross-timeframe logic.
 
 **Example:**
 ```python
@@ -63,13 +63,12 @@ stream = stream_c(
     35000
 )
 ```
-You must declare one callback function for each timeframe.
 
 ---
 
 ## The closeCandle Callback
 
-For each timeframe you use, you must provide a function to handle the candle close event:
+For each timeframe you use, you should provide a function to handle the candle close event:
 
 ```python
 def runCloseCandle_fast(timeframe: timeframe_c, open, high, low, close, volume, top, bottom):
@@ -77,6 +76,7 @@ def runCloseCandle_fast(timeframe: timeframe_c, open, high, low, close, volume, 
 ```
 - Attach these callback functions in the same order as your timeframes.
 - Use them for calculations, trading signals, and chart updates.
+- You can set a callback to None if all you want is the timeframe candle data.
 
 ---
 
@@ -112,6 +112,8 @@ def event(stream: stream_c, event: str, param, numparams):
 
 In Algorizer, the `trade` object is your assistant for managing orders and positions. It offers a standardized interface for placing, closing, and inspecting trades, supporting both live and backtesting modes. Configuring your strategy via `trade.strategy` ensures consistent behavior and accuracy during all stages of execution.
 
+Using the trade assistant is optional. Don't import 'trade' if you prefer to create your own trade manager.
+
 ---
 <br><br>
 
@@ -146,7 +148,7 @@ trade.order(cmd, target_position_type=None, quantity=None, leverage=None)
 - `leverage`: Overrides default leverage (leave `None` to use strategy defaults).
 
 **Behavior:**
-- If no `quantity` is specified, uses `order_size` and manages pyramiding: new orders will increase position size up to `max_position_size`. 
+- If no `quantity` is specified, uses `order_size` and manages pyramiding: New orders will increase position size up to `max_position_size`. 
 - To **disable pyramiding**, set `max_position_size` equal to `order_size`; further orders will not add to position once that limit is reached.
 - In **hedged mode**, you must specify the position type to distinguish between long/short sides.
 
@@ -221,7 +223,7 @@ sl = pos.createStoploss(price=None, quantity=None, loss_pct=None, reduce_pct=Non
 - `quantity` or `reduce_pct`: How much of the position to close (in base currency or by %), defaults to current position size
 
 **Visualizing Orders:**  
-You can use this helpers to draw TP, SL, and liquidation levels on your strategy chart:
+You can use these helpers to draw TP, SL, and liquidation levels on your strategy chart:
 
 ```python
 pos.drawTakeprofit(color="#17c200", style="dotted", width=2)
@@ -436,7 +438,7 @@ Because the class is a thin wrapper over a dataset column, many interactions are
   - rsi = ta.RSI(close, 14)
   - rsi.plot('subpanel')
 - Create or use manual series for ad-hoc values:
-  - mySeries = generatedSeries_c('signal', None)  # 'source = None': manual series have no source; other args are optional for manual series
+  - mySeries = generatedSeries_c('signal', None)  # 'source = None': manual series have no source nor func; other args are optional for manual series
   - mySeries[timeframe.barindex] = some_value
 - Operate series within the same timeframe:
   - bb_mid = ta.SMA(close, 21)
