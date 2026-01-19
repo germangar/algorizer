@@ -412,7 +412,7 @@ class position_c:
                 "position_size_dollars": position_size_dollars,
                 "leverage": leverage,
                 "price": price,
-                "source ": source
+                "source": source
             }
             active.timeframe.stream.broker_event( info )
         
@@ -653,7 +653,7 @@ class position_c:
                 "position_size_dollars": position_size_dollars,
                 "leverage": self.leverage,
                 "price": price,
-                "source ": 'takeprofit_create'
+                "source": 'takeprofit_create'
             }
             active.timeframe.stream.broker_event( info )
 
@@ -721,7 +721,7 @@ class position_c:
                 "position_size_dollars": position_size_dollars,
                 "leverage": self.leverage,
                 "price": price,
-                "source ": 'stoploss_create'
+                "source": 'stoploss_create'
             }
             active.timeframe.stream.broker_event( info )
 
