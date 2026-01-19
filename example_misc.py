@@ -53,7 +53,7 @@ def event( stream:stream_c, event:str, param, numparams ):
                 "position_size_dollars": position_size_dollars,     # Notional. Already scaled by leverage
                 "leverage": leverage,
                 "price": price,
-                "source ": [ 'order', 'liquidation_trigger', 'takeprofit_trigger', 'stoploss_trigger', 'takeprofit_create', 'stoploss_create' ]
+                "source": [ 'order', 'liquidation_trigger', 'takeprofit_trigger', 'stoploss_trigger', 'takeprofit_create', 'stoploss_create' ]
             }
         '''
         if not stream.running: # is backtesting
