@@ -850,6 +850,9 @@ class window_c:
         if not self.showRealTimeCandle :
             return
         
+        if not self.isAlive():
+            return
+        
         # OHLCV update to the chart
         data_dict = {
             'time': pd.to_datetime(row[c.DF_TIMESTAMP], unit='ms'),
@@ -867,6 +870,9 @@ class window_c:
 
 
     def newRow(self, msg):
+        if not self.isAlive():
+            return
+
         row:np.ndarray = msg.get('row_array')
         row[c.DF_TIMESTAMP] = int(row[c.DF_TIMESTAMP]) # fix type
         self.barindex = int( msg.get('barindex') )
@@ -942,6 +948,9 @@ class window_c:
 
         while True:
             await asyncio.sleep(1-(datetime.now().microsecond/1_000_000))
+            if not self.isAlive():
+                continue
+
             self.lastCandle.updateRemainingTime()
             chart:Chart = self.panels['main']['chart']
             if self.timerOnPriceLabel:
