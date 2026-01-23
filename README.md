@@ -21,6 +21,11 @@ Most typical 'indicators' are already built in, and creating custom ones is rela
 - Run it to verify everything is correct. Start writing your strategy.
 
 </br>
+
+> Warning: In the v0.1.0 release there's a bug in the name of a key in the info dictionary passed to ```broker_event```.
+> The key is ```'source '``` (with a trailing space) instead of ```'source'```. The trailing space is removed in the repository and will be removed in the next release. You should add the trailing space to the template if you are working with v0.1.0. The bug is only triggered when a ```broker_event``` happens, so only when an order is issued in real time execution.
+
+</br>
 I'm slowly adding documentation in the DOC file: https://github.com/germangar/algorizer/blob/main/DOC.md </br>
 I also extensively commented the file example_misc.py: https://github.com/germangar/algorizer/blob/main/example_misc.py
 

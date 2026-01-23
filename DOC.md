@@ -142,7 +142,7 @@ Use the `trade.order` function to place buy or sell orders.
 ```python
 trade.order(cmd, target_position_type=None, quantity=None, leverage=None)
 ```
-- `cmd`: Either `"buy"` or `"sell"` (string).
+- `cmd`: Either `"buy"` or `"sell"` (as string) or `c.BUY` or `c.SELL` (as integer).
 - `target_position_type`: Use `c.LONG` (1) or `c.SHORT` (-1). In hedged mode this must be supplied.
 - `quantity`: Size in base currency when trade.strategy.currency_mode is 'BASE' or in quote currency when trade.strategy.currency_mode is 'USD'  (if not given, uses `strategy.order_size`).
 - `leverage`: Overrides default leverage (leave `None` to use strategy defaults).
@@ -203,8 +203,7 @@ order_info = {
             'barindex': active.barindex,
             'timestamp': active.timeframe.timestamp,
             'fees_cost': fee,
-            'pnl': pnl_q,
-            'pnl_percentage': pnl_pct,
+            'pnl': pnl_q
         }
 ```
 
