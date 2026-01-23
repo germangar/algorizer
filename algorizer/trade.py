@@ -965,13 +965,6 @@ def print_summary_stats():
     # Calculate metrics
     total_closed_positions = strategy.stats.total_winning_positions + strategy.stats.total_losing_positions
     
-    pnl_quantity = strategy.stats.total_profit_loss
-
-    # This calculation's meaning (PnL % vs Max Pos) depends on currency_mode for max_position_size
-    # It's kept as is to match previous output structure.
-    # It represents PnL as a percentage of the maximum capital allowed per position.
-    pnl_percentage_vs_max_pos_size = (pnl_quantity / strategy.max_position_size) * 100 if strategy.max_position_size != 0 else 0.0
-
     profitable_trades = strategy.stats.total_winning_positions
     losing_trades = strategy.stats.total_losing_positions
     
@@ -988,8 +981,8 @@ def print_summary_stats():
     short_sl_str = f"{strategy.stats.total_short_stoploss} ({short_sl_pct:.1f}%)"
     liquidated_str = f"{strategy.stats.total_liquidated_positions} ({liquidated_pct:.1f}%)"
 
-    print(f"{'PnL %':<12} {'Total PnL':<12} {'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Long SL':<15} {'Short SL':<15} {'Liquidated':<15}")
-    print(f"{pnl_percentage_vs_max_pos_size:<12.2f} {pnl_quantity:<12.2f} {total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {long_sl_str:<15} {short_sl_str:<15} {liquidated_str:<15}")
+    print(f"{'Trades':<8} {'Wins':<8} {'Losses':<8} {'Win Rate %':<12} {'Long Win %':<12} {'Short Win %':<12} {'Long SL':<15} {'Short SL':<15} {'Liquidated':<15}")
+    print(f"{total_closed_positions:<8} {profitable_trades:<8} {losing_trades:<8} {percentage_profitable_trades:<12.2f} {long_win_ratio:<12.2f} {short_win_ratio:<12.2f} {long_sl_str:<15} {short_sl_str:<15} {liquidated_str:<15}")
     print("------------------------------")
 
 
@@ -999,6 +992,12 @@ def print_pnl_by_period_summary( quarter_pnl_relative_to_max_position = False ):
     Print realized PnL by month and year using stats.pnl_history. Does not include unrealized PnL.
     quarter_pnl_relative_to_max_position : If false it will be relative to initial liquidity
     """
+    from colorama import Fore, Style, init as colorama_init
+    colorama_init() # Initialize Colorama for Windows console compatibility
+
+
+
+    
     print("\n--- PnL By Period (Realized Only) ---")
     pnl_history = strategy.pnl_history
     if not pnl_history:
@@ -1074,6 +1073,12 @@ def print_pnl_by_period_summary( quarter_pnl_relative_to_max_position = False ):
             allQuarters += pnl
 
     # Print each year
+    def c_pnl(val):
+        s = f"{val:12.2f}"
+        if val < -EPSILON:
+            return f"{Fore.RED}{s}{Style.RESET_ALL}"
+        return s
+
     for year in sorted(year_quarter_pnls.keys()):
         qpnls = year_quarter_pnls[year]
         total = sum([p if p is not None else 0.0 for p in qpnls])
@@ -1081,11 +1086,20 @@ def print_pnl_by_period_summary( quarter_pnl_relative_to_max_position = False ):
         q2 = qpnls[1] if qpnls[1] is not None else 0.0
         q3 = qpnls[2] if qpnls[2] is not None else 0.0
         q4 = qpnls[3] if qpnls[3] is not None else 0.0
-        print(f"{year:<5} {total:12.2f} | {q1:12.2f} {q2:12.2f} {q3:12.2f} {q4:12.2f}")
+        print(f"{year:<5} {c_pnl(total)} | {c_pnl(q1)} {c_pnl(q2)} {c_pnl(q3)} {c_pnl(q4)}")
     print("-----------------------------")
     avgq = allQuarters/numQuarters if numQuarters > 0 else 0.0
     base = strategy.max_position_size if quarter_pnl_relative_to_max_position else strategy.stats.initial_liquidity
     text = 'max_position_size' if quarter_pnl_relative_to_max_position else 'initial_liquidity'
     avgqpct = (avgq / base) * 100 if base > EPSILON else 0.0
-    print(f"Average PnL per quarter: {avgq:.2f} ({avgqpct:.1f}% relative to {text})")
+
+    avgq_str = f"{avgq:.2f}"
+    if avgq < -EPSILON:
+        avgq_str = f"{Fore.RED}{avgq_str}{Style.RESET_ALL}"
+    
+    avgqpct_str = f"{avgqpct:.1f}%"
+    if avgqpct < -EPSILON:
+        avgqpct_str = f"{Fore.RED}{avgqpct_str}{Style.RESET_ALL}"
+
+    print(f"Average PnL per quarter: {avgq_str} ({avgqpct_str} relative to {text})")
     print("-----------------------------")
