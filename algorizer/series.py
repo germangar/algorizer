@@ -424,54 +424,73 @@ class generatedSeries_c:
     
     def crossingUp( self, other )->bool:
         '''returns a single boolean indicating if self is crossing up a value or a series'''
-        current_self_val = self.iloc(-1)
-        previous_self_val = self.iloc(-2)
+        current_self_val = self[-1]
+        previous_self_val = self[-2]
 
         if np.isnan(current_self_val) or np.isnan(previous_self_val):
             return False
 
         if isinstance( other, generatedSeries_c ):
-            current_other_val = other.iloc(-1)
-            previous_other_val = other.iloc(-2)
+            current_other_val = other[-1]
+            previous_other_val = other[-2]
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
-            return ( previous_self_val <= previous_other_val and current_self_val >= current_other_val and not (previous_self_val == previous_other_val and current_self_val == current_other_val) )
-        elif isinstance( other, (np.ndarray) ):
-            # Use iloc directly from the pd.Series
-            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
-                return False
-            return ( previous_self_val <= other[active.barindex-1] and current_self_val >= other[active.barindex] and not (previous_self_val == other[active.barindex-1] and current_self_val == other[active.barindex]) )
-        else: # assuming float or int
+            # the old value can match but the new value must always be bigger than the counterpart.
+            if current_self_val > current_other_val:
+                if previous_self_val <= previous_other_val:
+                    return True
+            return False
+
+        elif np.isscalar( other ):
             try:
                 float_other = float(other)
             except ValueError:
+                raise ValueError( f"generatedSeries_c.crossingUp: Error casting scalar to float [{type(other)}]" )
                 return False
-            # Corrected line: Use previous_self_val in the last condition
-            return ( previous_self_val <= float_other and current_self_val >= float_other and not (previous_self_val == float_other and current_self_val == float_other) )
+            # the old value can match but the new value must always be bigger than the counterpart.
+            if current_self_val > float_other:
+                if previous_self_val <= float_other:
+                    return True
+            return False
+        elif np.isnan(other):
+            return False
+        
+        raise ValueError( f"generatedSeries_c.crossingUp: Invalid type 'other' [{type(other)}]" )
     
     def crossingDown( self, other )->bool:
         '''returns a single boolean indicating if self is crossing down a value or a series'''
-        current_self_val = self.iloc(-1)
-        previous_self_val = self.iloc(-2)
+        current_self_val = self[-1]
+        previous_self_val = self[-2]
+
         if np.isnan(current_self_val) or np.isnan(previous_self_val):
             return False
 
         if isinstance( other, generatedSeries_c ):
-            current_other_val = other.iloc(-1)
-            previous_other_val = other.iloc(-2)
+            current_other_val = other[-1]
+            previous_other_val = other[-2]
             if np.isnan(current_other_val) or np.isnan(previous_other_val):
                 return False
-            return ( previous_self_val >= previous_other_val and current_self_val <= current_other_val and not (previous_self_val == previous_other_val and current_self_val == current_other_val) )
-        elif isinstance( other, (np.ndarray) ):
-            if len(other) < 2 or active.barindex < 1 or np.isnan(other[active.barindex-1]) or np.isnan(other[active.barindex]):
-                return False
-            return ( previous_self_val >= other[active.barindex-1] and current_self_val <= other[active.barindex] and not (previous_self_val == other[active.barindex-1] and current_self_val == other[active.barindex]) )
-        else: 
+            # the old value can match but the new value must always be smaller than the counterpart.
+            if current_self_val < current_other_val:
+                if previous_self_val >= previous_other_val:
+                    return True
+            return False
+
+        elif np.isscalar( other ):
             try:
                 float_other = float(other)
             except ValueError:
+                raise ValueError( f"generatedSeries_c.crossingUp: Error casting scalar to float [{type(other)}]" )
                 return False
-            return ( previous_self_val >= float_other and current_self_val <= float_other and not (previous_self_val == float_other and current_self_val == float_other) )
+            # the old value can match but the new value must always be smaller than the counterpart.
+            if current_self_val < float_other:
+                if previous_self_val >= float_other:
+                    return True
+            return False
+        elif np.isnan(other):
+            return False
+        
+        raise ValueError( f"generatedSeries_c.crossingUp: Invalid type 'other' [{type(other)}]" )
     
     def crossing( self, other )->bool:
         '''returns a single boolean indicating if self is crossing a value or a series'''
