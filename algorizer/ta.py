@@ -456,6 +456,25 @@ def _generatedseries_calculate_dema(series: np.ndarray, period: int, dataset: np
     dema = 2 * ema1 - ema2
     return dema
 
+#
+def _generatedseries_calculate_tema(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    length = len(series)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Calculate first EMA
+    ema1 = _generatedseries_calculate_ema(series, period, dataset, cindex)
+
+    # Calculate EMA of EMA
+    ema2 = _generatedseries_calculate_ema(ema1, period, dataset, cindex)
+
+    # Calculate EMA of EMA of EMA
+    ema3 = _generatedseries_calculate_ema(ema2, period, dataset, cindex)
+
+    # Calculate TEMA: 3 * EMA1 - 3 * EMA2 + EMA3
+    tema = 3 * ema1 - 3 * ema2 + ema3
+    return tema
+
 # _rma250. Elapsed time: 0.01 seconds
 def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     length = len(series)
@@ -494,7 +513,6 @@ def _generatedseries_calculate_rma(series: np.ndarray, period: int, dataset: np.
 
     return rma
 
-# _wma250. Elapsed time: 0.02 seconds (talib 00.00 seconds)
 def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
     if _talib_available:
         return talib.WMA(series, period)
@@ -518,6 +536,62 @@ def _generatedseries_calculate_wma(series: np.ndarray, period: int, dataset: np.
     result = np.full(length, np.nan)
     result[period - 1:] = wma
 
+    return result
+
+def _generatedseries_calculate_vwma(source: np.ndarray, period: int, dataset: np.ndarray, cindex:int, param=None) -> np.ndarray:
+    length = len(source)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Determine slice of volume matching the source
+    full_dataset_len = dataset.shape[0]
+    start_index = max(0, full_dataset_len - length)
+    
+    volume_slice = dataset[start_index : start_index + length, c.DF_VOLUME]
+    
+    # Calculate Price * Volume
+    pv = source * volume_slice
+    
+    # Rolling sums
+    sum_pv = _rolling_window_apply_optimized(pv, period, np.nansum)
+    sum_vol = _rolling_window_apply_optimized(volume_slice, period, np.nansum)
+    
+    # VWMA
+    vwma = np.full(length, np.nan)
+    
+    # Avoid division by zero and handle NaNs
+    valid = (sum_vol != 0) & (~np.isnan(sum_vol)) & (~np.isnan(sum_pv))
+    vwma[valid] = sum_pv[valid] / sum_vol[valid]
+    
+    return vwma
+
+def _generatedseries_calculate_alma(source: np.ndarray, period: int, dataset: np.ndarray, cindex: int, param) -> np.ndarray:
+    source = np.asarray(source, dtype=np.float64)
+    length = len(source)
+    if length < period:
+        return np.full(length, np.nan)
+
+    # Extract parameters (offset, sigma)
+    offset, sigma = param if param else (0.85, 6.0)
+    
+    # Calculate weights
+    m = offset * (period - 1)
+    s = period / float(sigma)
+    i = np.arange(period, dtype=np.float64)
+    weights = np.exp(-((i - m) ** 2) / (2 * s * s))
+    weights /= weights.sum() # Normalize weights
+
+    # Create rolling windows
+    windows = sliding_window_view(source, window_shape=period)
+
+    # Compute ALMA: Sum(window * weights)
+    # Using np.dot for weighted sum across the last axis
+    alma = np.dot(windows, weights)
+    
+    # Pad with NaNs for the first period - 1 values
+    result = np.full(length, np.nan)
+    result[period - 1:] = alma
+    
     return result
 
 # _linreg250. Elapsed time: 0.02 seconds (talib 0.01 seconds)
@@ -1873,6 +1947,22 @@ def DEMA( source: generatedSeries_c, period:int )->generatedSeries_c:
     """
     return source.timeframe.calcGeneratedSeries( "dema", _ensure_object_array(source), period, _generatedseries_calculate_dema, always_reset=True )
 
+def TEMA( source: generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Triple Exponential Moving Average (TEMA).
+
+    A momentum indicator that reduces the lag of the EMA even more than DEMA.
+    Formula: TEMA = (3 * EMA1) - (3 * EMA2) + EMA3
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The moving average period.
+
+    Returns:
+        generatedSeries_c: A new series representing the TEMA.
+    """
+    return source.timeframe.calcGeneratedSeries( "tema", _ensure_object_array(source), period, _generatedseries_calculate_tema, always_reset=True )
+
 def RMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     """
     Relative Moving Average (RMA) or Running Moving Average.
@@ -1903,6 +1993,57 @@ def WMA( source:generatedSeries_c, period:int )->generatedSeries_c:
         generatedSeries_c: A new series representing the WMA.
     """
     return source.timeframe.calcGeneratedSeries( "wma", _ensure_object_array(source), period, _generatedseries_calculate_wma )
+
+def VWMA( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Volume Weighted Moving Average (VWMA).
+
+    Calculates the average price weighted by volume.
+    Formula: Sum(Price * Volume) / Sum(Volume) over the period.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The moving average period.
+
+    Returns:
+        generatedSeries_c: A new series representing the VWMA.
+    """
+    return source.timeframe.calcGeneratedSeries( "vwma", _ensure_object_array(source), period, _generatedseries_calculate_vwma )
+
+def ALMA(source: generatedSeries_c, period: int, offset: float = 0.85, sigma: float = 6.0) -> generatedSeries_c:
+    """
+    Arnaud Legoux Moving Average (ALMA).
+
+    A moving average that uses a Gaussian distribution to assign weights to the prices in the window.
+    It aims to reduce lag while maintaining smoothness.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The window size.
+        offset (float, optional): Controls the responsiveness/smoothness. 0.85 is standard.
+                                  Values closer to 1 make it more responsive (less lag), closer to 0 more smooth.
+        sigma (float, optional): Controls the width of the Gaussian curve. 6.0 is standard.
+
+    Returns:
+        generatedSeries_c: A new series representing the ALMA.
+    """
+    return source.timeframe.calcGeneratedSeries("alma", _ensure_object_array(source), period, _generatedseries_calculate_alma, param=(offset, sigma))
+
+def LSMA( source:generatedSeries_c, period:int )->generatedSeries_c:
+    """
+    Least Squares Moving Average (LSMA).
+
+    Calculates the endpoint of the linear regression line over a specified period.
+    It is used to identify the trend direction and potential reversals.
+
+    Args:
+        source (generatedSeries_c): The input series.
+        period (int): The period for the linear regression.
+
+    Returns:
+        generatedSeries_c: A new series representing the LSMA.
+    """
+    return source.timeframe.calcGeneratedSeries( "lsma", _ensure_object_array(source), period, _generatedseries_calculate_linreg )
 
 def HMA( source:generatedSeries_c, period:int )->generatedSeries_c:
     """
