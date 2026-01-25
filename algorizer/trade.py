@@ -329,6 +329,11 @@ class position_c:
 
             collateral_change = (quantity * price) / leverage
 
+            # don't attempt new orders with pennies
+            if self.collateral > self.strategy_instance.max_position_size * 0.95 and collateral_change < self.strategy_instance.order_size * 0.05:
+                collateral_change = 0.0
+                quantity = 0.0
+
             if quantity < self.strategy_instance.getMinOrder():
                 return {"error": "minorder"}
             
