@@ -353,7 +353,7 @@ class timeframe_c:
             # so we need to fetch the last historic candle after the tick closed a candle. Which SUCKS because it adds
             # a ping amount of milliseconds of delay, but if we don't fetch it the backtest may not match the realtime strategy.
             if VERIFY_CLOSED_CANDLES:
-                ohlcv = self.stream.fetcher.fetchLastClosed(self.stream.symbol, self.timeframeStr)
+                ohlcv = self.stream.fetcher.fetchLastClosed( self.stream.symbol, self.timeframeStr, self.realtimeCandle.timestamp )
                 # FIXME?: I guess I should add error handling to the fetch. More delays, yeepee
                 if ohlcv:
                     if int(ohlcv[c.DF_TIMESTAMP]) == self.realtimeCandle.timestamp:
@@ -631,6 +631,8 @@ class stream_c:
             if t == self.timeframeFetch:
                 candles = ohlcvNP
             else:
+                if fetcher.exchange.timeframes.get(t) == None:
+                    print( f" * WARNING: The exchange doesn't offer history for the '{t}' timeframe. The candles can not be validated at close." )
                 candles = tools.resample_ohlcv_np( ohlcvNP, t )
                 print( f"Resampled {t} : {len(candles)} rows" )
 

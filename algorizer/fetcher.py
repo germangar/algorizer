@@ -14,7 +14,7 @@ class ohlcvs_c:
     def __init__(self, exchangeID = 'binance', symbol = 'BTC/USDT:USDT', type = 'swap') -> None:
         self.symbol = symbol
         self.maxRetries = 3
-        self.exchange = getattr(ccxt, exchangeID)() 
+        self.exchange: ccxt.Exchange = getattr(ccxt, exchangeID)() 
         self.exchange.defaultType = type
         print( 'Connecting to exchange:', self.exchange.id )
         self.exchange.load_markets()
@@ -157,19 +157,27 @@ class ohlcvs_c:
 
         return ohlcv_list
     
-    def fetchLastClosed( self, symbol, timeframe ):
-        try:
-            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=2)
-        except Exception as e:
+    def fetchLastClosed( self, symbol, timeframeName, timestamp:int ):
+        if self.exchange.timeframes.get(timeframeName) == None:
+            # print( f"timeframe {timeframeName} not available.") 
             return []
+
+        try:
+            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe=timeframeName, limit=3)
+        except Exception as e:
+            print( f"Exception->fetchLastClosed (continuing): \n{e} ")
+            return []
+
         if not ohlcv:
             print( " fetcher: no ohlcvs" )
             return []
-        elif len(ohlcv)<2:
-            # print( f" fetcher: ohlcv len {len(ohlcv)} {ohlcv[-1]}" )
-            return ohlcv[-1]
-        # print( ohlcv[-2] )
-        return ohlcv[-2]
+
+        for item in ohlcv:
+            if item[0] == timestamp:
+                # print( f"found {timeframeName}")
+                return item
+        # print( f"NOT FOUND {timeframeName}")
+        return []
     
 
     def loadCache( self, symbol, timeframe, grab_amount ):
