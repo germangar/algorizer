@@ -371,7 +371,7 @@ def _generatedseries_calculate_shift(source: np.ndarray, period: int, dataset: n
     Returns:
         np.ndarray: The resulting shifted series.
     """
-    shift = period
+    shift = param if param is not None else period
     n = len(source)
     # Initialize the result array with NaNs, same shape as source
     result = np.full_like(source, np.nan, dtype=np.float64)
@@ -381,7 +381,8 @@ def _generatedseries_calculate_shift(source: np.ndarray, period: int, dataset: n
     
     # Positive shift (Lag: C[i] = C[i-shift])
     if shift > 0:
-        result[shift:] = source[:-shift]
+        if n > shift:
+            result[shift:] = source[:-shift]
     
     # Negative shift (Lead: C[i] = C[i-shift]) where shift is negative
     elif shift < 0:
@@ -1886,7 +1887,7 @@ def SHIFT(source:generatedSeries_c, offset: int)->generatedSeries_c:
     """
     if offset == 0:
         return source
-    return source.timeframe.calcGeneratedSeries( 'shift', _ensure_object_array(source), offset, _generatedseries_calculate_shift )
+    return source.timeframe.calcGeneratedSeries( 'shift', _ensure_object_array(source), abs(offset)+1, _generatedseries_calculate_shift, param=offset )
 
 def SUM( source:generatedSeries_c, period:int )->generatedSeries_c:
     """
