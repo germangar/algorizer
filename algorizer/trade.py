@@ -230,7 +230,7 @@ class position_c:
 
     def calculate_collateral_from_history(self):
         collateral = 0.0
-        if self.size < EPSILON:
+        if self.size <= EPSILON:
             return 0.0
         for order_data in self.order_history:
             collateral += order_data.get('collateral_change', 0.0)
@@ -251,7 +251,7 @@ class position_c:
 
     def calculate_pnl(self, current_price: float, quantity: float) -> float:
         '''return PnL in quote currency'''
-        if quantity < EPSILON:
+        if quantity <= EPSILON:
             return 0.0
         pnl = 0.0
         if self.type == c.LONG:
@@ -266,10 +266,10 @@ class position_c:
         When it is equal to 100%, the position will be deleveraged or liquidated. 
         The margin ratio = maintenance margin / (position margin + unrealized profit and loss)
         '''
-        if self.size < EPSILON or not self.active:
+        if self.size <= EPSILON or not self.active:
             return 0.0
         
-        if not self.strategy_instance.liquidation_enabled or self.leverage < EPSILON :
+        if not self.strategy_instance.liquidation_enabled or self.leverage <= EPSILON :
             return 0.0
         
         MAINTENANCE_MARGIN_RATE = self.strategy_instance.maintenance_margin_rate
@@ -398,7 +398,7 @@ class position_c:
         self.leverage = leverage if not self.active else self.leverage # FIXME: Allow to combine orders with different leverages
 
         # it's going to close the position after the broker event
-        if self.size < EPSILON:
+        if self.size <= EPSILON:
             self.size = 0.0
             self.collateral = 0.0
             self.was_liquidated = source == 'liquidation_trigger'
@@ -421,7 +421,7 @@ class position_c:
             }
             active.timeframe.stream.broker_event( info )
         
-        if self.size < EPSILON: # The order has emptied the position
+        if self.size <= EPSILON: # The order has emptied the position
             self.realized_pnl_quantity = self.calculate_realized_pnl_from_history() - self.calculate_fees_from_history()
             self.strategy_instance._close_position(self)
             return order_info
@@ -431,7 +431,7 @@ class position_c:
         return order_info
 
     def close(self):
-        if not self.active or self.size < EPSILON:
+        if not self.active or self.size <= EPSILON:
             return { "error": "noposition" }
         order_type = c.BUY if self.type == c.SHORT else c.SELL
         price = getRealtimeCandle().close
@@ -583,7 +583,7 @@ class position_c:
 
     def get_unrealized_pnl_percentage(self) -> float:
         unrealized_pnl_q = self.get_unrealized_pnl()
-        if abs(unrealized_pnl_q) < EPSILON or abs(self.collateral) < EPSILON:
+        if abs(unrealized_pnl_q) <= EPSILON or abs(self.collateral) <= EPSILON:
             return 0.0
         return (unrealized_pnl_q / abs(self.collateral)) * 100
         
@@ -626,7 +626,7 @@ class position_c:
         # see if we have another TP in the same price
         # if we do we update it with the new values and return it
         for tp in self.takeprofit_orders:
-            if abs( tp['price'] - price ) < EPSILON:
+            if abs( tp['price'] - price ) <= EPSILON:
                 tp['quantity'] = quantity
                 tp['quantity_pct'] = reduce_pct
                 tp ['win_pct'] = win_pct
@@ -694,7 +694,7 @@ class position_c:
         # see if we have another SL in the same price
         # if we do we update it with the new values and return it
         for sl in self.stoploss_orders:
-            if abs( sl['price'] - price ) < EPSILON:
+            if abs( sl['price'] - price ) <= EPSILON:
                 sl['quantity'] = quantity
                 sl['quantity_pct'] = reduce_pct
                 sl ['loss_pct'] = loss_pct
@@ -804,7 +804,7 @@ def newTick(candle: candle_c, realtime: bool = True):
 def marker( pos:position_c, message = None, prefix = '', reversal:bool = False ):
     if strategy.show_entry_markers and pos:
         order = pos.order_history[-1]
-        if order['quantity'] < EPSILON:
+        if order['quantity'] <= EPSILON:
             return
         newposition = len(pos.order_history) == 1
         closedposition = pos.active == False
@@ -1056,7 +1056,7 @@ def print_pnl_by_period_summary( quarter_pnl_relative_to_max_position = False ):
     except:
         pass # Fallback to treating it as ongoing if we can't determine time
 
-    last_quarter_incomplete = is_ongoing_quarter and abs(last_q_months[2]) < EPSILON
+    last_quarter_incomplete = is_ongoing_quarter and abs(last_q_months[2]) <= EPSILON
     last_idx_to_use = last_trade_idx
 
     # Print header
