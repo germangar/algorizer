@@ -621,8 +621,9 @@ class position_c:
         else:
             quantity = self.size
 
+        if price:
+            price = cleanFloatJunk(price)
         
-
         # see if we have another TP in the same price
         # if we do we update it with the new values and return it
         for tp in self.takeprofit_orders:
@@ -690,6 +691,9 @@ class position_c:
                 quantity = self.size
         else:
             quantity = self.size
+
+        if price:
+            price = cleanFloatJunk(price)
 
         # see if we have another SL in the same price
         # if we do we update it with the new values and return it

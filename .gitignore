@@ -21,3 +21,4 @@ dist/
 *.egg-info/
 shouter.py
 shoutrrr.exe
+telegram.py
