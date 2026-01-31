@@ -1,4 +1,15 @@
+
+> Changelog for 0.1.1:</br>
+> - Fix: Add missing backtrace error feedback from asynchronous tasks execution.</br>
+> - Fix: broker_event info dictionary had the key "source " with a trailing space. Remove the space. Fortunately the template also has the space in the docstrings, so as long as the users notice them it will be working. But the space shouldn't be there and I'm removing it.</br>
+> - Fix: ta.SHIFT would return Nan when running in real time.</br>
+> - Add: TEMA, VWMA, ALMA and LSMA to 'ta'</br>
+
+</br></br></br>
+
+
 Algorizer is a framework for creating/backtesting and running trading algorythms. It is intended to work in a familiar way for those who have used Tradingview's Pinescript, from writing the scripts to visualizing them in lightweight-charts. It doesn't intend to mimic the language, but the structure should be familiar enough to you to feel comfortable.
+</br></br>
 
 **What does it do:**
 It connects to crypto exchanges using the CCXT library and downloads the historical data[1]. It saves it in cache and keeps updating it every time it's launched. It runs a backtest of your script on it, and then (if ordered to) it continues running it in realtime, casting webhook alerts to a webhook service (Like [my own free webhook script](https://github.com/germangar/whook)).
@@ -8,7 +19,6 @@ It connects to crypto exchanges using the CCXT library and downloads the histori
 Strategies can be multi-timeframe (minimum timeframe is 1 minute). Trades can be oneway or hedged. It takes into account the fees cost by fetching them from the exchange. 
 
 Most typical 'indicators' are already built in, and creating custom ones is relatively easy. By default all series are calculated using Numpy. Talib is used for some of them when it's present in the system. Talib provides a marginal speed increase..
-
 
 
 ## ** Quick Start **
@@ -40,6 +50,7 @@ Plotting capabilities: As of today it's capable of **plots, histograms, lines** 
 </br></br>
 
 > Note on dependencies: Pandas is only used to load the data into the chart. Lightweight-chart requires it. It isn't used anywhere else. However, even if algorizer doesn't directly use it, CCXT does.
+</br>
 
 
 ### Future plans (aka to do list) ###
