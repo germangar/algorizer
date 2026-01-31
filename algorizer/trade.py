@@ -509,7 +509,8 @@ class position_c:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
                     self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage, source= 'takeprofit_trigger')
-                marker( self, prefix=f'TP({quantity:.2f}):' )
+
+                marker( self, prefix=f'TP({quantity:.2f}):', realtime= not isInitializing() )
 
                 if not self.active:
                     break
@@ -545,7 +546,7 @@ class position_c:
                     assert(quantity_pct)
                     quantity = self.size * (quantity_pct / 100)
                     self.execute_order(order_type, closing_price, quantity / self.leverage, self.leverage, source= 'stoploss_trigger')
-                marker( self, prefix='Stoploss ⛔' )
+                marker( self, prefix='Stoploss ⛔', realtime= not isInitializing() )
                 if self.type == c.SHORT:
                     self.strategy_instance.stats.total_short_stoploss += 1
                 else:
@@ -574,7 +575,7 @@ class position_c:
                     line.width = 3
                 order_type = c.BUY if self.type == c.SHORT else c.SELL
                 self.execute_order(order_type, self.liquidation_price, self.size, self.leverage, source= 'liquidation_trigger')
-                marker( self, prefix = '💀 ' )
+                marker( self, prefix = '💀 ', realtime= not isInitializing() )
                 return # with the position liquidated there's no need to continue
 
     def get_unrealized_pnl(self) -> float:
@@ -805,7 +806,7 @@ strategy = strategy_c(currency_mode='USD')
 def newTick(candle: candle_c, realtime: bool = True):
     strategy.price_update(candle, realtime)
 
-def marker( pos:position_c, message = None, prefix = '', reversal:bool = False ):
+def marker( pos:position_c, message = None, prefix = '', realtime = False ):
     if strategy.show_entry_markers and pos:
         order = pos.order_history[-1]
         if order['quantity'] <= EPSILON:
@@ -837,11 +838,14 @@ def marker( pos:position_c, message = None, prefix = '', reversal:bool = False )
         location = 'below' if order_type == c.BUY else 'above'
         if pos.was_liquidated or '💀' in prefix or '⛔' in prefix:
             location = 'below' if order_type == c.SHORT else 'above'
+
+        timestamp = None if not realtime else getRealtimeCandle().timestamp
         
         createMarker( prefix + message,
                     location,
                     shape,
-                    COLOR_BULL if pos.type == c.LONG else COLOR_BEAR
+                    COLOR_BULL if pos.type == c.LONG else COLOR_BEAR,
+                    timestamp= timestamp
                     )
 
 def getActivePosition(pos_type: int = None) -> 'position_c':

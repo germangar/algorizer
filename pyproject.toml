@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "algorizer"
-version = "0.1.0"
+version = "0.1.1"
 description = "A framework for algorithmic strategy scripts."
 readme = "README.md"
 authors = [{ name = "Germán García", email = "germangarciaart@gmail.com" }]
