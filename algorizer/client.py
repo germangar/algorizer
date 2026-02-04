@@ -1195,6 +1195,12 @@ async def run_client():
                 await send_command(cmd_socket, "listening", "")
                 await asyncio.sleep(0.1)
 
+            if status >= CLIENT_READY and window and not window.isAlive():
+                if debug : print("Chart window closed. Shutting down client.")
+                # Send disconnect command to server
+                await send_command(cmd_socket, "disconnect", "")
+                sys.exit(0)
+
             if status == CLIENT_LISTENING:
                 await send_command(cmd_socket, "ack", "") # keepalive
                 await asyncio.sleep(10)

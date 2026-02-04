@@ -315,6 +315,18 @@ async def publish_updates(pub_socket):
     """Task to publish bar updates to clients"""
     while True:
         try:
+            if client.status == CLIENT_DISCONNECTED and client.last_successful_send != 0.0:
+                current_time = asyncio.get_event_loop().time()
+                if current_time - client.last_successful_send > 60: # 1 minute
+                    print("Client has been disconnected for 5 minutes. Shutting down server task to free ports.")
+                    global server_cmd_port, server_pub_port
+                    server_cmd_port = None
+                    server_pub_port = None
+                    client.last_successful_send = 0.0
+                    tasks.cancelTask("zmq_server")
+                    tasks.cancelTask("zmq_updates")
+                    return # Exit the coroutine
+
             # Check for timeout based on state
             if client.is_timed_out():
                 if client.status == CLIENT_LISTENING:
@@ -425,14 +437,24 @@ def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10
 
 def start_window_server(timeframeName = None):
     """Initialize and start the window server"""
-    global server_cmd_port
-    
-    # If server is running, use its ports
+    global server_cmd_port, server_pub_port
+
+    server_task_running = False
     if server_cmd_port is not None:
+        for task in asyncio.all_tasks():
+            if task.get_name() == "zmq_server" and not task.done():
+                server_task_running = True
+                break
+    
+    if server_task_running:
         if debug : print(f"Launching client for existing server on port {server_cmd_port}")
         return launch_client_window(server_cmd_port, timeframeName) is not None
 
-    # Server not running yet, start it with new ports
+    # Server not running or was shut down.
+    # Clear ports in case task is dead but port is stale.
+    server_cmd_port = None
+    server_pub_port = None
+
     try:
         cmd_port, pub_port = find_available_ports()
         if debug : print(f"Starting new server using ports: CMD={cmd_port}, PUB={pub_port}")
@@ -440,6 +462,9 @@ def start_window_server(timeframeName = None):
     except RuntimeError as e:
         print(f"Error finding available port: {e}")
         return False
+    
+    # Register the server task to be started by the watcher.
+    tasks.registerTask("zmq_server", run_server)
 
     # Launch client window
     client_process = launch_client_window(cmd_port, timeframeName)
@@ -524,6 +549,18 @@ async def run_server():
                 #---------------------
                 elif command == 'ack': # keep alive
                     response = 'ok'
+                
+                #---------------------------
+                elif command == 'disconnect':
+                    print('chart disconnected.')
+                    client.status = CLIENT_DISCONNECTED
+                    # global server_cmd_port, server_pub_port
+                    server_cmd_port = None
+                    server_pub_port = None
+                    client.last_successful_send = 0.0
+                    tasks.cancelTask("zmq_server")
+                    tasks.cancelTask("zmq_updates")
+                    response = 'ok'
 
             if response is not None:
                 if type(response) == str: # we didn't explicitly pack strings
@@ -533,7 +570,8 @@ async def run_server():
                 await cmd_socket.send(response)
 
     except asyncio.CancelledError as e:
-        print( f"Server task cancelled [{e}]" )
+        if debug:
+            print( f"Server task cancelled [{e}]" )
     finally:
         cmd_socket.close()
         pub_socket.close()

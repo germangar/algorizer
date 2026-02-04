@@ -94,4 +94,4 @@ def cancelTask(taskname):
                 print("Task", taskname, "already cancelled")
             else:
                 task.cancel()
-                print(taskname, "cancelled")
+                # print(taskname, "cancelled")
