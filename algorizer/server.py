@@ -32,6 +32,15 @@ LISTENING_TIMEOUT = 20.0    # 5 seconds timeout for listening state
 LOADING_TIMEOUT = 60.0    # 1 minute timeout for other states
 MAX_QUEUE_SIZE = 1000
 
+# def svprint(*args, **kwargs):
+#     if not active.timeframe.stream.running:
+#         from . import console
+#         console.delete_last_line()
+#         print(*args, **kwargs)
+#         console.print_status_line()
+#         return
+#     print(*args, **kwargs)
+
 
 class client_state_t:
     def __init__(self):
@@ -315,18 +324,6 @@ async def publish_updates(pub_socket):
     """Task to publish bar updates to clients"""
     while True:
         try:
-            if client.status == CLIENT_DISCONNECTED and client.last_successful_send != 0.0:
-                current_time = asyncio.get_event_loop().time()
-                if current_time - client.last_successful_send > 60: # 1 minute
-                    print("Client has been disconnected for 5 minutes. Shutting down server task to free ports.")
-                    global server_cmd_port, server_pub_port
-                    server_cmd_port = None
-                    server_pub_port = None
-                    client.last_successful_send = 0.0
-                    tasks.cancelTask("zmq_server")
-                    tasks.cancelTask("zmq_updates")
-                    return # Exit the coroutine
-
             # Check for timeout based on state
             if client.is_timed_out():
                 if client.status == CLIENT_LISTENING:
@@ -552,6 +549,9 @@ async def run_server():
                 
                 #---------------------------
                 elif command == 'disconnect':
+                    from . import console
+                    if active.timeframe.stream.running:
+                        console.delete_last_line()
                     print('chart disconnected.')
                     client.status = CLIENT_DISCONNECTED
                     # global server_cmd_port, server_pub_port
@@ -560,6 +560,8 @@ async def run_server():
                     client.last_successful_send = 0.0
                     tasks.cancelTask("zmq_server")
                     tasks.cancelTask("zmq_updates")
+                    if active.timeframe.stream.running:
+                        console.print_status_line()
                     response = 'ok'
 
             if response is not None:
