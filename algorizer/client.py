@@ -866,7 +866,14 @@ class window_c:
         series = pd.Series(data_dict)
         for n in self.panels.keys():
             chart = self.panels[n]['chart']
-            chart.update( series )
+            try:
+                chart.update( series )
+            except Exception as e:
+                # If the chart is not alive, we expect errors when trying to update it
+                if not self.isAlive():
+                    if debug : print(f"Chart not alive, silently ignoring update error: {e}")
+                    return
+                raise # Re-raise if it's an unexpected error or chart is still considered alive
 
 
     def newRow(self, msg):
@@ -894,37 +901,46 @@ class window_c:
                 chart = self.panels[n]['chart']
                 chart.update( series )
         except Exception as e:
-            raise ValueError( f"Failed  to locate the charts to update OHLCVs. {e}")
+            # If the chart is not alive, we expect errors when trying to update it
+            if not self.isAlive():
+                if debug : print(f"Chart not alive, silently ignoring update error: {e}")
+                return
+            raise ValueError( f"Failed to locate the charts to update OHLCVs. {e}")
 
         # Second part - full data update
+        try:
+            # add new plots if any
+            self.addPlots( msg.get('plots') )
 
-        # add new plots if any
-        self.addPlots( msg.get('plots') )
+            # TODO: Removed plots if we decide to add the feature.
+            
+            # Update plot values
+            updated:dict = msg['plots'].get('updated')
+            if updated:
+                for plot in self.plots:
+                    value = updated.get(plot.name)
+                    if value is None or pd.isna(value):
+                        continue
+                    if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
+                        plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
 
-        # TODO: Removed plots if we decide to add the feature.
-        
-        # Update plot values
-        updated:dict = msg['plots'].get('updated')
-        if updated:
-            for plot in self.plots:
-                value = updated.get(plot.name)
-                if value is None or pd.isna(value):
-                    continue
-                if plot.type == c.PLOT_LINE or plot.type == c.PLOT_HIST:
-                    plot.instance.update( pd.Series( {'time': data_dict['time'], 'value': value } ) )
+            # markers delta update
+            self.removeMarkers( msg['markers'].get("removed") ) 
+            self.modifyMarkers( msg['markers'].get("modified") )
+            self.addMarkers( msg['markers'].get("added") ) 
 
-        # markers delta update
-        self.removeMarkers( msg['markers'].get("removed") ) 
-        self.modifyMarkers( msg['markers'].get("modified") )
-        self.addMarkers( msg['markers'].get("added") ) 
+            self.removeLines( msg['lines'].get("removed") )
+            self.updateLines( msg['lines'].get("modified") )
+            self.reclipLines()
+            self.addLines( msg['lines'].get("added") )
 
-        self.removeLines( msg['lines'].get("removed") )
-        self.updateLines( msg['lines'].get("modified") )
-        self.reclipLines()
-        self.addLines( msg['lines'].get("added") )
-
-        # finally add the opening of the realtime candle
-        self.newTick( msg.get('tick'), force = True )
+            # finally add the opening of the realtime candle
+            self.newTick( msg.get('tick'), force = True )
+        except Exception as e:
+            if not self.isAlive():
+                if debug : print(f"Chart not alive during plot/marker/line update, silently ignoring error: {e}")
+                return
+            raise
         
 
     def isAlive(self)->bool:
