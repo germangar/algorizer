@@ -562,6 +562,10 @@ class stream_c:
         self.lines:list[line_c] = []
         self.registeredPanels:dict = {}
 
+        # For deferred window creation
+        self._window_creation_pending = False
+        self._pending_timeframe_for_window = None
+
         #################################################
         # Validate de timeframes list and find 
         # the smallest for fetching the data
@@ -687,6 +691,9 @@ class stream_c:
                 tasks.registerTask("websocket", self._run_websocket_forever) # calls fetchCandleUpdates amd restarts on failure
             else:
                 tasks.registerTask( 'fetch', self.fetchCandleUpdates )
+        
+        # Register the window creation watcher
+        tasks.registerTask('window_manager', self._process_window_creation_requests)
 
         asyncio.run( tasks.runTasks() )
 
@@ -856,14 +863,34 @@ class stream_c:
             self.lines.remove(line)
 
     def createWindow( self, timeframeStr = None ):
-        """Create and show a window for the given timeframe"""
+        """Create and show a window for the given timeframe (DEFERRED)"""
         if not timeframeStr:
             timeframeStr = self.timeframeFetch
         if timeframeStr not in self.timeframes.keys():
             print( f"'{timeframeStr}' is not a valid timeframe. Available timeframes: {list(self.timeframes.keys())}" )
             return
+        
         print( f"loading chart {timeframeStr}" )
-        start_window_server( timeframeStr )
+        
+        # Signal that a window is requested. The async task will pick this up.
+        self._pending_timeframe_for_window = timeframeStr
+        self._window_creation_pending = True
+
+    async def _process_window_creation_requests(self):
+        """Async task to check for window creation requests and call start_window_server"""
+        while True:
+            if self._window_creation_pending:
+                # print( f"Processing window creation for {self._pending_timeframe_for_window}" )
+                timeframeStr = self._pending_timeframe_for_window
+                
+                # Reset flags *before* awaiting to avoid potential race conditions if user calls it again quickly
+                # (though simplistic, it prevents indefinite loops of the same request)
+                self._window_creation_pending = False
+                self._pending_timeframe_for_window = None
+                
+                await start_window_server(self, timeframeStr)
+            
+            await asyncio.sleep(0.1) # Check 10 times a second
 
     def setStatusLineMsg( self, message:str ):
         if message:
@@ -916,7 +943,3 @@ def getPrecision()->float:
 
 def isInitializing():
     return active.timeframe.stream.initializing
-
-
-
-

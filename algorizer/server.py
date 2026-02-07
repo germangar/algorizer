@@ -32,14 +32,13 @@ LISTENING_TIMEOUT = 20.0    # 5 seconds timeout for listening state
 LOADING_TIMEOUT = 60.0    # 1 minute timeout for other states
 MAX_QUEUE_SIZE = 1000
 
-# def svprint(*args, **kwargs):
-#     if not active.timeframe.stream.running:
-#         from . import console
-#         console.delete_last_line()
-#         print(*args, **kwargs)
-#         console.print_status_line()
-#         return
-#     print(*args, **kwargs)
+def svprint(*args, **kwargs):
+    from . import console
+    if active.timeframe.stream.running:
+        console.delete_last_line()
+    print(*args, **kwargs)
+    if active.timeframe.stream.running:
+        console.print_status_line()
 
 
 class client_state_t:
@@ -221,15 +220,14 @@ client = client_state_t()
 
 
 
-def create_config_message():
+def create_config_message(stream_instance):
     """Create a JSON message for data transmission"""
-    stream = active.timeframe.stream
     message = {
         "type": "config",
-        "symbol": stream.symbol,
-        "timeframes": list(stream.timeframes.keys()),
-        "mintick": stream.mintick,
-        "panels": stream.registeredPanels
+        "symbol": stream_instance.symbol,
+        "timeframes": list(stream_instance.timeframes.keys()),
+        "mintick": stream_instance.mintick,
+        "panels": stream_instance.registeredPanels
     }
     return msgpack.packb(message, use_bin_type=True)
 
@@ -315,51 +313,58 @@ async def queue_update(update):
     if client.status == CLIENT_LISTENING:
         if update_queue.qsize() < MAX_QUEUE_SIZE:
             await update_queue.put(update)
-            if debug : print(f"Added to queue. Queue size: {update_queue.qsize()}")
+            if debug : svprint(f"Added to queue. Queue size: {update_queue.qsize()}")
         else:
-            print("Update queue full - dropping update")
+            svprint("Update queue full - dropping update")
 
 
 async def publish_updates(pub_socket):
+    global server_cmd_port, server_pub_port
     """Task to publish bar updates to clients"""
     while True:
         try:
             # Check for timeout based on state
             if client.is_timed_out():
                 if client.status == CLIENT_LISTENING:
-                    print("Chart disconnected")
+                    svprint("Chart disconnected (timed out)")
                 else:
-                    print(f"Client timed out during {['DISCONNECTED', 'CONNECTED', 'LOADING', 'LISTENING'][client.status]} state - marking as disconnected")
+                    svprint(f"Client timed out during {['DISCONNECTED', 'CONNECTED', 'LOADING', 'LISTENING'][client.status]} state - marking as disconnected")
                 client.status = CLIENT_DISCONNECTED
-                # Clear the queue
-                while not update_queue.empty():
-                    try:
-                        update_queue.get_nowait()
-                        update_queue.task_done()
-                    except asyncio.QueueEmpty:
-                        break
+                
+                # Instead of cancelling tasks, just reset port state. run_server will close sockets.
+                server_cmd_port = None
+                server_pub_port = None
+                client.last_successful_send = 0.0
+                break # Exit this publish_updates task, it will be re-registered by run_server
 
             if client.status == CLIENT_LISTENING:
                 try:
-                    # Wait for an update with a timeout
                     update = await asyncio.wait_for(update_queue.get(), timeout=1.0)
-                    if debug : print(f"Got update from queue. Queue size: {update_queue.qsize()}")
-
+                    if debug : svprint(f"Got update from queue. Queue size: {update_queue.qsize()}")
+                    
+                    if pub_socket.closed: # Check if the socket is still open
+                        if debug: svprint("publish_updates: pub_socket is closed, breaking.")
+                        break # Exit if socket is closed externally
+                    
                     try:
                         await asyncio.wait_for(pub_socket.send(update), timeout=1.0)
-                        if debug : print("Successfully sent update")
-                        client.update_last_send()  # Mark successful send
+                        if debug : svprint("Successfully sent update")
+                        client.update_last_send()
 
-                    except (asyncio.TimeoutError, zmq.error.Again):
-                        if debug : print("Send timed out - requeueing update")
-                        # Requeue the update if send failed
-                        if update_queue.qsize() < MAX_QUEUE_SIZE:
-                            await update_queue.put(update)
+                    except (asyncio.TimeoutError, zmq.error.Again, zmq.error.ZMQError) as e:
+                        if debug : print(f"Send timed out or socket error ({e}) - requeueing/breaking")
+                        if not pub_socket.closed: # Only requeue if socket is still open
+                            if update_queue.qsize() < MAX_QUEUE_SIZE:
+                                await update_queue.put(update)
+                        else:
+                            break # Socket closed, break out
                     finally:
                         update_queue.task_done()
                 except asyncio.TimeoutError:
-                    # No updates in queue - this is normal
-                    pass
+                    pass # No updates, just continue
+                except zmq.error.ZMQError as e: # Catch socket errors specifically
+                    if debug: svprint(f"publish_updates: ZMQError on send/get ({e}), breaking.")
+                    break # Socket likely closed, exit
             else:
                 # Client not listening - clear queue periodically
                 try:
@@ -369,10 +374,14 @@ async def publish_updates(pub_socket):
                     pass
             
         except asyncio.CancelledError:
+            if debug: print("publish_updates: Task cancelled.")
             break
         except Exception as e:
-            print(f"Error in publish_updates: {e}")
+            svprint(f"Error in publish_updates: {e}")
             await asyncio.sleep(1)
+
+        await asyncio.sleep(0) # Yield control
+    if debug: svprint("publish_updates: Exiting.")
 
 
 def launch_client_window( cmd_port, timeframeName:str = None ):
@@ -432,159 +441,153 @@ def find_available_ports(base_cmd_port=5555, base_pub_port=5556, max_attempts=10
     raise RuntimeError(f"Could not find available ports after {max_attempts} attempts")
 
 
-def start_window_server(timeframeName = None):
+async def start_window_server(stream_instance, timeframeName:str = None):
     """Initialize and start the window server"""
     global server_cmd_port, server_pub_port
 
-    server_task_running = False
-    if server_cmd_port is not None:
-        for task in asyncio.all_tasks():
-            if task.get_name() == "zmq_server" and not task.done():
-                server_task_running = True
-                break
+    server_task_already_registered = False
+    for task in asyncio.all_tasks():
+        if task.get_name() == "zmq_server" and not task.done():
+            server_task_already_registered = True
+            break
     
-    if server_task_running:
-        if debug : print(f"Launching client for existing server on port {server_cmd_port}")
-        return launch_client_window(server_cmd_port, timeframeName) is not None
+    if not server_task_already_registered:
+        # If the task isn't running, register it. It will wait for ports.
+        tasks.registerTask("zmq_server", run_server, stream_instance)
+        # Give a moment for the task to start up and enter its waiting loop
+        # For simplicity, we assume the event loop is running and it will get scheduled.
+        # A small sleep here could ensure it's ready, but it would have to be an async function.
+        # For now, we rely on the task being scheduled quickly.
 
-    # Server not running or was shut down.
-    # Clear ports in case task is dead but port is stale.
-    server_cmd_port = None
-    server_pub_port = None
-
+    # Find new ports for this client connection
     try:
         cmd_port, pub_port = find_available_ports()
-        if debug : print(f"Starting new server using ports: CMD={cmd_port}, PUB={pub_port}")
-        server_cmd_port, server_pub_port = cmd_port, pub_port
+        if debug : svprint(f"start_window_server: Found new ports: CMD={cmd_port}, PUB={pub_port}")
+        server_cmd_port = cmd_port # Set global ports to trigger run_server to bind
+        server_pub_port = pub_port # Set global ports to trigger run_server to bind
     except RuntimeError as e:
-        print(f"Error finding available port: {e}")
+        svprint(f"Error finding available port: {e}")
         return False
     
-    # Register the server task to be started by the watcher.
-    tasks.registerTask("zmq_server", run_server)
-
-    # Launch client window
+    if debug : print(f"start_window_server: Launching client for server on port {server_cmd_port}")
     client_process = launch_client_window(cmd_port, timeframeName)
     if not client_process:
-        print("Failed to launch client window")
+        svprint("Failed to launch client window")
+        # If client launch fails, we should clear the global ports so run_server goes back to waiting
+        server_cmd_port = None
+        server_pub_port = None
         return False
         
     return True
 
 
-async def run_server():
+async def run_server(stream_instance):
     global server_cmd_port, server_pub_port
-    
-    # Find available ports if we don't have them yet
-    if server_cmd_port is None or server_pub_port is None:
+
+    while True: # Outer loop for persistence
+        # Wait for ports to be assigned (new client connection attempt)
+        if server_cmd_port is None or server_pub_port is None:
+            if debug: svprint("run_server: Waiting for ports...")
+            await asyncio.sleep(0.05)
+            continue # Loop back and check again
+
+        if debug: svprint(f"run_server: Starting server with CMD={server_cmd_port}, PUB={server_pub_port}")
+
+        context = None
+        cmd_socket = None
+        pub_socket = None
+
         try:
-            server_cmd_port, server_pub_port = find_available_ports()
-            if debug:print(f"Server using ports: CMD={server_cmd_port}, PUB={server_pub_port}")
-        except RuntimeError as e:
-            print(f"Error finding available ports: {e}")
-            return
-    else:
-        if debug:print(f"Server already running on ports: CMD={server_cmd_port}, PUB={server_pub_port}")
-    
-    # ZeroMQ Context
-    context = zmq.asyncio.Context()
+            # ZeroMQ Context
+            context = zmq.asyncio.Context()
 
-    # Socket to handle command messages (REQ/REP pattern)
-    cmd_socket = context.socket(zmq.REP)
-    cmd_socket.bind(f"tcp://127.0.0.1:{server_cmd_port}")
+            # Socket to handle command messages (REQ/REP pattern)
+            cmd_socket = context.socket(zmq.REP)
+            cmd_socket.bind(f"tcp://127.0.0.1:{server_cmd_port}")
 
-    # Socket to publish bar updates (PUB/SUB pattern)
-    pub_socket = context.socket(zmq.PUB)
-    pub_socket.bind(f"tcp://127.0.0.1:{server_pub_port}")
+            # Socket to publish bar updates (PUB/SUB pattern)
+            pub_socket = context.socket(zmq.PUB)
+            pub_socket.bind(f"tcp://127.0.0.1:{server_pub_port}")
 
-    if debug:print("Server is running...")
+            if debug:print("Server is running...")
+            
+            # Cancel any old publish_updates task and register a new one with the new pub_socket
+            tasks.cancelTask("zmq_updates")
+            tasks.registerTask("zmq_updates", publish_updates, pub_socket)
 
-    try:
-        # Start the update publisher task
-        tasks.registerTask("zmq_updates", publish_updates, pub_socket)
+            # Main command handling loop (inner loop for client interaction)
+            while True:
+                message = await cmd_socket.recv_string()
+                if debug : svprint(f"Received command: {message}")
 
-        # Main command handling loop
-        while True:
-            message = await cmd_socket.recv_string()
-            if debug : print(f"Received command: {message}")
+                # Process the command
+                msg = message.lstrip()
+                parts = msg.split(maxsplit=1)
+                command = parts[0].lower() if parts else ""
+                msg = parts[1] if len(parts) > 1 else ""
+                response = None
 
-            # Process the command
-            msg = message.lstrip()
-            parts = msg.split(maxsplit=1)
-            command = parts[0].lower() if parts else ""
-            msg = parts[1] if len(parts) > 1 else ""
-            response = None
+                if len(command):
+                    #-----------------------
+                    if command == 'connect':
+                        if debug:print('client connected')
+                        client.status = CLIENT_CONNECTED
+                        response = create_config_message(stream_instance)
 
-            if len(command):
-                #-----------------------
-                if command == 'connect':
-                    if debug:print('client connected')
-                    client.status = CLIENT_CONNECTED
-                    response = create_config_message()
+                    #---------------------------
+                    elif command == 'dataframe':
+                        client.status = CLIENT_LOADING
+                        timeframe = stream_instance.timeframes[stream_instance.timeframeFetch]
+                        if tools.validateTimeframeName( msg ) and msg in stream_instance.timeframes.keys():
+                            timeframe = stream_instance.timeframes[msg]
 
-                #---------------------------
-                elif command == 'dataframe':
-                    client.status = CLIENT_LOADING
-                    timeframe = active.timeframe.stream.timeframes[active.timeframe.stream.timeframeFetch]
-                    if tools.validateTimeframeName( msg ) and msg in active.timeframe.stream.timeframes.keys():
-                        timeframe = active.timeframe.stream.timeframes[msg]
+                        if timeframe != client.streaming_timeframe:
+                            pass # FIXME: Execute a reset?
 
-                    if timeframe != client.streaming_timeframe:
-                        pass # FIXME: Execute a reset?
+                        response = create_dataframe_message( timeframe )
 
-                    response = create_dataframe_message( timeframe )
+                    #---------------------------
+                    elif command == 'graphs':
+                        response = create_graphs_baseline_message( client.streaming_timeframe )
 
-                #---------------------------
-                elif command == 'graphs':
-                    response = create_graphs_baseline_message( client.streaming_timeframe )
+                    #---------------------------
+                    elif command == 'listening': # the chart is ready. Waiting for realtime updates
+                        client.status = CLIENT_LISTENING
+                        response = 'ok'
 
-                #---------------------------
-                elif command == 'listening': # the chart is ready. Waiting for realtime updates
-                    client.status = CLIENT_LISTENING
-                    response = 'ok'
-
-                #---------------------
-                elif command == 'ack': # keep alive
-                    response = 'ok'
+                    #---------------------
+                    elif command == 'ack': # keep alive
+                        response = 'ok'
+                    
+                    #---------------------------
+                    elif command == 'disconnect':
+                        svprint('chart disconnected.')
+                        client.status = CLIENT_DISCONNECTED
+                        server_cmd_port = None # Reset global ports
+                        server_pub_port = None # Reset global ports
+                        client.last_successful_send = 0.0
+                        tasks.cancelTask("zmq_updates") # Cancel the current publish task
+                        response = 'ok'
+                        break # Exit the inner while True loop
                 
-                #---------------------------
-                elif command == 'disconnect':
-                    from . import console
-                    if active.timeframe.stream.running:
-                        console.delete_last_line()
-                    print('chart disconnected.')
-                    client.status = CLIENT_DISCONNECTED
-                    # global server_cmd_port, server_pub_port
-                    server_cmd_port = None
-                    server_pub_port = None
-                    client.last_successful_send = 0.0
-                    tasks.cancelTask("zmq_server")
-                    tasks.cancelTask("zmq_updates")
-                    if active.timeframe.stream.running:
-                        console.print_status_line()
-                    response = 'ok'
+                if response is not None:
+                    if type(response) == str: # we didn't explicitly pack strings
+                        response = msgpack.packb(response, use_bin_type=True)
 
-            if response is not None:
-                if type(response) == str: # we didn't explicitly pack strings
-                    response = msgpack.packb(response, use_bin_type=True)
+                    client.update_last_send()
+                    await cmd_socket.send(response)
 
-                client.update_last_send()
-                await cmd_socket.send(response)
-
-    except asyncio.CancelledError as e:
-        if debug:
-            print( f"Server task cancelled [{e}]" )
-    finally:
-        cmd_socket.close()
-        pub_socket.close()
-        context.term()
-
-# Register the server as a task
-tasks.registerTask("zmq_server", run_server)
-
-if __name__ == "__main__":
-    try:
-        # Use the tasks system to run the server
-        asyncio.run(tasks.runTasks())
-    except KeyboardInterrupt:
-        print("\nServer stopped by user")
+        except asyncio.CancelledError as e:
+            if debug: svprint( f"run_server: Inner loop cancelled [{e}]" )
+            pass # The outer loop will catch this or it's a natural exit from inner loop
+        except Exception as e:
+            svprint(f"Error in run_server inner loop: {e}")
+        finally:
+            if debug: svprint("run_server: Closing sockets and terminating context.")
+            if cmd_socket:
+                cmd_socket.close()
+            if pub_socket:
+                pub_socket.close()
+            if context:
+                context.term()
+            # The outer loop will now continue, waiting for new ports
