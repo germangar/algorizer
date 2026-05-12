@@ -352,7 +352,7 @@ class timeframe_c:
             # Exchange issued candle updates may not match fetched closed candles (used for historic backtesting)
             # so we need to fetch the last historic candle after the tick closed a candle. Which SUCKS because it adds
             # a ping amount of milliseconds of delay, but if we don't fetch it the backtest may not match the realtime strategy.
-            if VERIFY_CLOSED_CANDLES:
+            if self.stream.verifyCloseCandles:
                 ohlcv = self.stream.fetcher.fetchLastClosed( self.stream.symbol, self.timeframeStr, self.realtimeCandle.timestamp )
                 # FIXME?: I guess I should add error handling to the fetch. More delays, yeepee
                 if ohlcv:
@@ -557,6 +557,7 @@ class stream_c:
         self.event_callback = event_callback
         self.ws_task = None # watch for ccxt websocket errors
         self.fetchFailedCount = 0
+        self.verifyCloseCandles = VERIFY_CLOSED_CANDLES
 
         self.markers:list[marker_c] = []
         self.lines:list[line_c] = []
